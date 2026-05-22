@@ -27,10 +27,10 @@ public struct DisplayFormatter {
         return "\(value)%"
     }
 
-    public static func formatReset(_ date: Date?) -> String {
+    public static func formatReset(_ date: Date?, localizer: Localizer = Localizer(language: .english)) -> String {
         guard let date else { return "--" }
         let seconds = Int(date.timeIntervalSinceNow)
-        if seconds <= 0 { return "now" }
+        if seconds <= 0 { return localizer.text(.now) }
         let minutes = seconds / 60
         if minutes < 60 { return "\(minutes)m" }
         let hours = minutes / 60

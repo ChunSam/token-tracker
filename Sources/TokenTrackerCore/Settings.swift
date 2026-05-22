@@ -6,6 +6,7 @@ public final class Settings {
         static let refreshInterval = "refreshInterval"
         static let claudeEnabled = "claudeEnabled"
         static let codexEnabled = "codexEnabled"
+        static let language = "language"
     }
 
     private let defaults: UserDefaults
@@ -38,12 +39,21 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.codexEnabled) }
     }
 
+    public var language: AppLanguage {
+        get {
+            let raw = defaults.string(forKey: Key.language) ?? AppLanguage.system.rawValue
+            return AppLanguage(rawValue: raw) ?? .system
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.language) }
+    }
+
     private func registerDefaults() {
         defaults.register(defaults: [
             Key.displayMode: DisplayMode.lowestRemaining.rawValue,
             Key.refreshInterval: 60.0,
             Key.claudeEnabled: true,
-            Key.codexEnabled: true
+            Key.codexEnabled: true,
+            Key.language: AppLanguage.system.rawValue
         ])
     }
 }

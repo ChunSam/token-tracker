@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var usageService = UsageService(settings: settings)
     private var snapshot: UsageSnapshot?
     private var timer: Timer?
+    private var localizer: Localizer {
+        Localizer(language: settings.language)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -71,13 +74,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
             addUsage(snapshot.codex, to: menu)
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: "Updated \(relative(snapshot.updatedAt))", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: "\(localizer.text(.updated)) \(relative(snapshot.updatedAt))", action: nil, keyEquivalent: ""))
         } else {
-            menu.addItem(NSMenuItem(title: "No usage loaded yet", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: localizer.text(.noUsageLoaded), action: nil, keyEquivalent: ""))
         }
 
         menu.addItem(.separator())
-        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
+        let refresh = NSMenuItem(title: localizer.text(.refreshNow), action: #selector(refreshNow), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
 
@@ -89,20 +92,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = settings.displayMode == mode ? .on : .off
             displayMenu.addItem(item)
         }
-        let display = NSMenuItem(title: "Display Mode", action: nil, keyEquivalent: "")
+        let display = NSMenuItem(title: localizer.text(.displayMode), action: nil, keyEquivalent: "")
         display.submenu = displayMenu
         menu.addItem(display)
 
+        let languageMenu = NSMenu()
+        for language in AppLanguage.allCases {
+            let item = NSMenuItem(title: language.label, action: #selector(selectLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = language.rawValue
+            item.state = settings.language == language ? .on : .off
+            languageMenu.addItem(item)
+        }
+        let language = NSMenuItem(title: localizer.text(.language), action: nil, keyEquivalent: "")
+        language.submenu = languageMenu
+        menu.addItem(language)
+
         let launchAtLogin = NSMenuItem(
-            title: "Launch at Login: \(loginItemManager.statusLabel)",
+            title: "\(localizer.text(.launchAtLogin)): \(loginItemManager.statusLabel(localizer: localizer))",
             action: #selector(toggleLaunchAtLogin),
             keyEquivalent: ""
         )
         launchAtLogin.target = self
-        launchAtLogin.state = loginItemManager.isEnabled ? .on : .off
+        launchAtLogin.state = loginItemManager.isEnabled ? NSControl.StateValue.on : NSControl.StateValue.off
         menu.addItem(launchAtLogin)
 
-        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: localizer.text(.quit), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -111,14 +126,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func addUsage(_ usage: ProviderUsage, to menu: NSMenu) {
         menu.addItem(NSMenuItem(title: DisplayFormatter.detailLine(usage), action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "  5h reset: \(DisplayFormatter.formatReset(usage.resetAt5h))", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "  7d reset: \(DisplayFormatter.formatReset(usage.resetAt7d))", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "  Source: \(usage.source.rawValue)", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "  \(localizer.text(.fiveHourReset)): \(DisplayFormatter.formatReset(usage.resetAt5h, localizer: localizer))", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "  \(localizer.text(.sevenDayReset)): \(DisplayFormatter.formatReset(usage.resetAt7d, localizer: localizer))", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "  \(localizer.text(.source)): \(usage.source.rawValue)", action: nil, keyEquivalent: ""))
         if let error = usage.error {
-            menu.addItem(NSMenuItem(title: "  Error: \(error)", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: "  \(localizer.text(.error)): \(error)", action: nil, keyEquivalent: ""))
         }
         if let plan = usage.plan {
-            menu.addItem(NSMenuItem(title: "  Plan: \(plan)", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: "  \(localizer.text(.plan)): \(plan)", action: nil, keyEquivalent: ""))
         }
     }
 
@@ -134,11 +149,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenu()
     }
 
+    @objc private func selectLanguage(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let language = AppLanguage(rawValue: raw)
+        else {
+            return
+        }
+        settings.language = language
+        configureMenu()
+    }
+
     @objc private func toggleLaunchAtLogin() {
         do {
             try loginItemManager.setEnabled(!loginItemManager.isEnabled)
         } catch {
-            showError("Launch at Login failed", detail: error.localizedDescription)
+            showError(localizer.text(.launchFailed), detail: error.localizedDescription)
         }
         configureMenu()
     }
@@ -159,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let seconds = Int(Date().timeIntervalSince(date))
         if seconds < 60 { return "\(seconds)s ago" }
         let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m ago" }
-        return "\(minutes / 60)h ago"
+        if minutes < 60 { return "\(minutes)m \(localizer.text(.ago))" }
+        return "\(minutes / 60)h \(localizer.text(.ago))"
     }
 }

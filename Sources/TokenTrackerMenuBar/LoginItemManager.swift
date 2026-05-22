@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import TokenTrackerCore
 
 @MainActor
 final class LoginItemManager {
@@ -7,18 +8,18 @@ final class LoginItemManager {
         SMAppService.mainApp.status == .enabled
     }
 
-    var statusLabel: String {
+    func statusLabel(localizer: Localizer) -> String {
         switch SMAppService.mainApp.status {
         case .enabled:
-            return "Enabled"
+            return localizer.text(.statusEnabled)
         case .notRegistered:
-            return "Disabled"
+            return localizer.text(.statusDisabled)
         case .notFound:
-            return "App bundle not found"
+            return localizer.text(.statusNotFound)
         case .requiresApproval:
-            return "Requires approval in System Settings"
+            return localizer.text(.statusRequiresApproval)
         @unknown default:
-            return "Unknown"
+            return localizer.text(.statusUnknown)
         }
     }
 

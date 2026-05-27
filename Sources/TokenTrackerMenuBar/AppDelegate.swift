@@ -194,6 +194,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", .white),
                 percentSegment(snapshot.codex)
             ]
+        case .claudeOnly:
+            if labelStyle == .icon {
+                return [.icon(claudeIcon), percentSegment(snapshot.claude)]
+            }
+            return [
+                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", .white),
+                percentSegment(snapshot.claude)
+            ]
         }
     }
 

@@ -23,12 +23,14 @@ public enum DisplayMode: String, CaseIterable {
     case lowestRemaining
     case both
     case codexOnly
+    case claudeOnly
 
     public var label: String {
         switch self {
         case .lowestRemaining: "Lowest remaining"
         case .both: "Claude + Codex"
         case .codexOnly: "Codex only"
+        case .claudeOnly: "Claude only"
         }
     }
 }

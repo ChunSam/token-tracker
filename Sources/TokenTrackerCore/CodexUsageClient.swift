@@ -11,9 +11,6 @@ struct CodexUsageClient {
         do {
             return try await fetchFromAPI()
         } catch {
-            if let fallback = CodexLogReader().latestUsage() {
-                return fallback
-            }
             return .unavailable(.codex, error: error.localizedDescription)
         }
     }

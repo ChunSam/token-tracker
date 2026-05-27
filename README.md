@@ -10,6 +10,7 @@ macOS 메뉴바에서 Claude와 Codex의 사용량 잔량을 확인하는 작은
   - `Lowest remaining`
   - `Claude + Codex`
   - `Codex only`
+  - `Claude only`
 - 제공자 표기 선택
   - `Cdx / Cl`
   - 공식 앱 아이콘 기반 표기
@@ -17,6 +18,7 @@ macOS 메뉴바에서 Claude와 Codex의 사용량 잔량을 확인하는 작은
 - 7일 잔량 기준으로 표시 중인 퍼센트는 파스텔 레드로 강조
 - 로그인 시 자동 실행 토글
 - 라이트/다크 모드 메뉴 색상 대응
+- Codex / Claude 연결 실패 시 잔량을 `--`로 표시
 
 ## 사용 방법
 
@@ -68,6 +70,8 @@ open "/Applications/Token Tracker.app"
 | 100% | 0% | 0% |
 
 7일 잔량이 표시되는 경우 해당 퍼센트는 파스텔 레드로 강조됩니다.
+
+사용량 API 연결에 실패한 제공자는 잔량을 `--`로 표시합니다. 오래된 로컬 로그 값이 최신 잔량처럼 보이지 않도록 Codex도 연결 실패 시 `--`로 통일합니다.
 
 ## 개발
 
@@ -124,4 +128,3 @@ hdiutil create \
 │   └── build_app.sh
 └── README.md
 ```
-

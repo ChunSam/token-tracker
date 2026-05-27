@@ -15,6 +15,8 @@ public struct DisplayFormatter {
             return "\(providerLabel(.codex, style: labelStyle)) \(formatPercent(displayPercent(snapshot.codex))) · \(providerLabel(.claude, style: labelStyle)) \(formatPercent(displayPercent(snapshot.claude)))"
         case .codexOnly:
             return "\(providerLabel(.codex, style: labelStyle)) \(formatPercent(displayPercent(snapshot.codex)))"
+        case .claudeOnly:
+            return "\(providerLabel(.claude, style: labelStyle)) \(formatPercent(displayPercent(snapshot.claude)))"
         }
     }
 

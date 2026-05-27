@@ -7,6 +7,9 @@ namespace TokenTracker.Windows;
 
 internal sealed class TrayAppContext : ApplicationContext
 {
+    private const int MaxMenuTextLength = 58;
+    private const int MaxMenuWidth = 420;
+
     private readonly NotifyIcon notifyIcon = new();
     private readonly System.Windows.Forms.Timer timer = new();
     private readonly SettingsStore settingsStore = new();
@@ -95,18 +98,18 @@ internal sealed class TrayAppContext : ApplicationContext
     private ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
+        ConfigureCompactMenu(menu);
 
         if (snapshot is null)
         {
-            AddDisabled(menu, Localizer.Text(L10nKey.NoUsageLoaded));
+            AddDisabled(menu.Items, Localizer.Text(L10nKey.NoUsageLoaded));
         }
         else
         {
             AddProvider(menu, snapshot.Claude);
-            menu.Items.Add(new ToolStripSeparator());
             AddProvider(menu, snapshot.Codex);
             menu.Items.Add(new ToolStripSeparator());
-            AddDisabled(menu, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
+            AddDisabled(menu.Items, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
         }
 
         menu.Items.Add(new ToolStripSeparator());
@@ -139,20 +142,32 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void AddProvider(ContextMenuStrip menu, ProviderUsage usage)
     {
-        AddDisabled(menu, ProviderHeaderText(usage), ProviderHeaderImage(usage));
-        AddDisabled(menu, $"  {Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
-        AddDisabled(menu, $"  {Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
-        AddDisabled(menu, $"  {Localizer.Text(L10nKey.Source)}: {usage.Source}");
+        var header = ProviderHeaderText(usage);
+        var provider = new ToolStripMenuItem(CompactMenuText(header), ProviderHeaderImage(usage))
+        {
+            ToolTipText = header
+        };
+        ConfigureCompactMenu(provider.DropDown);
+        if (provider.Image is not null)
+        {
+            provider.ImageScaling = ToolStripItemImageScaling.None;
+        }
+
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
         if (!string.IsNullOrWhiteSpace(usage.Error))
         {
-            AddDisabled(menu, $"  {Localizer.Text(L10nKey.Error)}: {usage.Error}");
+            AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Error)}: {usage.Error}");
         }
 
         if (!string.IsNullOrWhiteSpace(usage.Plan))
         {
-            AddDisabled(menu, $"  {Localizer.Text(L10nKey.Plan)}: {usage.Plan}");
+            AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Plan)}: {usage.Plan}");
         }
+
+        menu.Items.Add(provider);
     }
 
     private string ProviderHeaderText(ProviderUsage usage)
@@ -248,6 +263,10 @@ internal sealed class TrayAppContext : ApplicationContext
                 Checked = settings.ProviderLabelStyle == style,
                 Image = style == ProviderLabelStyle.Icon ? providerLogos.MenuLogo(Provider.Codex) : null
             };
+            if (item.Image is not null)
+            {
+                item.ImageScaling = ToolStripItemImageScaling.None;
+            }
             item.Click += (_, _) =>
             {
                 settings.ProviderLabelStyle = style;
@@ -289,8 +308,52 @@ internal sealed class TrayAppContext : ApplicationContext
         return root;
     }
 
-    private static void AddDisabled(ContextMenuStrip menu, string text, Image? image = null) =>
-        menu.Items.Add(new ToolStripMenuItem(text, image) { Enabled = false });
+    private static void AddDisabled(ToolStripItemCollection items, string text, Image? image = null) =>
+        items.Add(DisabledItem(text, image));
+
+    private static void ConfigureCompactMenu(ToolStrip menu)
+    {
+        menu.ImageScalingSize = new Size(16, 16);
+        menu.MaximumSize = new Size(MaxMenuWidth, 0);
+        menu.ShowItemToolTips = true;
+    }
+
+    private static ToolStripMenuItem DisabledItem(string text, Image? image = null)
+    {
+        var displayText = CompactMenuText(text);
+        var item = new ToolStripMenuItem(displayText, image)
+        {
+            Enabled = false
+        };
+
+        if (image is not null)
+        {
+            item.ImageScaling = ToolStripItemImageScaling.None;
+        }
+
+        if (!string.Equals(displayText, text, StringComparison.Ordinal))
+        {
+            item.AutoToolTip = false;
+            item.ToolTipText = text;
+        }
+
+        return item;
+    }
+
+    private static string CompactMenuText(string text)
+    {
+        var singleLine = text
+            .Replace("\r\n", " ")
+            .Replace('\n', ' ')
+            .Replace('\r', ' ');
+
+        if (singleLine.Length <= MaxMenuTextLength)
+        {
+            return singleLine;
+        }
+
+        return singleLine[..(MaxMenuTextLength - 3)].TrimEnd() + "...";
+    }
 
     private void SaveSettings()
     {

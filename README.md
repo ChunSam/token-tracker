@@ -50,6 +50,7 @@ open "/Applications/Token Tracker.app"
 - 수동 새로고침
 - 표시 방식
 - 제공자 표기
+- 제공자 활성화/비활성화
 - 언어
 - 로그인 시 실행
 - 종료
@@ -75,13 +76,43 @@ open "/Applications/Token Tracker.app"
 
 ## 개발
 
-### 스모크 테스트
+### macOS 스모크 테스트
 
 ```bash
 swift run TokenTrackerSmokeTests
 ```
 
-### 릴리즈 앱 번들 생성
+### Windows 스모크 테스트
+
+Windows 앱은 `.NET 10` 기반입니다. Windows 개발 환경에서 아래 명령으로 코어 로직 테스트를 실행합니다.
+
+```powershell
+dotnet run --project windows/TokenTracker.Windows.Tests
+```
+
+### Windows 앱 실행
+
+```powershell
+dotnet run --project windows/TokenTracker.Windows
+```
+
+### Windows 릴리즈 빌드
+
+```powershell
+dotnet publish windows/TokenTracker.Windows `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  /p:PublishSingleFile=true
+```
+
+생성 결과:
+
+```text
+windows/TokenTracker.Windows/bin/Release/net10.0-windows/win-x64/publish/TokenTracker.Windows.exe
+```
+
+### macOS 릴리즈 앱 번들 생성
 
 ```bash
 scripts/build_app.sh
@@ -93,7 +124,7 @@ scripts/build_app.sh
 .build/Token Tracker.app
 ```
 
-### 앱 실행
+### macOS 앱 실행
 
 ```bash
 open ".build/Token Tracker.app"
@@ -126,5 +157,9 @@ hdiutil create \
 │   └── TokenTrackerSmokeTests
 ├── scripts
 │   └── build_app.sh
+├── windows
+│   ├── TokenTracker.Windows
+│   ├── TokenTracker.Windows.Core
+│   └── TokenTracker.Windows.Tests
 └── README.md
 ```

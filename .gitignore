@@ -1,3 +1,7 @@
 .build/
+bin/
+obj/
+dist/
 .DS_Store
 ._*
+*.user

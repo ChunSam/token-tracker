@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Diagnostics;
 using System.Windows.Forms;
 using TokenTracker.Windows.Core;
 
@@ -14,6 +15,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private UsageSnapshot? snapshot;
     private Icon? currentIcon;
     private bool refreshing;
+    private Localizer Localizer => new(settings.Language);
 
     public TrayAppContext()
     {
@@ -94,7 +96,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
         if (snapshot is null)
         {
-            AddDisabled(menu, "No usage loaded yet");
+            AddDisabled(menu, Localizer.Text(L10nKey.NoUsageLoaded));
         }
         else
         {
@@ -102,17 +104,18 @@ internal sealed class TrayAppContext : ApplicationContext
             menu.Items.Add(new ToolStripSeparator());
             AddProvider(menu, snapshot.Codex);
             menu.Items.Add(new ToolStripSeparator());
-            AddDisabled(menu, $"Updated {Relative(snapshot.UpdatedAt)} ago");
+            AddDisabled(menu, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
         }
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Refresh Now", null, async (_, _) => await RefreshAsync());
+        menu.Items.Add(Localizer.Text(L10nKey.RefreshNow), null, async (_, _) => await RefreshAsync());
         menu.Items.Add(DisplayModeMenu());
         menu.Items.Add(ProviderLabelStyleMenu());
         menu.Items.Add(ProvidersMenu());
         menu.Items.Add(RefreshIntervalMenu());
+        menu.Items.Add(LanguageMenu());
 
-        var launchItem = new ToolStripMenuItem("Launch at Login")
+        var launchItem = new ToolStripMenuItem(Localizer.Text(L10nKey.LaunchAtLogin))
         {
             Checked = StartupManager.IsEnabled(),
             CheckOnClick = true
@@ -124,9 +127,10 @@ internal sealed class TrayAppContext : ApplicationContext
             SaveSettings();
         };
         menu.Items.Add(launchItem);
+        menu.Items.Add(Localizer.Text(L10nKey.AlwaysShowIconSettings), null, (_, _) => OpenTaskbarIconSettings());
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit", null, (_, _) => ExitThread());
+        menu.Items.Add(Localizer.Text(L10nKey.Quit), null, (_, _) => ExitThread());
 
         return menu;
     }
@@ -134,24 +138,24 @@ internal sealed class TrayAppContext : ApplicationContext
     private void AddProvider(ContextMenuStrip menu, ProviderUsage usage)
     {
         AddDisabled(menu, DisplayFormatter.DetailLine(usage));
-        AddDisabled(menu, $"  5h reset: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
-        AddDisabled(menu, $"  7d reset: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
-        AddDisabled(menu, $"  Source: {usage.Source}");
+        AddDisabled(menu, $"  {Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
+        AddDisabled(menu, $"  {Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
+        AddDisabled(menu, $"  {Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
         if (!string.IsNullOrWhiteSpace(usage.Error))
         {
-            AddDisabled(menu, $"  Error: {usage.Error}");
+            AddDisabled(menu, $"  {Localizer.Text(L10nKey.Error)}: {usage.Error}");
         }
 
         if (!string.IsNullOrWhiteSpace(usage.Plan))
         {
-            AddDisabled(menu, $"  Plan: {usage.Plan}");
+            AddDisabled(menu, $"  {Localizer.Text(L10nKey.Plan)}: {usage.Plan}");
         }
     }
 
     private ToolStripMenuItem DisplayModeMenu()
     {
-        var root = new ToolStripMenuItem("Display Mode");
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.DisplayMode));
         foreach (var mode in Enum.GetValues<DisplayMode>())
         {
             var item = new ToolStripMenuItem(DisplayModeLabel(mode))
@@ -173,7 +177,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private ToolStripMenuItem ProvidersMenu()
     {
-        var root = new ToolStripMenuItem("Providers");
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.Providers));
         root.DropDownItems.Add(ProviderToggleItem("Claude", settings.ClaudeEnabled, enabled => settings.ClaudeEnabled = enabled));
         root.DropDownItems.Add(ProviderToggleItem("Codex", settings.CodexEnabled, enabled => settings.CodexEnabled = enabled));
         return root;
@@ -198,7 +202,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private ToolStripMenuItem RefreshIntervalMenu()
     {
-        var root = new ToolStripMenuItem("Refresh Interval");
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.RefreshInterval));
         foreach (var option in new[] { 30, 60, 300 })
         {
             var item = new ToolStripMenuItem(option < 60 ? $"{option}s" : $"{option / 60}m")
@@ -219,10 +223,10 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private ToolStripMenuItem ProviderLabelStyleMenu()
     {
-        var root = new ToolStripMenuItem("Provider Labels");
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.ProviderLabels));
         foreach (var style in Enum.GetValues<ProviderLabelStyle>())
         {
-            var item = new ToolStripMenuItem(style == ProviderLabelStyle.Abbreviation ? "Cdx / Cl" : "Names")
+            var item = new ToolStripMenuItem(style == ProviderLabelStyle.Abbreviation ? "Cdx / Cl" : Localizer.Text(L10nKey.Names))
             {
                 Checked = settings.ProviderLabelStyle == style
             };
@@ -231,6 +235,27 @@ internal sealed class TrayAppContext : ApplicationContext
                 settings.ProviderLabelStyle = style;
                 SaveSettings();
                 notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
+                notifyIcon.ContextMenuStrip = BuildMenu();
+            };
+            root.DropDownItems.Add(item);
+        }
+
+        return root;
+    }
+
+    private ToolStripMenuItem LanguageMenu()
+    {
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.Language));
+        foreach (var language in Enum.GetValues<AppLanguage>())
+        {
+            var item = new ToolStripMenuItem(Localizer.LanguageLabel(language))
+            {
+                Checked = settings.Language == language
+            };
+            item.Click += (_, _) =>
+            {
+                settings.Language = language;
+                SaveSettings();
                 notifyIcon.ContextMenuStrip = BuildMenu();
             };
             root.DropDownItems.Add(item);
@@ -248,12 +273,37 @@ internal sealed class TrayAppContext : ApplicationContext
         settingsStore.Save(settings);
     }
 
-    private static string DisplayModeLabel(DisplayMode mode) => mode switch
+    private void OpenTaskbarIconSettings()
     {
-        DisplayMode.LowestRemaining => "Lowest remaining",
-        DisplayMode.Both => "Claude + Codex",
-        DisplayMode.CodexOnly => "Codex only",
-        DisplayMode.ClaudeOnly => "Claude only",
+        try
+        {
+            Process.Start(new ProcessStartInfo("ms-settings:taskbar")
+            {
+                UseShellExecute = true
+            });
+
+            notifyIcon.ShowBalloonTip(
+                5000,
+                "Token Tracker",
+                Localizer.Text(L10nKey.TaskbarSettingsTip),
+                ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"{Localizer.Text(L10nKey.TaskbarSettingsFallback)}\n\n{ex.Message}",
+                "Token Tracker",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+    }
+
+    private string DisplayModeLabel(DisplayMode mode) => mode switch
+    {
+        DisplayMode.LowestRemaining => Localizer.Text(L10nKey.LowestRemaining),
+        DisplayMode.Both => Localizer.Text(L10nKey.Both),
+        DisplayMode.CodexOnly => Localizer.Text(L10nKey.CodexOnly),
+        DisplayMode.ClaudeOnly => Localizer.Text(L10nKey.ClaudeOnly),
         _ => mode.ToString()
     };
 

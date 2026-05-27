@@ -52,6 +52,7 @@ open "/Applications/Token Tracker.app"
 - 제공자 표기
 - 제공자 활성화/비활성화
 - 언어
+- Windows 작업표시줄 아이콘 상시 표시 설정 열기
 - 로그인 시 실행
 - 종료
 
@@ -95,6 +96,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests
 ```powershell
 dotnet run --project windows/TokenTracker.Windows
 ```
+
+Windows에서는 앱이 알림 영역 아이콘을 강제로 상시 표시하도록 설정할 수 없습니다. 우클릭 메뉴의 `Always Show Icon Settings...`를 눌러 Windows 작업표시줄 설정을 열고, 알림 영역/시스템 트레이 아이콘 목록에서 `Token Tracker`를 켜야 합니다.
 
 ### Windows 릴리즈 빌드
 

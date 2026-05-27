@@ -115,6 +115,18 @@ ExpectEqual(codexAuth.AccountId, "account-id", "Codex account id read");
 ExpectEqual(credentials.ReadClaudeAccessToken(home), "claude-token", "Claude access token read");
 Directory.Delete(home, recursive: true);
 
+var korean = new Localizer(AppLanguage.Korean);
+ExpectEqual(korean.Text(L10nKey.RefreshNow), "지금 새로고침", "Korean refresh label");
+ExpectEqual(korean.Text(L10nKey.ClaudeOnly), "Claude만", "Korean Claude-only label");
+
+var settingsPath = Path.Combine(Path.GetTempPath(), "token-tracker-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+var settingsStore = new SettingsStore(settingsPath);
+settingsStore.Save(new AppSettings { Language = AppLanguage.Korean, DisplayMode = DisplayMode.ClaudeOnly });
+var loadedSettings = settingsStore.Load();
+ExpectEqual(loadedSettings.Language, AppLanguage.Korean, "Language setting persists");
+ExpectEqual(loadedSettings.DisplayMode, DisplayMode.ClaudeOnly, "Display mode setting persists");
+Directory.Delete(Path.GetDirectoryName(settingsPath)!, recursive: true);
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static ProviderUsage Usage(

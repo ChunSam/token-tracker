@@ -11,6 +11,7 @@ public sealed class AppSettings
     public bool ClaudeEnabled { get; set; } = true;
     public bool CodexEnabled { get; set; } = true;
     public bool LaunchAtLogin { get; set; }
+    public AppLanguage Language { get; set; } = AppLanguage.System;
 }
 
 public sealed class SettingsStore

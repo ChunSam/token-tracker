@@ -26,6 +26,13 @@ public enum ProviderLabelStyle
     Icon
 }
 
+public enum AppLanguage
+{
+    System,
+    English,
+    Korean
+}
+
 public sealed record ProviderUsage(
     Provider Provider,
     int? RemainingPercent5h,

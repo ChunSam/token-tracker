@@ -398,7 +398,7 @@ private final class InfoMenuItemView: NSView {
 
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .menuFont(ofSize: 0)
-        label.textColor = .white
+        label.textColor = .labelColor
         label.backgroundColor = .clear
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1

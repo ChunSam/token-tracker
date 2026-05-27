@@ -6,9 +6,9 @@ BUNDLE_DIR=".build/${APP_NAME}.app"
 EXECUTABLE=".build/release/TokenTrackerMenuBar"
 MACOS_DIR="${BUNDLE_DIR}/Contents/MacOS"
 RESOURCES_DIR="${BUNDLE_DIR}/Contents/Resources"
-BUILD_RELEASE_DIR="$(cd "$(dirname "${EXECUTABLE}")" && pwd -P)"
 
 swift build -c release
+BUILD_RELEASE_DIR="$(cd "$(dirname "${EXECUTABLE}")" && pwd -P)"
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${EXECUTABLE}" "${MACOS_DIR}/TokenTrackerMenuBar"

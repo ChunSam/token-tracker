@@ -76,7 +76,7 @@ internal sealed class ProviderLogoStore : IDisposable
         var bitmap = new Bitmap(18, 18);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(Color.Transparent);
-        using var font = new Font(SystemFonts.MenuFont.FontFamily, 9, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var font = new Font(FontFamily.GenericSansSerif, 9, FontStyle.Bold, GraphicsUnit.Pixel);
         using var brush = new SolidBrush(SystemColors.MenuText);
         var label = provider == Provider.Codex ? "C" : "Cl";
         graphics.DrawString(label, font, brush, 1, 3);

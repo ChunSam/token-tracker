@@ -6,11 +6,13 @@ BUNDLE_DIR=".build/${APP_NAME}.app"
 EXECUTABLE=".build/release/TokenTrackerMenuBar"
 MACOS_DIR="${BUNDLE_DIR}/Contents/MacOS"
 RESOURCES_DIR="${BUNDLE_DIR}/Contents/Resources"
+BUILD_RELEASE_DIR="$(cd "$(dirname "${EXECUTABLE}")" && pwd -P)"
 
 swift build -c release
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${EXECUTABLE}" "${MACOS_DIR}/TokenTrackerMenuBar"
+find "${BUILD_RELEASE_DIR}" -maxdepth 1 -name "TokenTrackerMenuBar_*.bundle" -exec cp -R {} "${RESOURCES_DIR}/" \;
 cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

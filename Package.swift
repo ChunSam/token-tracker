@@ -15,7 +15,8 @@ let package = Package(
         .executableTarget(
             name: "TokenTrackerMenuBar",
             dependencies: ["TokenTrackerCore"],
-            path: "Sources/TokenTrackerMenuBar"
+            path: "Sources/TokenTrackerMenuBar",
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "TokenTrackerSmokeTests",

@@ -40,6 +40,7 @@ public struct Localizer {
         .updated: "Updated",
         .refreshNow: "Refresh Now",
         .displayMode: "Display Mode",
+        .providerLabelStyle: "Provider Labels",
         .language: "Language",
         .launchAtLogin: "Launch at Login",
         .quit: "Quit",
@@ -63,6 +64,7 @@ public struct Localizer {
         .updated: "업데이트",
         .refreshNow: "지금 새로고침",
         .displayMode: "표시 방식",
+        .providerLabelStyle: "제공자 표기",
         .language: "언어",
         .launchAtLogin: "로그인 시 실행",
         .quit: "종료",
@@ -87,6 +89,7 @@ public enum L10nKey: String {
     case updated
     case refreshNow
     case displayMode
+    case providerLabelStyle
     case language
     case launchAtLogin
     case quit

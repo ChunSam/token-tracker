@@ -3,6 +3,7 @@ import Foundation
 public final class Settings {
     private enum Key {
         static let displayMode = "displayMode"
+        static let providerLabelStyle = "providerLabelStyle"
         static let refreshInterval = "refreshInterval"
         static let claudeEnabled = "claudeEnabled"
         static let codexEnabled = "codexEnabled"
@@ -22,6 +23,14 @@ public final class Settings {
             return DisplayMode(rawValue: raw) ?? .lowestRemaining
         }
         set { defaults.set(newValue.rawValue, forKey: Key.displayMode) }
+    }
+
+    public var providerLabelStyle: ProviderLabelStyle {
+        get {
+            let raw = defaults.string(forKey: Key.providerLabelStyle) ?? ProviderLabelStyle.abbreviation.rawValue
+            return ProviderLabelStyle(rawValue: raw) ?? .abbreviation
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.providerLabelStyle) }
     }
 
     public var refreshInterval: TimeInterval {
@@ -50,6 +59,7 @@ public final class Settings {
     private func registerDefaults() {
         defaults.register(defaults: [
             Key.displayMode: DisplayMode.lowestRemaining.rawValue,
+            Key.providerLabelStyle: ProviderLabelStyle.abbreviation.rawValue,
             Key.refreshInterval: 60.0,
             Key.claudeEnabled: true,
             Key.codexEnabled: true,

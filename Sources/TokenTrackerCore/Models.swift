@@ -33,6 +33,18 @@ public enum DisplayMode: String, CaseIterable {
     }
 }
 
+public enum ProviderLabelStyle: String, CaseIterable {
+    case abbreviation
+    case icon
+
+    public var label: String {
+        switch self {
+        case .abbreviation: "Abbreviations"
+        case .icon: "Icons"
+        }
+    }
+}
+
 public struct ProviderUsage: Codable, Equatable {
     public var provider: Provider
     public var remainingPercent5h: Int?

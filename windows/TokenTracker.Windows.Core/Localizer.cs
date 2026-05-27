@@ -26,6 +26,7 @@ public enum L10nKey
     CodexOnly,
     ClaudeOnly,
     Names,
+    OfficialLogos,
     TaskbarSettingsTip,
     TaskbarSettingsFallback
 }
@@ -81,6 +82,7 @@ public sealed class Localizer
         [L10nKey.CodexOnly] = "Codex only",
         [L10nKey.ClaudeOnly] = "Claude only",
         [L10nKey.Names] = "Names",
+        [L10nKey.OfficialLogos] = "Official logos",
         [L10nKey.TaskbarSettingsTip] = "In Taskbar settings, enable Token Tracker under notification area / system tray icons.",
         [L10nKey.TaskbarSettingsFallback] = "Open Windows Settings > Personalization > Taskbar and enable Token Tracker under notification area icons."
     };
@@ -109,6 +111,7 @@ public sealed class Localizer
         [L10nKey.CodexOnly] = "Codex만",
         [L10nKey.ClaudeOnly] = "Claude만",
         [L10nKey.Names] = "이름",
+        [L10nKey.OfficialLogos] = "공식 로고",
         [L10nKey.TaskbarSettingsTip] = "작업표시줄 설정에서 알림 영역/시스템 트레이 아이콘 목록의 Token Tracker를 켜세요.",
         [L10nKey.TaskbarSettingsFallback] = "Windows 설정 > 개인 설정 > 작업 표시줄에서 알림 영역 아이콘의 Token Tracker를 켜세요."
     };

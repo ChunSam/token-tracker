@@ -11,6 +11,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer timer = new();
     private readonly SettingsStore settingsStore = new();
     private readonly UsageClient usageClient = new();
+    private readonly ProviderLogoStore providerLogos = new();
     private AppSettings settings;
     private UsageSnapshot? snapshot;
     private Icon? currentIcon;
@@ -41,6 +42,7 @@ internal sealed class TrayAppContext : ApplicationContext
             timer.Dispose();
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
+            providerLogos.Dispose();
             currentIcon?.Dispose();
         }
 
@@ -137,7 +139,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void AddProvider(ContextMenuStrip menu, ProviderUsage usage)
     {
-        AddDisabled(menu, DisplayFormatter.DetailLine(usage));
+        AddDisabled(menu, ProviderHeaderText(usage), ProviderHeaderImage(usage));
         AddDisabled(menu, $"  {Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
         AddDisabled(menu, $"  {Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
         AddDisabled(menu, $"  {Localizer.Text(L10nKey.Source)}: {usage.Source}");
@@ -152,6 +154,21 @@ internal sealed class TrayAppContext : ApplicationContext
             AddDisabled(menu, $"  {Localizer.Text(L10nKey.Plan)}: {usage.Plan}");
         }
     }
+
+    private string ProviderHeaderText(ProviderUsage usage)
+    {
+        if (settings.ProviderLabelStyle != ProviderLabelStyle.Icon)
+        {
+            return DisplayFormatter.DetailLine(usage);
+        }
+
+        return $"5h {DisplayFormatter.FormatPercent(usage.RemainingPercent5h)}, 7d {DisplayFormatter.FormatPercent(usage.RemainingPercent7d)}";
+    }
+
+    private Image? ProviderHeaderImage(ProviderUsage usage) =>
+        settings.ProviderLabelStyle == ProviderLabelStyle.Icon
+            ? providerLogos.MenuLogo(usage.Provider)
+            : null;
 
     private ToolStripMenuItem DisplayModeMenu()
     {
@@ -226,9 +243,10 @@ internal sealed class TrayAppContext : ApplicationContext
         var root = new ToolStripMenuItem(Localizer.Text(L10nKey.ProviderLabels));
         foreach (var style in Enum.GetValues<ProviderLabelStyle>())
         {
-            var item = new ToolStripMenuItem(style == ProviderLabelStyle.Abbreviation ? "Cdx / Cl" : Localizer.Text(L10nKey.Names))
+            var item = new ToolStripMenuItem(ProviderLabelStyleLabel(style))
             {
-                Checked = settings.ProviderLabelStyle == style
+                Checked = settings.ProviderLabelStyle == style,
+                Image = style == ProviderLabelStyle.Icon ? providerLogos.MenuLogo(Provider.Codex) : null
             };
             item.Click += (_, _) =>
             {
@@ -242,6 +260,13 @@ internal sealed class TrayAppContext : ApplicationContext
 
         return root;
     }
+
+    private string ProviderLabelStyleLabel(ProviderLabelStyle style) => style switch
+    {
+        ProviderLabelStyle.Abbreviation => "Cdx / Cl",
+        ProviderLabelStyle.Icon => Localizer.Text(L10nKey.OfficialLogos),
+        _ => style.ToString()
+    };
 
     private ToolStripMenuItem LanguageMenu()
     {
@@ -264,8 +289,8 @@ internal sealed class TrayAppContext : ApplicationContext
         return root;
     }
 
-    private static void AddDisabled(ContextMenuStrip menu, string text) =>
-        menu.Items.Add(new ToolStripMenuItem(text) { Enabled = false });
+    private static void AddDisabled(ContextMenuStrip menu, string text, Image? image = null) =>
+        menu.Items.Add(new ToolStripMenuItem(text, image) { Enabled = false });
 
     private void SaveSettings()
     {

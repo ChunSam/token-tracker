@@ -13,4 +13,9 @@
   <ItemGroup>
     <ProjectReference Include="..\TokenTracker.Windows.Core\TokenTracker.Windows.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\claudeTemplate@2x.png" LogicalName="TokenTracker.Windows.Resources.claudeTemplate.png" />
+    <EmbeddedResource Include="Resources\codexTemplate@2x.png" LogicalName="TokenTracker.Windows.Resources.codexTemplate.png" />
+  </ItemGroup>
 </Project>

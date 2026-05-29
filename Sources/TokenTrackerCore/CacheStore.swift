@@ -24,9 +24,17 @@ final class CacheStore {
 
     func save(_ snapshot: UsageSnapshot) {
         do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let directory = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
             let data = try encoder.encode(snapshot)
             try data.write(to: url, options: .atomic)
+            // Atomic writes replace the file via a temp file, so re-apply owner-only
+            // permissions after each write rather than relying on the umask default.
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
         }
     }

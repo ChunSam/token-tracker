@@ -5,7 +5,6 @@ APP_NAME="Token Tracker"
 BUNDLE_DIR=".build/${APP_NAME}.app"
 EXECUTABLE=".build/release/TokenTrackerMenuBar"
 APP_ICON_SOURCE="Sources/TokenTrackerMenuBar/Resources/AppIcon.png"
-APP_ICONSET_DIR=".build/AppIcon.iconset"
 APP_ICON_FILE="AppIcon.icns"
 MACOS_DIR="${BUNDLE_DIR}/Contents/MacOS"
 RESOURCES_DIR="${BUNDLE_DIR}/Contents/Resources"
@@ -18,7 +17,11 @@ cp "${EXECUTABLE}" "${MACOS_DIR}/TokenTrackerMenuBar"
 find "${BUILD_RELEASE_DIR}" -maxdepth 1 -name "TokenTrackerMenuBar_*.bundle" -exec cp -R {} "${RESOURCES_DIR}/" \;
 
 if [[ -f "${APP_ICON_SOURCE}" ]]; then
-  rm -rf "${APP_ICONSET_DIR}"
+  # iconutil requires a directory whose name ends in .iconset, so create it
+  # inside a fresh mktemp base to avoid an rm -rf/mkdir symlink race.
+  ICONSET_TMP_BASE="$(mktemp -d)"
+  trap 'rm -rf "${ICONSET_TMP_BASE}"' EXIT
+  APP_ICONSET_DIR="${ICONSET_TMP_BASE}/AppIcon.iconset"
   mkdir -p "${APP_ICONSET_DIR}"
   sips -z 16 16 "${APP_ICON_SOURCE}" --out "${APP_ICONSET_DIR}/icon_16x16.png" >/dev/null
   sips -z 32 32 "${APP_ICON_SOURCE}" --out "${APP_ICONSET_DIR}/icon_16x16@2x.png" >/dev/null

@@ -17,6 +17,7 @@ macOS 메뉴바에서 Claude와 Codex의 사용량 잔량을 확인하는 작은
 - 7일 잔량이 10% 이하일 때 7일 잔량을 우선 표시
 - 7일 잔량 기준으로 표시 중인 퍼센트는 파스텔 레드로 강조
 - 로그인 시 자동 실행 토글
+- 전용 앱 아이콘 포함
 - 라이트/다크 모드 메뉴 색상 대응
 - Codex / Claude 연결 실패 시 잔량을 `--`로 표시
 
@@ -120,6 +121,8 @@ windows/TokenTracker.Windows/bin/Release/net10.0-windows/win-x64/publish/TokenTr
 ```bash
 scripts/build_app.sh
 ```
+
+빌드 스크립트는 `Sources/TokenTrackerMenuBar/Resources/AppIcon.png`에서 macOS용 `AppIcon.icns`를 생성하고, 앱 번들의 `Info.plist`에 연결합니다.
 
 생성 결과:
 

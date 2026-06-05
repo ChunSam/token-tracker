@@ -50,6 +50,7 @@ expectEqual(DisplayFormatter.displaysSevenDayPercent(exhaustedSevenDaySnapshot.c
 let sevenDayThresholdUsage = ProviderUsage(provider: .claude, remainingPercent5h: 100, remainingPercent7d: 10, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
 let missingSevenDayUsage = ProviderUsage(provider: .claude, remainingPercent5h: 73, remainingPercent7d: nil, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
 let missingFiveHourUsage = ProviderUsage(provider: .claude, remainingPercent5h: nil, remainingPercent7d: 42, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
+let staleClaudeUsage = ProviderUsage(provider: .claude, remainingPercent5h: 64, remainingPercent7d: 82, resetAt5h: nil, resetAt7d: nil, source: .staleCache, error: "HTTP 429 from Claude API", plan: nil, model: nil, updatedAt: now)
 
 expectEqual(DisplayFormatter.displayPercent(sevenDayThresholdUsage), 10, "7d value is shown at 10 percent threshold")
 expectEqual(DisplayFormatter.displaysSevenDayPercent(sevenDayThresholdUsage), true, "7d threshold value is highlighted")
@@ -57,5 +58,12 @@ expectEqual(DisplayFormatter.displayPercent(missingSevenDayUsage), 73, "5h value
 expectEqual(DisplayFormatter.displaysSevenDayPercent(missingSevenDayUsage), false, "missing 7d is not highlighted")
 expectEqual(DisplayFormatter.displayPercent(missingFiveHourUsage), 42, "7d value is shown when 5h is missing")
 expectEqual(DisplayFormatter.displaysSevenDayPercent(missingFiveHourUsage), true, "7d fallback is highlighted when 5h is missing")
+expectEqual(DisplayFormatter.displayPercent(staleClaudeUsage), 64, "stale cache still displays cached percent")
+expectEqual(staleClaudeUsage.source, .staleCache, "stale cache source is preserved")
+expectEqual(staleClaudeUsage.error, "HTTP 429 from Claude API", "stale cache keeps the fetch failure reason")
+
+expectEqual(UsageError.httpStatus(code: 401, service: "Claude API").localizedDescription, "HTTP 401 from Claude API", "HTTP status error names Claude API")
+expectEqual(UsageError.timedOut(service: "Claude API").localizedDescription, "Timed out contacting Claude API", "timeout error names Claude API")
+expectEqual(UsageError.network(message: "offline", service: "Claude API").localizedDescription, "Network error from Claude API: offline", "network error names Claude API")
 
 print("TokenTrackerSmokeTests passed")

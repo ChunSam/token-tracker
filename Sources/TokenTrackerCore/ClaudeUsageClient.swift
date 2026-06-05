@@ -2,6 +2,7 @@ import Foundation
 
 struct ClaudeUsageClient {
     private let http: HTTPClient
+    private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
     init(http: HTTPClient = HTTPClient()) {
         self.http = http
@@ -16,16 +17,32 @@ struct ClaudeUsageClient {
     }
 
     private func fetchFromAPI() async throws -> ProviderUsage {
-        let token = try readToken()
+        let candidates = try readTokenCandidates()
+        for (index, candidate) in candidates.enumerated() {
+            do {
+                return try await fetchFromAPI(token: candidate.token)
+            } catch let error as UsageError where error.isAuthenticationFailure
+                && candidate.source == .keychain
+                && candidates.indices.contains(index + 1)
+            {
+                continue
+            }
+        }
+        throw UsageError.missingCredentials
+    }
+
+    private func fetchFromAPI(token: String) async throws -> ProviderUsage {
         let raw = try await http.getJSON(
-            url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
+            url: usageURL,
             headers: [
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "Authorization": "Bearer \(token)",
                 "anthropic-beta": "oauth-2025-04-20",
                 "User-Agent": "TokenTrackerMenuBar/1.0"
-            ]
+            ],
+            timeout: 10,
+            serviceName: "Claude API"
         )
         guard let object = raw as? [String: Any] else {
             throw UsageError.invalidResponse
@@ -47,14 +64,22 @@ struct ClaudeUsageClient {
         )
     }
 
-    private func readToken() throws -> String {
-        if let token = readTokenFromKeychain() {
-            return token
+    private func readTokenCandidates() throws -> [TokenCandidate] {
+        let rawCandidates = [
+            readTokenFromKeychain().flatMap { TokenCandidate(source: .keychain, token: $0) },
+            readTokenFromFile().flatMap { TokenCandidate(source: .credentialsFile, token: $0) }
+        ].compactMap { $0 }
+
+        var candidates: [TokenCandidate] = []
+        var seenTokens = Set<String>()
+        for candidate in rawCandidates where seenTokens.insert(candidate.token).inserted {
+            candidates.append(candidate)
         }
-        if let token = readTokenFromFile() {
-            return token
+
+        if candidates.isEmpty {
+            throw UsageError.missingCredentials
         }
-        throw UsageError.missingCredentials
+        return candidates
     }
 
     private func readTokenFromKeychain() -> String? {
@@ -95,4 +120,22 @@ struct ClaudeUsageClient {
         }
         return token
     }
+}
+
+private struct TokenCandidate {
+    let source: TokenSource
+    let token: String
+
+    init?(source: TokenSource, token: String) {
+        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        self.source = source
+        self.token = token
+    }
+}
+
+private enum TokenSource {
+    case keychain
+    case credentialsFile
 }

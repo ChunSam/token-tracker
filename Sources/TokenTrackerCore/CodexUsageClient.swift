@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 struct CodexUsageClient {
     private let http: HTTPClient
 

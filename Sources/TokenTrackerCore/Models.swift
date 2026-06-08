@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Provider: String, Codable, CaseIterable {
+public enum Provider: String, Codable, CaseIterable, Sendable {
     case claude
     case codex
 
@@ -12,14 +12,14 @@ public enum Provider: String, Codable, CaseIterable {
     }
 }
 
-public enum UsageSource: String, Codable {
+public enum UsageSource: String, Codable, Sendable {
     case api
     case staleCache
     case localLog
     case unavailable
 }
 
-public enum DisplayMode: String, CaseIterable {
+public enum DisplayMode: String, CaseIterable, Sendable {
     case lowestRemaining
     case both
     case codexOnly
@@ -35,7 +35,7 @@ public enum DisplayMode: String, CaseIterable {
     }
 }
 
-public enum ProviderLabelStyle: String, CaseIterable {
+public enum ProviderLabelStyle: String, CaseIterable, Sendable {
     case abbreviation
     case icon
 
@@ -47,7 +47,7 @@ public enum ProviderLabelStyle: String, CaseIterable {
     }
 }
 
-public struct ProviderUsage: Codable, Equatable {
+public struct ProviderUsage: Codable, Equatable, Sendable {
     public var provider: Provider
     public var remainingPercent5h: Int?
     public var remainingPercent7d: Int?
@@ -77,7 +77,7 @@ public struct ProviderUsage: Codable, Equatable {
     }
 }
 
-public struct UsageSnapshot: Codable, Equatable {
+public struct UsageSnapshot: Codable, Equatable, Sendable {
     public var claude: ProviderUsage
     public var codex: ProviderUsage
     public var updatedAt: Date

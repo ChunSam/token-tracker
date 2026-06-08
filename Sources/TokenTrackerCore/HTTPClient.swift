@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
+@MainActor
 struct HTTPClient {
     func getJSON(url: URL, headers: [String: String], timeout: TimeInterval = 5, serviceName: String? = nil) async throws -> Any {
         var request = URLRequest(url: url, timeoutInterval: timeout)

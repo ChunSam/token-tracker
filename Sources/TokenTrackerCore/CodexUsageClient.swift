@@ -1,7 +1,6 @@
 import Foundation
 
-@MainActor
-struct CodexUsageClient {
+struct CodexUsageClient: Sendable {
     private let http: HTTPClient
 
     init(http: HTTPClient = HTTPClient()) {

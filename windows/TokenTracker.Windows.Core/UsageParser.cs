@@ -27,7 +27,7 @@ public static class UsageParser
             updatedAt ?? DateTimeOffset.Now);
     }
 
-    public static ProviderUsage ParseClaudeUsage(string json, DateTimeOffset? updatedAt = null)
+    public static ProviderUsage ParseClaudeUsage(string json, DateTimeOffset? updatedAt = null, string? fallbackPlan = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -43,7 +43,7 @@ public static class UsageParser
             TryGetIsoDate(sevenDay, "resets_at"),
             UsageSource.Api,
             null,
-            null,
+            ReadPlan(root) ?? fallbackPlan,
             null,
             updatedAt ?? DateTimeOffset.Now);
     }
@@ -79,6 +79,20 @@ public static class UsageParser
         }
 
         return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    }
+
+    private static string? ReadPlan(JsonElement element)
+    {
+        foreach (var key in new[] { "plan_type", "planType", "subscription_type", "subscriptionType", "tier", "rate_limit_tier", "rateLimitTier" })
+        {
+            var value = TryGetString(element, key);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static DateTimeOffset? TryGetUnixTime(JsonElement element, string name)

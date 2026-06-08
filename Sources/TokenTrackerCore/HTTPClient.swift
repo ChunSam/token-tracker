@@ -3,8 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-@MainActor
-struct HTTPClient {
+struct HTTPClient: Sendable {
     func getJSON(url: URL, headers: [String: String], timeout: TimeInterval = 5, serviceName: String? = nil) async throws -> Any {
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
@@ -53,7 +52,7 @@ struct HTTPClient {
     }
 }
 
-public enum UsageError: Error, LocalizedError, Equatable {
+public enum UsageError: Error, LocalizedError, Equatable, Sendable {
     case missingCredentials
     case invalidResponse
     case httpStatus(code: Int, service: String?, retryAfter: TimeInterval?)

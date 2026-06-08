@@ -3,6 +3,7 @@ using System.Text.Json;
 namespace TokenTracker.Windows.Core;
 
 public sealed record CodexAuth(string AccessToken, string AccountId);
+public sealed record ClaudeCredential(string AccessToken, string? Plan);
 
 public sealed class CredentialReader
 {
@@ -23,17 +24,37 @@ public sealed class CredentialReader
 
     public string ReadClaudeAccessToken(string? homeDirectory = null)
     {
+        return ReadClaudeCredential(homeDirectory).AccessToken;
+    }
+
+    public ClaudeCredential ReadClaudeCredential(string? homeDirectory = null)
+    {
         using var document = JsonDocument.Parse(File.ReadAllText(AppPaths.ClaudeCredentialsPath(homeDirectory)));
-        var token = document.RootElement
-            .GetProperty("claudeAiOauth")
-            .GetProperty("accessToken")
-            .GetString();
+        var claudeOauth = document.RootElement.GetProperty("claudeAiOauth");
+        var token = claudeOauth.GetProperty("accessToken").GetString();
 
         if (string.IsNullOrWhiteSpace(token))
         {
             throw new InvalidOperationException("Missing Claude credentials");
         }
 
-        return token;
+        return new ClaudeCredential(token, ReadPlan(claudeOauth));
+    }
+
+    private static string? ReadPlan(JsonElement element)
+    {
+        foreach (var key in new[] { "plan_type", "planType", "subscription_type", "subscriptionType", "tier", "rate_limit_tier", "rateLimitTier" })
+        {
+            if (element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+            {
+                var text = value.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text;
+                }
+            }
+        }
+
+        return null;
     }
 }

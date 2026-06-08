@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var claudeIcon = loadIcon(named: "claudeTemplate@2x")
     private lazy var codexIcon = loadIcon(named: "codexTemplate@2x")
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
+    private var appearanceObserver: NSObjectProtocol?
     private var localizer: Localizer {
         Localizer(language: settings.language)
     }
@@ -30,6 +31,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenu()
         refreshNow()
         scheduleTimer()
+        observeAppearanceChanges()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let appearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(appearanceObserver)
+        }
     }
 
     private func scheduleTimer() {
@@ -56,7 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatusTitle() {
         if let snapshot {
-            setStatusSegments(statusSegments(snapshot: snapshot, mode: settings.displayMode, labelStyle: settings.providerLabelStyle))
+            let textColor = statusTextColor
+            setStatusSegments(
+                statusSegments(
+                    snapshot: snapshot,
+                    mode: settings.displayMode,
+                    labelStyle: settings.providerLabelStyle,
+                    baseColor: textColor,
+                    warningColor: statusWarningColor
+                ),
+                iconTint: textColor
+            )
         } else {
             setStatusTitle(DisplayFormatter.statusTitle(snapshot: snapshot, mode: settings.displayMode))
         }
@@ -64,13 +82,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setStatusTitle(_ title: String) {
         guard let button = statusItem.button else { return }
-        let image = statusTitleImage(title)
+        let image = statusTitleImage(title, color: statusTextColor)
         setStatusImage(image, on: button)
     }
 
-    private func setStatusSegments(_ segments: [StatusSegment]) {
+    private func setStatusSegments(_ segments: [StatusSegment], iconTint: NSColor) {
         guard let button = statusItem.button else { return }
-        let image = statusTitleImage(segments: segments)
+        let image = statusTitleImage(segments: segments, iconTint: iconTint)
         setStatusImage(image, on: button)
     }
 
@@ -83,11 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.imagePosition = .imageOnly
     }
 
-    private func statusTitleImage(_ title: String) -> NSImage {
+    private func statusTitleImage(_ title: String, color: NSColor) -> NSImage {
         let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.white
+            .foregroundColor: color
         ]
         let textSize = ceilSize((title as NSString).size(withAttributes: attributes))
         let image = NSImage(size: NSSize(width: textSize.width, height: 18))
@@ -106,11 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return image
     }
 
-    private func statusTitleImage(segments: [StatusSegment]) -> NSImage {
+    private func statusTitleImage(segments: [StatusSegment], iconTint: NSColor) -> NSImage {
         let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.white
+            .foregroundColor: iconTint
         ]
         let iconSize = NSSize(width: 14, height: 14)
         let spacing: CGFloat = 5
@@ -139,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch segment {
             case .icon(let icon):
                 let rect = NSRect(x: x, y: floor((height - iconSize.height) / 2), width: iconSize.width, height: iconSize.height)
-                drawIcon(icon, in: rect)
+                drawIcon(icon, in: rect, tint: iconTint)
                 x += iconSize.width + spacing
             case .text(let text, let color):
                 var textAttributes = attributes
@@ -164,53 +182,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSSize(width: ceil(size.width), height: ceil(size.height))
     }
 
-    private func statusSegments(snapshot: UsageSnapshot, mode: DisplayMode, labelStyle: ProviderLabelStyle) -> [StatusSegment] {
+    private func statusSegments(
+        snapshot: UsageSnapshot,
+        mode: DisplayMode,
+        labelStyle: ProviderLabelStyle,
+        baseColor: NSColor,
+        warningColor: NSColor
+    ) -> [StatusSegment] {
         switch mode {
         case .lowestRemaining:
             let usages = [snapshot.claude, snapshot.codex]
             let lowest = usages.compactMap { DisplayFormatter.displayPercent($0) }.min()
             let color = usages.contains { usage in
                 DisplayFormatter.displayPercent(usage) == lowest && DisplayFormatter.displaysSevenDayPercent(usage)
-            } ? sevenDayWarningColor : .white
-            return [.text("AI ", .white), .text(DisplayFormatter.formatPercent(lowest), color)]
+            } ? warningColor : baseColor
+            return [.text("AI ", baseColor), .text(DisplayFormatter.formatPercent(lowest), color)]
         case .both:
             if labelStyle == .icon {
                 return [
                     .icon(codexIcon),
-                    percentSegment(snapshot.codex),
+                    percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor),
                     .separator,
                     .icon(claudeIcon),
-                    percentSegment(snapshot.claude)
+                    percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
                 ]
             }
             return [
-                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", .white),
-                percentSegment(snapshot.codex),
+                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
+                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor),
                 .separator,
-                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", .white),
-                percentSegment(snapshot.claude)
+                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
+                percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
             ]
         case .codexOnly:
             if labelStyle == .icon {
-                return [.icon(codexIcon), percentSegment(snapshot.codex)]
+                return [.icon(codexIcon), percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)]
             }
             return [
-                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", .white),
-                percentSegment(snapshot.codex)
+                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
+                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)
             ]
         case .claudeOnly:
             if labelStyle == .icon {
-                return [.icon(claudeIcon), percentSegment(snapshot.claude)]
+                return [.icon(claudeIcon), percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)]
             }
             return [
-                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", .white),
-                percentSegment(snapshot.claude)
+                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
+                percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
             ]
         }
     }
 
-    private func percentSegment(_ usage: ProviderUsage) -> StatusSegment {
-        let color = DisplayFormatter.displaysSevenDayPercent(usage) ? sevenDayWarningColor : .white
+    private func percentSegment(_ usage: ProviderUsage, baseColor: NSColor, warningColor: NSColor) -> StatusSegment {
+        let color = DisplayFormatter.displaysSevenDayPercent(usage)
+            ? warningColor
+            : baseColor
         return .text(DisplayFormatter.formatPercent(DisplayFormatter.displayPercent(usage)), color)
     }
 
@@ -222,12 +248,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return NSImage(size: NSSize(width: 14, height: 14))
     }
 
-    private func drawIcon(_ icon: NSImage, in rect: NSRect) {
+    private func drawIcon(_ icon: NSImage, in rect: NSRect, tint: NSColor) {
         NSGraphicsContext.saveGraphicsState()
-        NSColor.white.setFill()
+        tint.setFill()
         rect.fill()
         icon.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private var statusTextColor: NSColor {
+        guard
+            let appearance = statusItem.button?.effectiveAppearance,
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        else {
+            return .black
+        }
+        return .white
+    }
+
+    private var statusWarningColor: NSColor {
+        sevenDayWarningColor
+    }
+
+    private func observeAppearanceChanges() {
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatusTitle()
+            }
+        }
     }
 
     private func configureMenu() {

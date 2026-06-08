@@ -110,11 +110,15 @@ dotnet publish windows/TokenTracker.Windows `
   /p:PublishSingleFile=true
 ```
 
+ARM64 Windows용 빌드가 필요하면 `-r win-arm64`를 사용합니다.
+
 생성 결과:
 
 ```text
 windows/TokenTracker.Windows/bin/Release/net10.0-windows/win-x64/publish/TokenTracker.Windows.exe
 ```
+
+`-r win-arm64`를 사용하면 같은 위치의 `win-arm64/publish` 아래에 생성됩니다.
 
 ### macOS 릴리즈 앱 번들 생성
 
@@ -123,6 +127,11 @@ scripts/build_app.sh
 ```
 
 빌드 스크립트는 `Sources/TokenTrackerMenuBar/Resources/AppIcon.png`에서 macOS용 `AppIcon.icns`를 생성하고, 앱 번들의 `Info.plist`에 연결합니다.
+기본값은 현재 Mac의 아키텍처로 빌드합니다. Intel/Apple Silicon 겸용 Universal Binary가 필요하면 아래처럼 실행합니다.
+
+```bash
+APP_ARCHS="arm64 x86_64" scripts/build_app.sh
+```
 
 생성 결과:
 

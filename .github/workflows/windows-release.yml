@@ -13,8 +13,14 @@ on:
 
 jobs:
   build:
-    name: Build Windows exe
+    name: Build Windows ${{ matrix.rid }} exe
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -34,31 +40,31 @@ jobs:
         run: >
           dotnet publish windows/TokenTracker.Windows/TokenTracker.Windows.csproj
           -c Release
-          -r win-x64
+          -r ${{ matrix.rid }}
           --self-contained true
           /p:PublishSingleFile=true
           /p:PublishReadyToRun=false
-          -o artifacts/TokenTracker.Windows-win-x64
+          -o artifacts/TokenTracker.Windows-${{ matrix.rid }}
 
       - name: Package exe
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive `
-            -Path artifacts/TokenTracker.Windows-win-x64/* `
-            -DestinationPath "dist/TokenTracker.Windows-${{ inputs.version }}-win-x64.zip" `
+            -Path artifacts/TokenTracker.Windows-${{ matrix.rid }}/* `
+            -DestinationPath "dist/TokenTracker.Windows-${{ inputs.version }}-${{ matrix.rid }}.zip" `
             -Force
 
       - name: Generate checksum
         shell: pwsh
         run: |
-          $zip = "dist/TokenTracker.Windows-${{ inputs.version }}-win-x64.zip"
+          $zip = "dist/TokenTracker.Windows-${{ inputs.version }}-${{ matrix.rid }}.zip"
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
             Out-File -Encoding ascii "$zip.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TokenTracker.Windows-${{ inputs.version }}-win-x64
+          name: TokenTracker.Windows-${{ inputs.version }}-${{ matrix.rid }}
           path: dist/
           if-no-files-found: error

@@ -13,6 +13,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon notifyIcon = new();
     private readonly System.Windows.Forms.Timer timer = new();
     private readonly SettingsStore settingsStore = new();
+    private readonly CacheStore cacheStore = new();
     private readonly UsageClient usageClient = new();
     private readonly ProviderLogoStore providerLogos = new();
     private AppSettings settings;
@@ -72,7 +73,13 @@ internal sealed class TrayAppContext : ApplicationContext
                 : Task.FromResult(ProviderUsage.Unavailable(Provider.Codex, "Disabled"));
 
             await Task.WhenAll(claudeTask, codexTask);
-            snapshot = new UsageSnapshot(claudeTask.Result, codexTask.Result, DateTimeOffset.Now);
+            var freshSnapshot = new UsageSnapshot(claudeTask.Result, codexTask.Result, DateTimeOffset.Now);
+            snapshot = UsageSnapshotCachePolicy.Apply(
+                freshSnapshot,
+                cacheStore.Load(TimeSpan.FromHours(1)),
+                settings.ClaudeEnabled,
+                settings.CodexEnabled);
+            cacheStore.Save(snapshot);
             SetIcon(snapshot);
             notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
         }

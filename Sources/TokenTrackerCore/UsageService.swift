@@ -24,16 +24,21 @@ public final class UsageService {
     }
 
     public func refresh() async -> UsageSnapshot {
-        let claudeResult = await (settings.claudeEnabled
+        let claudeEnabled = settings.claudeEnabled
+        let codexEnabled = settings.codexEnabled
+        let claudeClient = self.claudeClient
+        let codexClient = self.codexClient
+
+        async let claudeResult: ProviderUsage = claudeEnabled
             ? claudeClient.fetch()
-            : ProviderUsage.unavailable(.claude, error: "Disabled"))
-        let codexResult = await (settings.codexEnabled
+            : ProviderUsage.unavailable(.claude, error: "Disabled")
+        async let codexResult: ProviderUsage = codexEnabled
             ? codexClient.fetch()
-            : ProviderUsage.unavailable(.codex, error: "Disabled"))
+            : ProviderUsage.unavailable(.codex, error: "Disabled")
 
         var snapshot = UsageSnapshot(
-            claude: claudeResult,
-            codex: codexResult,
+            claude: await claudeResult,
+            codex: await codexResult,
             updatedAt: Date()
         )
 

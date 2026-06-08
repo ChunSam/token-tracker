@@ -1,3 +1,4 @@
+using System.Net;
 using TokenTracker.Windows.Core;
 
 static void ExpectEqual<T>(T actual, T expected, string message)
@@ -81,6 +82,7 @@ ExpectEqual(codexUsage.Plan, "prolite", "Codex plan");
 
 var claudeJson = """
 {
+  "plan_type": "max",
   "five_hour": { "utilization": 15.0, "resets_at": "2026-05-27T12:00:00Z" },
   "seven_day": { "utilization": 100.0, "resets_at": "2026-05-29T12:00:00Z" }
 }
@@ -88,6 +90,15 @@ var claudeJson = """
 var claudeUsage = UsageParser.ParseClaudeUsage(claudeJson, now);
 ExpectEqual(claudeUsage.RemainingPercent5h, 85, "Claude five hour remaining percent");
 ExpectEqual(claudeUsage.RemainingPercent7d, 0, "Claude seven day remaining percent");
+ExpectEqual(claudeUsage.Plan, "max", "Claude plan");
+
+var claudeFallbackPlanUsage = UsageParser.ParseClaudeUsage("""
+{
+  "five_hour": { "utilization": 40.0, "resets_at": "2026-05-27T12:00:00Z" },
+  "seven_day": { "utilization": 50.0, "resets_at": "2026-05-29T12:00:00Z" }
+}
+""", now, "team");
+ExpectEqual(claudeFallbackPlanUsage.Plan, "team", "Claude fallback plan");
 
 var home = Path.Combine(Path.GetTempPath(), "token-tracker-windows-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(Path.Combine(home, ".codex"));
@@ -103,7 +114,8 @@ File.WriteAllText(Path.Combine(home, ".codex", "auth.json"), """
 File.WriteAllText(Path.Combine(home, ".claude", ".credentials.json"), """
 {
   "claudeAiOauth": {
-    "accessToken": "claude-token"
+    "accessToken": "claude-token",
+    "subscriptionType": "max"
   }
 }
 """);
@@ -113,7 +125,46 @@ var codexAuth = credentials.ReadCodexAuth(home);
 ExpectEqual(codexAuth.AccessToken, "codex-token", "Codex access token read");
 ExpectEqual(codexAuth.AccountId, "account-id", "Codex account id read");
 ExpectEqual(credentials.ReadClaudeAccessToken(home), "claude-token", "Claude access token read");
+ExpectEqual(credentials.ReadClaudeCredential(home).Plan, "max", "Claude credential plan read");
+
+var rateLimitedResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+rateLimitedResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
+var rateLimitedHandler = new QueueHttpMessageHandler(rateLimitedResponse);
+var rateLimitedClient = new UsageClient(new HttpClient(rateLimitedHandler), new CredentialReader(), home);
+var firstRateLimit = await rateLimitedClient.FetchClaudeAsync();
+ExpectEqual(firstRateLimit.Source, UsageSource.Unavailable, "Claude 429 is unavailable");
+Expect(firstRateLimit.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude 429 error includes retry delay");
+ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude 429 first call reaches HTTP");
+var skippedDuringBackoff = await rateLimitedClient.FetchClaudeAsync();
+ExpectEqual(skippedDuringBackoff.Source, UsageSource.Unavailable, "Claude backoff returns unavailable");
+Expect(skippedDuringBackoff.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude backoff error includes retry delay");
+ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude backoff skips HTTP");
 Directory.Delete(home, recursive: true);
+
+var staleSnapshot = new UsageSnapshot(
+    Claude: Usage(Provider.Claude, 63, 80, now),
+    Codex: Usage(Provider.Codex, 91, 99, now),
+    UpdatedAt: now);
+var freshFailure = new UsageSnapshot(
+    Claude: ProviderUsage.Unavailable(Provider.Claude, "HTTP 429 from Claude API"),
+    Codex: Usage(Provider.Codex, 88, 97, now),
+    UpdatedAt: now);
+var staleApplied = UsageSnapshotCachePolicy.Apply(freshFailure, staleSnapshot, updatedAt: now.AddMinutes(1));
+ExpectEqual(staleApplied.Claude.Source, UsageSource.StaleCache, "Claude stale cache source");
+ExpectEqual(staleApplied.Claude.RemainingPercent5h, 63, "Claude stale cache percent");
+ExpectEqual(staleApplied.Claude.Error, "HTTP 429 from Claude API", "Claude stale cache preserves fresh error");
+ExpectEqual(staleApplied.Codex.Source, UsageSource.Api, "Fresh Codex remains API source");
+
+var disabledStale = UsageSnapshotCachePolicy.Apply(freshFailure, staleSnapshot, claudeEnabled: false, updatedAt: now.AddMinutes(1));
+ExpectEqual(disabledStale.Claude.Source, UsageSource.Unavailable, "Disabled Claude does not use stale cache");
+
+var cachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cache-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
+var cacheStore = new CacheStore(cachePath);
+cacheStore.Save(staleSnapshot);
+var loadedSnapshot = cacheStore.Load(TimeSpan.FromHours(1));
+Expect(loadedSnapshot is not null, "Cache loads saved snapshot");
+ExpectEqual(loadedSnapshot!.Claude.RemainingPercent5h, 63, "Cache preserves Claude percent");
+Directory.Delete(Path.GetDirectoryName(cachePath)!, recursive: true);
 
 var korean = new Localizer(AppLanguage.Korean);
 ExpectEqual(korean.Text(L10nKey.RefreshNow), "지금 새로고침", "Korean refresh label");
@@ -146,3 +197,26 @@ static ProviderUsage Usage(
         Plan: plan,
         Model: null,
         UpdatedAt: now);
+
+sealed class QueueHttpMessageHandler : HttpMessageHandler
+{
+    private readonly Queue<HttpResponseMessage> responses;
+
+    public int CallCount { get; private set; }
+
+    public QueueHttpMessageHandler(params HttpResponseMessage[] responses)
+    {
+        this.responses = new Queue<HttpResponseMessage>(responses);
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        CallCount++;
+        if (responses.Count == 0)
+        {
+            throw new InvalidOperationException("No queued HTTP response");
+        }
+
+        return Task.FromResult(responses.Dequeue());
+    }
+}

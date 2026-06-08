@@ -4,25 +4,61 @@ set -euo pipefail
 APP_NAME="Token Tracker"
 APP_VERSION="${APP_VERSION:-1.0}"
 APP_BUILD="${APP_BUILD:-1}"
+APP_ARCHS="${APP_ARCHS:-$(uname -m)}"
 BUNDLE_DIR=".build/${APP_NAME}.app"
-EXECUTABLE=".build/release/TokenTrackerMenuBar"
+EXECUTABLE_NAME="TokenTrackerMenuBar"
 APP_ICON_SOURCE="Sources/TokenTrackerMenuBar/Resources/AppIcon.png"
 APP_ICON_FILE="AppIcon.icns"
 MACOS_DIR="${BUNDLE_DIR}/Contents/MacOS"
 RESOURCES_DIR="${BUNDLE_DIR}/Contents/Resources"
 
-swift build -c release
-BUILD_RELEASE_DIR="$(cd "$(dirname "${EXECUTABLE}")" && pwd -P)"
+TMP_DIRS=()
+cleanup() {
+  for dir in "${TMP_DIRS[@]}"; do
+    rm -rf "${dir}"
+  done
+}
+trap cleanup EXIT
+
+read -r -a ARCHS <<< "${APP_ARCHS}"
+if [[ "${#ARCHS[@]}" -eq 0 ]]; then
+  echo "APP_ARCHS must contain at least one architecture" >&2
+  exit 1
+fi
+
+BUILD_TMP_DIR="$(mktemp -d)"
+TMP_DIRS+=("${BUILD_TMP_DIR}")
+EXECUTABLE_OUTPUT="${BUILD_TMP_DIR}/${EXECUTABLE_NAME}"
+BUILD_RELEASE_DIR=""
+
+if [[ "${#ARCHS[@]}" -eq 1 ]]; then
+  swift build -c release --arch "${ARCHS[0]}"
+  ARCH_BUILD_DIR=".build/${ARCHS[0]}-apple-macosx/release"
+  cp "${ARCH_BUILD_DIR}/${EXECUTABLE_NAME}" "${EXECUTABLE_OUTPUT}"
+  BUILD_RELEASE_DIR="$(cd "${ARCH_BUILD_DIR}" && pwd -P)"
+else
+  LIPO_INPUTS=()
+  for arch in "${ARCHS[@]}"; do
+    swift build -c release --arch "${arch}"
+    ARCH_BUILD_DIR=".build/${arch}-apple-macosx/release"
+    LIPO_INPUTS+=("${ARCH_BUILD_DIR}/${EXECUTABLE_NAME}")
+    if [[ -z "${BUILD_RELEASE_DIR}" ]]; then
+      BUILD_RELEASE_DIR="$(cd "${ARCH_BUILD_DIR}" && pwd -P)"
+    fi
+  done
+  xcrun lipo -create "${LIPO_INPUTS[@]}" -output "${EXECUTABLE_OUTPUT}"
+fi
+
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
-cp "${EXECUTABLE}" "${MACOS_DIR}/TokenTrackerMenuBar"
+cp "${EXECUTABLE_OUTPUT}" "${MACOS_DIR}/${EXECUTABLE_NAME}"
 find "${BUILD_RELEASE_DIR}" -maxdepth 1 -name "TokenTrackerMenuBar_*.bundle" -exec cp -R {} "${RESOURCES_DIR}/" \;
 
 if [[ -f "${APP_ICON_SOURCE}" ]]; then
   # iconutil requires a directory whose name ends in .iconset, so create it
   # inside a fresh mktemp base to avoid an rm -rf/mkdir symlink race.
   ICONSET_TMP_BASE="$(mktemp -d)"
-  trap 'rm -rf "${ICONSET_TMP_BASE}"' EXIT
+  TMP_DIRS+=("${ICONSET_TMP_BASE}")
   APP_ICONSET_DIR="${ICONSET_TMP_BASE}/AppIcon.iconset"
   mkdir -p "${APP_ICONSET_DIR}"
   sips -z 16 16 "${APP_ICON_SOURCE}" --out "${APP_ICONSET_DIR}/icon_16x16.png" >/dev/null

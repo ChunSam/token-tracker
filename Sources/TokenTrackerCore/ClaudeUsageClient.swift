@@ -1,7 +1,6 @@
 import Foundation
 
-@MainActor
-struct ClaudeUsageClient {
+struct ClaudeUsageClient: Sendable {
     private let http: HTTPClient
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let rateLimitState = ClaudeRateLimitState()
@@ -13,22 +12,24 @@ struct ClaudeUsageClient {
     }
 
     func fetch() async -> ProviderUsage {
-        if let error = rateLimitState.currentError(serviceName: "Claude API") {
+        if let error = await rateLimitState.currentError(serviceName: "Claude API") {
             return .unavailable(.claude, error: error.localizedDescription)
         }
 
         do {
             let usage = try await fetchFromAPI()
-            rateLimitState.clear()
+            await rateLimitState.clear()
             return usage
         } catch let error as UsageError {
             if let retryAfter = error.rateLimitRetryAfter {
-                rateLimitState.backOff(for: retryAfter)
-                return .unavailable(.claude, error: rateLimitState.currentError(serviceName: "Claude API")?.localizedDescription ?? error.localizedDescription)
+                await rateLimitState.backOff(for: retryAfter)
+                let currentError = await rateLimitState.currentError(serviceName: "Claude API")
+                return .unavailable(.claude, error: currentError?.localizedDescription ?? error.localizedDescription)
             }
             if case .httpStatus(429, _, nil) = error {
-                rateLimitState.backOff(for: Self.defaultRateLimitCooldown)
-                return .unavailable(.claude, error: rateLimitState.currentError(serviceName: "Claude API")?.localizedDescription ?? error.localizedDescription)
+                await rateLimitState.backOff(for: Self.defaultRateLimitCooldown)
+                let currentError = await rateLimitState.currentError(serviceName: "Claude API")
+                return .unavailable(.claude, error: currentError?.localizedDescription ?? error.localizedDescription)
             }
             return .unavailable(.claude, error: error.localizedDescription)
         } catch {
@@ -184,8 +185,7 @@ private enum TokenSource {
     case credentialsFile
 }
 
-@MainActor
-private final class ClaudeRateLimitState {
+private actor ClaudeRateLimitState {
     private var retryAllowedAt: Date?
 
     func currentError(serviceName: String) -> UsageError? {

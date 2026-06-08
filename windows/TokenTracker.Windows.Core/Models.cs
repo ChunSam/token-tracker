@@ -9,6 +9,7 @@ public enum Provider
 public enum UsageSource
 {
     Api,
+    StaleCache,
     Unavailable
 }
 

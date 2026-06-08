@@ -62,7 +62,8 @@ expectEqual(DisplayFormatter.displayPercent(staleClaudeUsage), 64, "stale cache 
 expectEqual(staleClaudeUsage.source, .staleCache, "stale cache source is preserved")
 expectEqual(staleClaudeUsage.error, "HTTP 429 from Claude API", "stale cache keeps the fetch failure reason")
 
-expectEqual(UsageError.httpStatus(code: 401, service: "Claude API").localizedDescription, "HTTP 401 from Claude API", "HTTP status error names Claude API")
+expectEqual(UsageError.httpStatus(code: 401, service: "Claude API", retryAfter: nil).localizedDescription, "HTTP 401 from Claude API", "HTTP status error names Claude API")
+expectEqual(UsageError.httpStatus(code: 429, service: "Claude API", retryAfter: 300).localizedDescription, "HTTP 429 from Claude API; retrying after 5m", "HTTP 429 error includes retry delay")
 expectEqual(UsageError.timedOut(service: "Claude API").localizedDescription, "Timed out contacting Claude API", "timeout error names Claude API")
 expectEqual(UsageError.network(message: "offline", service: "Claude API").localizedDescription, "Network error from Claude API: offline", "network error names Claude API")
 

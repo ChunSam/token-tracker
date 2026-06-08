@@ -1,16 +1,36 @@
 import Foundation
 
+@MainActor
 struct ClaudeUsageClient {
     private let http: HTTPClient
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    private let rateLimitState = ClaudeRateLimitState()
+    fileprivate static let defaultRateLimitCooldown: TimeInterval = 300
+    fileprivate static let minimumRateLimitCooldown: TimeInterval = 120
 
     init(http: HTTPClient = HTTPClient()) {
         self.http = http
     }
 
     func fetch() async -> ProviderUsage {
+        if let error = rateLimitState.currentError(serviceName: "Claude API") {
+            return .unavailable(.claude, error: error.localizedDescription)
+        }
+
         do {
-            return try await fetchFromAPI()
+            let usage = try await fetchFromAPI()
+            rateLimitState.clear()
+            return usage
+        } catch let error as UsageError {
+            if let retryAfter = error.rateLimitRetryAfter {
+                rateLimitState.backOff(for: retryAfter)
+                return .unavailable(.claude, error: rateLimitState.currentError(serviceName: "Claude API")?.localizedDescription ?? error.localizedDescription)
+            }
+            if case .httpStatus(429, _, nil) = error {
+                rateLimitState.backOff(for: Self.defaultRateLimitCooldown)
+                return .unavailable(.claude, error: rateLimitState.currentError(serviceName: "Claude API")?.localizedDescription ?? error.localizedDescription)
+            }
+            return .unavailable(.claude, error: error.localizedDescription)
         } catch {
             return .unavailable(.claude, error: error.localizedDescription)
         }
@@ -20,7 +40,7 @@ struct ClaudeUsageClient {
         let candidates = try readTokenCandidates()
         for (index, candidate) in candidates.enumerated() {
             do {
-                return try await fetchFromAPI(token: candidate.token)
+                return try await fetchFromAPI(token: candidate.token, fallbackPlan: candidate.plan)
             } catch let error as UsageError where error.isAuthenticationFailure
                 && candidate.source == .keychain
                 && candidates.indices.contains(index + 1)
@@ -31,7 +51,7 @@ struct ClaudeUsageClient {
         throw UsageError.missingCredentials
     }
 
-    private func fetchFromAPI(token: String) async throws -> ProviderUsage {
+    private func fetchFromAPI(token: String, fallbackPlan: String?) async throws -> ProviderUsage {
         let raw = try await http.getJSON(
             url: usageURL,
             headers: [
@@ -58,7 +78,7 @@ struct ClaudeUsageClient {
             resetAt7d: isoDate(sevenDay?["resets_at"] as? String),
             source: .api,
             error: nil,
-            plan: nil,
+            plan: readPlan(from: object) ?? fallbackPlan,
             model: nil,
             updatedAt: Date()
         )
@@ -66,8 +86,8 @@ struct ClaudeUsageClient {
 
     private func readTokenCandidates() throws -> [TokenCandidate] {
         let rawCandidates = [
-            readTokenFromKeychain().flatMap { TokenCandidate(source: .keychain, token: $0) },
-            readTokenFromFile().flatMap { TokenCandidate(source: .credentialsFile, token: $0) }
+            readCredentialFromKeychain().flatMap { TokenCandidate(source: .keychain, credential: $0) },
+            readCredentialFromFile().flatMap { TokenCandidate(source: .credentialsFile, credential: $0) }
         ].compactMap { $0 }
 
         var candidates: [TokenCandidate] = []
@@ -82,7 +102,7 @@ struct ClaudeUsageClient {
         return candidates
     }
 
-    private func readTokenFromKeychain() -> String? {
+    private func readCredentialFromKeychain() -> ClaudeCredential? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
@@ -103,13 +123,13 @@ struct ClaudeUsageClient {
             else {
                 return nil
             }
-            return token
+            return ClaudeCredential(accessToken: token, plan: readPlan(from: claudeOauth))
         } catch {
             return nil
         }
     }
 
-    private func readTokenFromFile() -> String? {
+    private func readCredentialFromFile() -> ClaudeCredential? {
         guard
             let data = try? Data(contentsOf: AppPaths.claudeCredentials),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -118,24 +138,78 @@ struct ClaudeUsageClient {
         else {
             return nil
         }
-        return token
+        return ClaudeCredential(accessToken: token, plan: readPlan(from: claudeOauth))
     }
+
+    private func readPlan(from object: [String: Any]) -> String? {
+        for key in ["plan_type", "planType", "subscription_type", "subscriptionType", "tier", "rate_limit_tier", "rateLimitTier"] {
+            if let plan = normalizedString(object[key]) {
+                return plan
+            }
+        }
+        return nil
+    }
+
+    private func normalizedString(_ value: Any?) -> String? {
+        guard let text = value as? String else {
+            return nil
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct ClaudeCredential {
+    let accessToken: String
+    let plan: String?
 }
 
 private struct TokenCandidate {
     let source: TokenSource
     let token: String
+    let plan: String?
 
-    init?(source: TokenSource, token: String) {
-        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    init?(source: TokenSource, credential: ClaudeCredential) {
+        guard !credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
         self.source = source
-        self.token = token
+        self.token = credential.accessToken
+        self.plan = credential.plan
     }
 }
 
 private enum TokenSource {
     case keychain
     case credentialsFile
+}
+
+@MainActor
+private final class ClaudeRateLimitState {
+    private var retryAllowedAt: Date?
+
+    func currentError(serviceName: String) -> UsageError? {
+        guard let retryAllowedAt else {
+            return nil
+        }
+
+        let remaining = retryAllowedAt.timeIntervalSinceNow
+        if remaining <= 0 {
+            self.retryAllowedAt = nil
+            return nil
+        }
+        return .httpStatus(code: 429, service: serviceName, retryAfter: remaining)
+    }
+
+    func backOff(for retryAfter: TimeInterval) {
+        let cooldown = max(
+            ClaudeUsageClient.minimumRateLimitCooldown,
+            retryAfter
+        )
+        retryAllowedAt = Date().addingTimeInterval(cooldown)
+    }
+
+    func clear() {
+        retryAllowedAt = nil
+    }
 }

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var usageService = UsageService(settings: settings)
     private var snapshot: UsageSnapshot?
     private var timer: Timer?
+    private var refreshTask: Task<Void, Never>?
     private lazy var claudeIcon = loadIcon(named: "claudeTemplate@2x")
     private lazy var codexIcon = loadIcon(named: "codexTemplate@2x")
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
@@ -41,8 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshNow() {
+        guard refreshTask == nil else { return }
         setStatusTitle("AI ...")
-        Task { @MainActor in
+        refreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { refreshTask = nil }
             let result = await usageService.refresh()
             snapshot = result
             updateStatusTitle()

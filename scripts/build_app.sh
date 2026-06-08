@@ -2,6 +2,8 @@
 set -euo pipefail
 
 APP_NAME="Token Tracker"
+APP_VERSION="${APP_VERSION:-1.0}"
+APP_BUILD="${APP_BUILD:-1}"
 BUNDLE_DIR=".build/${APP_NAME}.app"
 EXECUTABLE=".build/release/TokenTrackerMenuBar"
 APP_ICON_SOURCE="Sources/TokenTrackerMenuBar/Resources/AppIcon.png"
@@ -36,7 +38,7 @@ if [[ -f "${APP_ICON_SOURCE}" ]]; then
   iconutil -c icns "${APP_ICONSET_DIR}" -o "${RESOURCES_DIR}/${APP_ICON_FILE}"
 fi
 
-cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
+cat > "${BUNDLE_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -54,9 +56,9 @@ cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>${APP_VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${APP_BUILD}</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>LSUIElement</key>

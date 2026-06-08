@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example v1.0.6
+        required: true
+        default: v1.0.6
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Run macOS smoke tests
+        run: swift run TokenTrackerSmokeTests
+
+      - name: Build app bundle
+        env:
+          APP_VERSION: ${{ steps.version.outputs.app_version }}
+          APP_BUILD: ${{ github.run_number }}
+        run: bash scripts/build_app.sh
+
+      - name: Package DMG
+        shell: bash
+        run: |
+          mkdir -p dist
+          hdiutil create \
+            -volname "Token Tracker" \
+            -srcfolder ".build/Token Tracker.app" \
+            -ov \
+            -fs HFS+ \
+            -format UDZO \
+            "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg"
+          shasum -a 256 "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg" \
+            > "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg.sha256"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TokenTracker-${{ steps.version.outputs.version }}-macOS
+          path: dist/
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows zip
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "version=${{ inputs.version }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "version=${env:GITHUB_REF_NAME}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run Windows smoke tests
+        run: dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tests.csproj
+
+      - name: Publish Windows app
+        run: >
+          dotnet publish windows/TokenTracker.Windows/TokenTracker.Windows.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          /p:PublishSingleFile=true
+          /p:PublishReadyToRun=false
+          -o artifacts/TokenTracker.Windows-win-x64
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive `
+            -Path artifacts/TokenTracker.Windows-win-x64/* `
+            -DestinationPath "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-win-x64.zip" `
+            -Force
+          $zip = "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-win-x64.zip"
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
+            Out-File -Encoding ascii "$zip.sha256"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TokenTracker.Windows-${{ steps.version.outputs.version }}-win-x64
+          path: dist/
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-macos
+      - build-windows
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Token Tracker ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*

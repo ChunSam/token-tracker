@@ -44,14 +44,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: settings.refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.refreshNow()
+                self?.startRefresh(showLoadingIndicator: false)
             }
         }
     }
 
     @objc private func refreshNow() {
+        startRefresh(showLoadingIndicator: true)
+    }
+
+    private func startRefresh(showLoadingIndicator: Bool) {
         guard refreshTask == nil else { return }
-        setStatusTitle("AI ...")
+        if showLoadingIndicator || snapshot == nil {
+            setStatusTitle("AI ...")
+        }
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { refreshTask = nil }

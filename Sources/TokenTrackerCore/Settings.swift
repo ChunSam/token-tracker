@@ -8,6 +8,11 @@ public final class Settings {
         static let claudeEnabled = "claudeEnabled"
         static let codexEnabled = "codexEnabled"
         static let language = "language"
+        static let notificationsEnabled = "notificationsEnabled"
+        static let fiveHourAlertThreshold = "fiveHourAlertThreshold"
+        static let sevenDayAlertThreshold = "sevenDayAlertThreshold"
+        static let resetAlertMinutes = "resetAlertMinutes"
+        static let historyRetentionDays = "historyRetentionDays"
     }
 
     private let defaults: UserDefaults
@@ -56,6 +61,31 @@ public final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Key.language) }
     }
 
+    public var notificationsEnabled: Bool {
+        get { defaults.bool(forKey: Key.notificationsEnabled) }
+        set { defaults.set(newValue, forKey: Key.notificationsEnabled) }
+    }
+
+    public var fiveHourAlertThreshold: Int {
+        get { defaults.integer(forKey: Key.fiveHourAlertThreshold) }
+        set { defaults.set(clampThreshold(newValue), forKey: Key.fiveHourAlertThreshold) }
+    }
+
+    public var sevenDayAlertThreshold: Int {
+        get { defaults.integer(forKey: Key.sevenDayAlertThreshold) }
+        set { defaults.set(clampThreshold(newValue), forKey: Key.sevenDayAlertThreshold) }
+    }
+
+    public var resetAlertMinutes: Int {
+        get { defaults.integer(forKey: Key.resetAlertMinutes) }
+        set { defaults.set(max(0, min(1440, newValue)), forKey: Key.resetAlertMinutes) }
+    }
+
+    public var historyRetentionDays: Int {
+        get { defaults.integer(forKey: Key.historyRetentionDays) }
+        set { defaults.set(max(1, min(365, newValue)), forKey: Key.historyRetentionDays) }
+    }
+
     private func registerDefaults() {
         defaults.register(defaults: [
             Key.displayMode: DisplayMode.lowestRemaining.rawValue,
@@ -63,7 +93,16 @@ public final class Settings {
             Key.refreshInterval: 60.0,
             Key.claudeEnabled: true,
             Key.codexEnabled: true,
-            Key.language: AppLanguage.system.rawValue
+            Key.language: AppLanguage.system.rawValue,
+            Key.notificationsEnabled: false,
+            Key.fiveHourAlertThreshold: 20,
+            Key.sevenDayAlertThreshold: 10,
+            Key.resetAlertMinutes: 10,
+            Key.historyRetentionDays: 7
         ])
+    }
+
+    private func clampThreshold(_ value: Int) -> Int {
+        max(0, min(100, value))
     }
 }

@@ -8,6 +8,13 @@ func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
     }
 }
 
+func expect(_ condition: Bool, _ message: String) {
+    if !condition {
+        fputs("FAIL: \(message)\n", stderr)
+        exit(1)
+    }
+}
+
 expectEqual(remainingPercent(fromUsed: 0), 100, "0 used leaves 100 remaining")
 expectEqual(remainingPercent(fromUsed: 25.4), 75, "25.4 used rounds to 75 remaining")
 expectEqual(remainingPercent(fromUsed: 100), 0, "100 used leaves 0 remaining")
@@ -87,5 +94,48 @@ expectEqual(UsageError.httpStatus(code: 401, service: "Claude API", retryAfter: 
 expectEqual(UsageError.httpStatus(code: 429, service: "Claude API", retryAfter: 300).localizedDescription, "HTTP 429 from Claude API; retrying after 5m", "HTTP 429 error includes retry delay")
 expectEqual(UsageError.timedOut(service: "Claude API").localizedDescription, "Timed out contacting Claude API", "timeout error names Claude API")
 expectEqual(UsageError.network(message: "offline", service: "Claude API").localizedDescription, "Network error from Claude API: offline", "network error names Claude API")
+
+expectEqual(UsageIssueFormatter.kind(forError: "Disabled"), .disabled, "disabled error is classified")
+expectEqual(UsageIssueFormatter.kind(forError: "HTTP 429 from Claude API; retrying after 5m"), .rateLimited, "429 error is classified as rate limited")
+expectEqual(UsageIssueFormatter.kind(forError: "Missing credentials"), .missingCredentials, "missing credentials is classified")
+expectEqual(UsageIssueFormatter.kind(forError: "Timed out contacting Claude API"), .timedOut, "timeout is classified")
+expectEqual(UsageIssueFormatter.kind(forError: "Network error from Claude API: offline"), .network, "network error is classified")
+
+let cachedIssue = UsageIssueFormatter.issue(for: staleClaudeUsage)
+expectEqual(cachedIssue.kind, .usingCachedData, "stale cache issue is classified")
+expectEqual(cachedIssue.technicalDetail, "HTTP 429 from Claude API", "stale cache keeps technical detail")
+
+let alertSnapshot = UsageSnapshot(
+    claude: ProviderUsage(provider: .claude, remainingPercent5h: 19, remainingPercent7d: 9, resetAt5h: now.addingTimeInterval(300), resetAt7d: now.addingTimeInterval(7200), source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+    codex: ProviderUsage(provider: .codex, remainingPercent5h: 80, remainingPercent7d: 90, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+    updatedAt: now
+)
+let alertCandidates = UsageAlertEvaluator.candidates(
+    snapshot: alertSnapshot,
+    settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
+    now: now
+)
+expectEqual(alertCandidates.map(\.id), ["claude-5h-low", "claude-7d-low", "claude-5h-reset-\(Int(now.addingTimeInterval(300).timeIntervalSince1970))"], "alert evaluator emits low usage and reset alerts")
+let disabledAlertCandidates = UsageAlertEvaluator.candidates(
+    snapshot: alertSnapshot,
+    settings: UsageAlertSettings(notificationsEnabled: false, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
+    now: now
+)
+expectEqual(disabledAlertCandidates.count, 0, "disabled notifications emit no alerts")
+
+let earlierSnapshot = UsageSnapshot(
+    claude: ProviderUsage(provider: .claude, remainingPercent5h: 40, remainingPercent7d: 70, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),
+    codex: ProviderUsage(provider: .codex, remainingPercent5h: 90, remainingPercent7d: 99, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),
+    updatedAt: now.addingTimeInterval(-3600)
+)
+let trend = UsageHistoryFormatter.trendSummary(
+    entries: [UsageHistoryEntry(recordedAt: now.addingTimeInterval(-3600), snapshot: earlierSnapshot)],
+    current: snapshot,
+    window: 24 * 60 * 60
+)
+expectEqual(trend, "24h trend: Claude 5h +23% Codex 5h +1%", "history trend summarizes provider deltas")
+let csv = UsageHistoryFormatter.csvString(for: [UsageHistoryEntry(recordedAt: now, snapshot: snapshot)])
+expect(csv.contains("recorded_at,provider,remaining_5h"), "history csv includes header")
+expect(csv.contains("claude,63,80"), "history csv includes claude row")
 
 print("TokenTrackerSmokeTests passed")

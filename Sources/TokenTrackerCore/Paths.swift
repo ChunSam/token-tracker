@@ -15,6 +15,10 @@ enum AppPaths {
         cacheDirectory.appendingPathComponent("usage-cache.json")
     }
 
+    static var usageHistory: URL {
+        cacheDirectory.appendingPathComponent("usage-history.json")
+    }
+
     static var codexAuth: URL {
         home.appendingPathComponent(".codex/auth.json")
     }

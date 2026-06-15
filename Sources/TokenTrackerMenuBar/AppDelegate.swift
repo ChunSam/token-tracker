@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
 import TokenTrackerCore
+import UniformTypeIdentifiers
+import UserNotifications
 
 private enum StatusSegment {
     case icon(NSImage)
@@ -13,10 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let settings = Settings()
     private let loginItemManager = LoginItemManager()
+    private let historyStore = UsageHistoryStore()
     private lazy var usageService = UsageService(settings: settings)
+    private var preferencesWindowController: PreferencesWindowController?
     private var snapshot: UsageSnapshot?
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
+    private var lastSuccessfulRefreshAt: Date?
+    private var deliveredAlertIDs = Set<String>()
     private lazy var claudeIcon = loadIcon(named: "claudeTemplate@2x")
     private lazy var codexIcon = loadIcon(named: "codexTemplate@2x")
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
@@ -34,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshNow()
         scheduleTimer()
         observeAppearanceChanges()
+        if settings.notificationsEnabled {
+            requestNotificationAuthorization()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -65,6 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { refreshTask = nil }
             let result = await usageService.refresh()
             snapshot = result
+            if result.claude.source == .api || result.codex.source == .api {
+                lastSuccessfulRefreshAt = result.updatedAt
+            }
+            historyStore.append(result, retentionDays: settings.historyRetentionDays)
+            handleNotifications(for: result)
             updateStatusTitle()
             configureMenu()
         }
@@ -351,6 +365,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             addUsage(snapshot.codex, to: menu)
             menu.addItem(.separator())
             menu.addItem(infoItem("\(localizer.text(.updated)) \(relative(snapshot.updatedAt))"))
+            if let lastSuccessfulRefreshAt {
+                menu.addItem(infoItem("\(localizer.text(.lastSuccessfulUpdate)): \(relative(lastSuccessfulRefreshAt))"))
+            } else {
+                menu.addItem(infoItem(localizer.text(.noSuccessfulUpdate)))
+            }
         } else {
             menu.addItem(infoItem(localizer.text(.noUsageLoaded)))
         }
@@ -359,6 +378,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let refresh = NSMenuItem(title: localizer.text(.refreshNow), action: #selector(refreshNow), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
+        let preferences = NSMenuItem(title: localizer.text(.preferences), action: #selector(showPreferences), keyEquivalent: ",")
+        preferences.target = self
+        menu.addItem(preferences)
+
+        let diagnosticsMenu = NSMenu()
+        diagnosticsMenu.autoenablesItems = false
+        let copyDiagnosticsItem = NSMenuItem(title: localizer.text(.copyDiagnostics), action: #selector(copyDiagnostics), keyEquivalent: "")
+        copyDiagnosticsItem.target = self
+        diagnosticsMenu.addItem(copyDiagnosticsItem)
+        diagnosticsMenu.addItem(.separator())
+        let openClaudeCredentials = NSMenuItem(title: localizer.text(.openClaudeCredentials), action: #selector(openClaudeCredentials), keyEquivalent: "")
+        openClaudeCredentials.target = self
+        diagnosticsMenu.addItem(openClaudeCredentials)
+        let openCodexAuth = NSMenuItem(title: localizer.text(.openCodexAuth), action: #selector(openCodexAuth), keyEquivalent: "")
+        openCodexAuth.target = self
+        diagnosticsMenu.addItem(openCodexAuth)
+        diagnosticsMenu.addItem(.separator())
+        diagnosticsMenu.addItem(infoItem("\(localizer.text(.duplicateInstances)): \(runningInstanceCount())"))
+        if settings.refreshInterval < 60 {
+            diagnosticsMenu.addItem(infoItem(localizer.text(.refreshIntervalWarning)))
+        }
+        let diagnostics = NSMenuItem(title: localizer.text(.diagnostics), action: nil, keyEquivalent: "")
+        diagnostics.submenu = diagnosticsMenu
+        menu.addItem(diagnostics)
+
+        let historyMenu = NSMenu()
+        historyMenu.autoenablesItems = false
+        historyMenu.addItem(infoItem(historyTrendText()))
+        historyMenu.addItem(infoItem("\(localizer.text(.historyRetentionDays)): \(settings.historyRetentionDays)d"))
+        historyMenu.addItem(.separator())
+        let exportHistory = NSMenuItem(title: localizer.text(.exportHistoryCSV), action: #selector(exportHistoryCSV), keyEquivalent: "")
+        exportHistory.target = self
+        historyMenu.addItem(exportHistory)
+        let history = NSMenuItem(title: localizer.text(.history), action: nil, keyEquivalent: "")
+        history.submenu = historyMenu
+        menu.addItem(history)
 
         let displayMenu = NSMenu()
         displayMenu.autoenablesItems = false
@@ -398,6 +453,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let providers = NSMenuItem(title: localizer.text(.providers), action: nil, keyEquivalent: "")
         providers.submenu = providersMenu
         menu.addItem(providers)
+
+        let notificationsMenu = NSMenu()
+        notificationsMenu.autoenablesItems = false
+        let notificationsEnabled = NSMenuItem(title: localizer.text(.statusEnabled), action: #selector(toggleNotifications), keyEquivalent: "")
+        notificationsEnabled.target = self
+        notificationsEnabled.state = settings.notificationsEnabled ? .on : .off
+        notificationsMenu.addItem(notificationsEnabled)
+        notificationsMenu.addItem(.separator())
+        notificationsMenu.addItem(infoItem("\(localizer.text(.fiveHourAlertThreshold)): \(settings.fiveHourAlertThreshold)%"))
+        notificationsMenu.addItem(infoItem("\(localizer.text(.sevenDayAlertThreshold)): \(settings.sevenDayAlertThreshold)%"))
+        notificationsMenu.addItem(infoItem("\(localizer.text(.resetAlertMinutes)): \(settings.resetAlertMinutes)m"))
+        let notifications = NSMenuItem(title: localizer.text(.notifications), action: nil, keyEquivalent: "")
+        notifications.submenu = notificationsMenu
+        menu.addItem(notifications)
 
         let refreshIntervalMenu = NSMenu()
         refreshIntervalMenu.autoenablesItems = false
@@ -460,12 +529,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func addUsage(_ usage: ProviderUsage, to menu: NSMenu) {
+        let issue = UsageIssueFormatter.issue(for: usage, localizer: localizer)
         menu.addItem(infoItem(DisplayFormatter.detailLine(usage)))
+        menu.addItem(infoItem("  \(localizer.text(.status)): \(issue.title)"))
+        menu.addItem(infoItem("  \(issue.detail)"))
+        if let recovery = issue.recovery {
+            menu.addItem(infoItem("  \(localizer.text(.recovery)): \(recovery)"))
+        }
         menu.addItem(infoItem("  \(localizer.text(.fiveHourReset)): \(DisplayFormatter.formatReset(usage.resetAt5h, localizer: localizer))"))
         menu.addItem(infoItem("  \(localizer.text(.sevenDayReset)): \(DisplayFormatter.formatReset(usage.resetAt7d, localizer: localizer))"))
         menu.addItem(infoItem("  \(localizer.text(.source)): \(usage.source.rawValue)"))
-        if let error = usage.error {
-            menu.addItem(infoItem("  \(localizer.text(.error)): \(error)"))
+        if let error = issue.technicalDetail {
+            menu.addItem(infoItem("  \(localizer.text(.technicalError)): \(error)"))
         }
         if let plan = usage.plan {
             menu.addItem(infoItem("  \(localizer.text(.plan)): \(plan)"))
@@ -551,6 +626,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenu()
     }
 
+    @objc private func toggleNotifications() {
+        settings.notificationsEnabled.toggle()
+        if settings.notificationsEnabled {
+            requestNotificationAuthorization()
+        } else {
+            deliveredAlertIDs.removeAll()
+        }
+        configureMenu()
+    }
+
+    @objc private func showPreferences() {
+        if preferencesWindowController == nil {
+            preferencesWindowController = PreferencesWindowController(
+                settings: settings,
+                onGeneralChange: { [weak self] in
+                    Task { @MainActor in
+                        self?.applySettingsChange()
+                    }
+                },
+                onProviderChange: { [weak self] in
+                    Task { @MainActor in
+                        self?.configureMenu()
+                        self?.refreshNow()
+                    }
+                },
+                onNotificationsEnabled: { [weak self] in
+                    Task { @MainActor in
+                        self?.requestNotificationAuthorization()
+                        self?.configureMenu()
+                    }
+                }
+            )
+        }
+        preferencesWindowController?.show()
+    }
+
+    @objc private func copyDiagnostics() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(diagnosticsText(), forType: .string)
+    }
+
+    @objc private func openClaudeCredentials() {
+        revealInFinder(claudeCredentialsURL())
+    }
+
+    @objc private func openCodexAuth() {
+        revealInFinder(codexAuthURL())
+    }
+
+    @objc private func exportHistoryCSV() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "token-tracker-history.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try historyStore.csvString().write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            showError(localizer.text(.error), detail: error.localizedDescription)
+        }
+    }
+
     @objc private func toggleLaunchAtLogin() {
         do {
             try loginItemManager.setEnabled(!loginItemManager.isEnabled)
@@ -570,6 +709,172 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = detail
         alert.alertStyle = .warning
         alert.runModal()
+    }
+
+    private func applySettingsChange() {
+        scheduleTimer()
+        updateStatusTitle()
+        configureMenu()
+    }
+
+    private func handleNotifications(for snapshot: UsageSnapshot) {
+        guard settings.notificationsEnabled else {
+            deliveredAlertIDs.removeAll()
+            return
+        }
+
+        let candidates = UsageAlertEvaluator.candidates(
+            snapshot: snapshot,
+            settings: alertSettings(),
+            localizer: localizer
+        )
+        let activeIDs = Set(candidates.map(\.id))
+        deliveredAlertIDs.formIntersection(activeIDs)
+
+        for candidate in candidates where !deliveredAlertIDs.contains(candidate.id) {
+            sendNotification(candidate)
+            deliveredAlertIDs.insert(candidate.id)
+        }
+    }
+
+    private func alertSettings() -> UsageAlertSettings {
+        UsageAlertSettings(
+            notificationsEnabled: settings.notificationsEnabled,
+            fiveHourThreshold: settings.fiveHourAlertThreshold,
+            sevenDayThreshold: settings.sevenDayAlertThreshold,
+            resetWarningMinutes: settings.resetAlertMinutes
+        )
+    }
+
+    private func requestNotificationAuthorization() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func sendNotification(_ candidate: UsageAlertCandidate) {
+        let content = UNMutableNotificationContent()
+        content.title = candidate.title
+        content.body = candidate.body
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "TokenTracker.\(candidate.id)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func diagnosticsText() -> String {
+        var lines: [String] = []
+        lines.append("Token Tracker Diagnostics")
+        lines.append("Generated: \(isoString(Date()))")
+        lines.append("App version: \(appVersion) (\(appBuild))")
+        lines.append("Bundle id: \(Bundle.main.bundleIdentifier ?? "unknown")")
+        lines.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        lines.append("Architecture: \(machineArchitecture())")
+        lines.append("Display mode: \(settings.displayMode.rawValue)")
+        lines.append("Provider labels: \(settings.providerLabelStyle.rawValue)")
+        lines.append("Refresh interval: \(Int(settings.refreshInterval))s")
+        lines.append("Claude enabled: \(settings.claudeEnabled)")
+        lines.append("Codex enabled: \(settings.codexEnabled)")
+        lines.append("Language: \(settings.language.rawValue)")
+        lines.append("Notifications enabled: \(settings.notificationsEnabled)")
+        lines.append("5h alert threshold: \(settings.fiveHourAlertThreshold)%")
+        lines.append("7d alert threshold: \(settings.sevenDayAlertThreshold)%")
+        lines.append("Reset alert window: \(settings.resetAlertMinutes)m")
+        lines.append("History retention: \(settings.historyRetentionDays)d")
+        lines.append("History entries: \(historyStore.load().count)")
+        lines.append("History trend: \(historyTrendText(language: .english))")
+        lines.append("Last successful update: \(lastSuccessfulRefreshAt.map(isoString) ?? "none")")
+        lines.append("Running instances: \(runningInstanceCount())")
+        if settings.refreshInterval < 60 {
+            lines.append("Refresh warning: \(Localizer(language: .english).text(.refreshIntervalWarning))")
+        }
+        lines.append("Claude credentials file exists: \(fileExists(at: claudeCredentialsURL()))")
+        lines.append("Codex auth file exists: \(fileExists(at: codexAuthURL()))")
+
+        if let snapshot {
+            lines.append("Snapshot updated: \(isoString(snapshot.updatedAt))")
+            lines.append(contentsOf: diagnosticsLines(for: snapshot.claude))
+            lines.append(contentsOf: diagnosticsLines(for: snapshot.codex))
+        } else {
+            lines.append("Snapshot: none")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func diagnosticsLines(for usage: ProviderUsage) -> [String] {
+        let issue = UsageIssueFormatter.issue(for: usage, localizer: Localizer(language: .english))
+        return [
+            "\(usage.provider.displayName) source: \(usage.source.rawValue)",
+            "\(usage.provider.displayName) status: \(issue.kind.rawValue)",
+            "\(usage.provider.displayName) 5h remaining: \(DisplayFormatter.formatPercent(usage.remainingPercent5h))",
+            "\(usage.provider.displayName) 7d remaining: \(DisplayFormatter.formatPercent(usage.remainingPercent7d))",
+            "\(usage.provider.displayName) 5h reset: \(isoStringOrDash(usage.resetAt5h))",
+            "\(usage.provider.displayName) 7d reset: \(isoStringOrDash(usage.resetAt7d))",
+            "\(usage.provider.displayName) plan: \(usage.plan ?? "--")",
+            "\(usage.provider.displayName) technical error: \(issue.technicalDetail ?? "--")"
+        ]
+    }
+
+    private func historyTrendText(language: AppLanguage? = nil) -> String {
+        guard let snapshot else {
+            return Localizer(language: language ?? settings.language).text(.notEnoughHistory)
+        }
+        return UsageHistoryFormatter.trendSummary(
+            entries: historyStore.load(),
+            current: snapshot,
+            localizer: Localizer(language: language ?? settings.language)
+        )
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    private var appBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    }
+
+    private func machineArchitecture() -> String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return "unknown"
+        #endif
+    }
+
+    private func fileExists(at url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private func revealInFinder(_ url: URL) {
+        let existingURL = fileExists(at: url) ? url : url.deletingLastPathComponent()
+        NSWorkspace.shared.activateFileViewerSelecting([existingURL])
+    }
+
+    private func runningInstanceCount() -> Int {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "local.token-tracker.menubar"
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).count
+    }
+
+    private func claudeCredentialsURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/.credentials.json")
+    }
+
+    private func codexAuthURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/auth.json")
+    }
+
+    private func isoString(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
+    private func isoStringOrDash(_ date: Date?) -> String {
+        guard let date else { return "--" }
+        return isoString(date)
     }
 
     private func relative(_ date: Date) -> String {

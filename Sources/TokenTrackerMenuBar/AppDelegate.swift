@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var claudeIcon = loadIcon(named: "claudeTemplate@2x")
     private lazy var codexIcon = loadIcon(named: "codexTemplate@2x")
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
+    private let refreshIntervalOptions: [TimeInterval] = [30, 60, 300]
+    private let statusItemHorizontalPadding: CGFloat = 10
     private var appearanceObserver: NSObjectProtocol?
     private var localizer: Localizer {
         Localizer(language: settings.language)
@@ -42,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: settings.refreshInterval, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: max(15, settings.refreshInterval), repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.startRefresh(showLoadingIndicator: false)
             }
@@ -99,12 +101,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setStatusImage(_ image: NSImage, on button: NSStatusBarButton) {
-        statusItem.length = image.size.width + 10
+        let targetLength = max(image.size.width + statusItemHorizontalPadding, reservedStatusItemLength())
+        if abs(statusItem.length - targetLength) > 0.5 {
+            statusItem.length = targetLength
+        }
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
         button.contentTintColor = nil
         button.image = image
         button.imagePosition = .imageOnly
+    }
+
+    private func reservedStatusItemLength() -> CGFloat {
+        let sampleSnapshot = UsageSnapshot(
+            claude: sampleUsage(.claude),
+            codex: sampleUsage(.codex),
+            updatedAt: Date()
+        )
+
+        let image: NSImage
+        if settings.providerLabelStyle == .icon {
+            image = statusTitleImage(
+                segments: statusSegments(
+                    snapshot: sampleSnapshot,
+                    mode: settings.displayMode,
+                    labelStyle: settings.providerLabelStyle,
+                    baseColor: statusTextColor,
+                    warningColor: statusWarningColor
+                ),
+                iconTint: statusTextColor
+            )
+        } else {
+            image = statusTitleImage(
+                DisplayFormatter.statusTitle(
+                    snapshot: sampleSnapshot,
+                    mode: settings.displayMode,
+                    labelStyle: settings.providerLabelStyle
+                ),
+                color: statusTextColor
+            )
+        }
+
+        return image.size.width + statusItemHorizontalPadding
+    }
+
+    private func sampleUsage(_ provider: Provider) -> ProviderUsage {
+        ProviderUsage(
+            provider: provider,
+            remainingPercent5h: 100,
+            remainingPercent7d: 100,
+            resetAt5h: nil,
+            resetAt7d: nil,
+            source: .api,
+            error: nil,
+            plan: nil,
+            model: nil,
+            updatedAt: Date()
+        )
     }
 
     private func statusTitleImage(_ title: String, color: NSColor) -> NSImage {
@@ -333,6 +386,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         labelStyle.submenu = labelStyleMenu
         menu.addItem(labelStyle)
 
+        let providersMenu = NSMenu()
+        providersMenu.autoenablesItems = false
+        for provider in Provider.allCases {
+            let item = NSMenuItem(title: provider.displayName, action: #selector(toggleProvider(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = provider.rawValue
+            item.state = isProviderEnabled(provider) ? .on : .off
+            providersMenu.addItem(item)
+        }
+        let providers = NSMenuItem(title: localizer.text(.providers), action: nil, keyEquivalent: "")
+        providers.submenu = providersMenu
+        menu.addItem(providers)
+
+        let refreshIntervalMenu = NSMenu()
+        refreshIntervalMenu.autoenablesItems = false
+        for option in refreshIntervalOptions {
+            let item = NSMenuItem(title: refreshIntervalTitle(option), action: #selector(selectRefreshInterval(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: option)
+            item.state = abs(settings.refreshInterval - option) < 0.5 ? .on : .off
+            refreshIntervalMenu.addItem(item)
+        }
+        let refreshInterval = NSMenuItem(title: localizer.text(.refreshInterval), action: nil, keyEquivalent: "")
+        refreshInterval.submenu = refreshIntervalMenu
+        menu.addItem(refreshInterval)
+
         let languageMenu = NSMenu()
         languageMenu.autoenablesItems = false
         for language in AppLanguage.allCases {
@@ -360,6 +439,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         statusItem.menu = menu
+    }
+
+    private func isProviderEnabled(_ provider: Provider) -> Bool {
+        switch provider {
+        case .claude:
+            return settings.claudeEnabled
+        case .codex:
+            return settings.codexEnabled
+        }
+    }
+
+    private func setProvider(_ provider: Provider, enabled: Bool) {
+        switch provider {
+        case .claude:
+            settings.claudeEnabled = enabled
+        case .codex:
+            settings.codexEnabled = enabled
+        }
     }
 
     private func addUsage(_ usage: ProviderUsage, to menu: NSMenu) {
@@ -390,6 +487,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func refreshIntervalTitle(_ interval: TimeInterval) -> String {
+        let seconds = Int(interval)
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        return "\(seconds / 60)m"
+    }
+
     @objc private func selectDisplayMode(_ sender: NSMenuItem) {
         guard
             let raw = sender.representedObject as? String,
@@ -411,6 +516,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settings.providerLabelStyle = style
         updateStatusTitle()
+        configureMenu()
+    }
+
+    @objc private func toggleProvider(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let provider = Provider(rawValue: raw)
+        else {
+            return
+        }
+        setProvider(provider, enabled: !isProviderEnabled(provider))
+        configureMenu()
+        refreshNow()
+    }
+
+    @objc private func selectRefreshInterval(_ sender: NSMenuItem) {
+        guard let interval = (sender.representedObject as? NSNumber)?.doubleValue else {
+            return
+        }
+        settings.refreshInterval = interval
+        scheduleTimer()
         configureMenu()
     }
 
@@ -448,7 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func relative(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 60 { return "\(seconds)s \(localizer.text(.ago))" }
         let minutes = seconds / 60
         if minutes < 60 { return "\(minutes)m \(localizer.text(.ago))" }
         return "\(minutes / 60)h \(localizer.text(.ago))"

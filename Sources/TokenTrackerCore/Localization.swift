@@ -41,6 +41,8 @@ public struct Localizer {
         .refreshNow: "Refresh Now",
         .displayMode: "Display Mode",
         .providerLabelStyle: "Provider Labels",
+        .providers: "Providers",
+        .refreshInterval: "Refresh Interval",
         .language: "Language",
         .launchAtLogin: "Launch at Login",
         .quit: "Quit",
@@ -65,6 +67,8 @@ public struct Localizer {
         .refreshNow: "지금 새로고침",
         .displayMode: "표시 방식",
         .providerLabelStyle: "제공자 표기",
+        .providers: "제공자",
+        .refreshInterval: "새로고침 간격",
         .language: "언어",
         .launchAtLogin: "로그인 시 실행",
         .quit: "종료",
@@ -90,6 +94,8 @@ public enum L10nKey: String {
     case refreshNow
     case displayMode
     case providerLabelStyle
+    case providers
+    case refreshInterval
     case language
     case launchAtLogin
     case quit

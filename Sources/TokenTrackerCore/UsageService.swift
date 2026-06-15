@@ -42,24 +42,48 @@ public final class UsageService {
             updatedAt: Date()
         )
 
-        if let stale = cacheStore.load(maxAge: 3600) {
-            if !snapshot.claude.isAvailable, stale.claude.isAvailable {
-                snapshot.claude = markStale(stale.claude, error: snapshot.claude.error)
-            }
-            if !snapshot.codex.isAvailable, stale.codex.isAvailable {
-                snapshot.codex = markStale(stale.codex, error: snapshot.codex.error)
-            }
-        }
+        snapshot = UsageSnapshotCachePolicy.apply(
+            current: snapshot,
+            stale: cacheStore.load(maxAge: 3600),
+            claudeEnabled: claudeEnabled,
+            codexEnabled: codexEnabled
+        )
 
         cacheStore.save(snapshot)
         return snapshot
     }
+}
 
-    private func markStale(_ usage: ProviderUsage, error: String?) -> ProviderUsage {
+public enum UsageSnapshotCachePolicy {
+    public static func apply(
+        current: UsageSnapshot,
+        stale: UsageSnapshot?,
+        claudeEnabled: Bool = true,
+        codexEnabled: Bool = true,
+        updatedAt: Date = Date()
+    ) -> UsageSnapshot {
+        guard let stale else {
+            return current
+        }
+
+        var snapshot = current
+
+        if claudeEnabled, !snapshot.claude.isAvailable, stale.claude.isAvailable {
+            snapshot.claude = markStale(stale.claude, error: snapshot.claude.error, updatedAt: updatedAt)
+        }
+
+        if codexEnabled, !snapshot.codex.isAvailable, stale.codex.isAvailable {
+            snapshot.codex = markStale(stale.codex, error: snapshot.codex.error, updatedAt: updatedAt)
+        }
+
+        return snapshot
+    }
+
+    private static func markStale(_ usage: ProviderUsage, error: String?, updatedAt: Date) -> ProviderUsage {
         var copy = usage
         copy.source = .staleCache
         copy.error = error
-        copy.updatedAt = Date()
+        copy.updatedAt = updatedAt
         return copy
     }
 }

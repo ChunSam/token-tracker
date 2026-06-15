@@ -52,6 +52,7 @@ open "/Applications/Token Tracker.app"
 - 표시 방식
 - 제공자 표기
 - 제공자 활성화/비활성화
+- 새로고침 간격
 - 언어
 - Windows 작업표시줄 아이콘 상시 표시 설정 열기
 - 로그인 시 실행

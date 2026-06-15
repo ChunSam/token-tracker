@@ -62,6 +62,27 @@ expectEqual(DisplayFormatter.displayPercent(staleClaudeUsage), 64, "stale cache 
 expectEqual(staleClaudeUsage.source, .staleCache, "stale cache source is preserved")
 expectEqual(staleClaudeUsage.error, "HTTP 429 from Claude API", "stale cache keeps the fetch failure reason")
 
+let staleSnapshot = UsageSnapshot(
+    claude: ProviderUsage(provider: .claude, remainingPercent5h: 63, remainingPercent7d: 80, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+    codex: ProviderUsage(provider: .codex, remainingPercent5h: 91, remainingPercent7d: 99, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+    updatedAt: now
+)
+let freshFailureSnapshot = UsageSnapshot(
+    claude: ProviderUsage.unavailable(.claude, error: "HTTP 429 from Claude API"),
+    codex: ProviderUsage.unavailable(.codex, error: "Disabled"),
+    updatedAt: now
+)
+let enabledStaleSnapshot = UsageSnapshotCachePolicy.apply(
+    current: freshFailureSnapshot,
+    stale: staleSnapshot,
+    claudeEnabled: true,
+    codexEnabled: false,
+    updatedAt: now
+)
+expectEqual(enabledStaleSnapshot.claude.source, .staleCache, "Enabled Claude can use stale cache")
+expectEqual(enabledStaleSnapshot.codex.source, .unavailable, "Disabled Codex does not use stale cache")
+expectEqual(enabledStaleSnapshot.codex.error, "Disabled", "Disabled Codex keeps disabled reason")
+
 expectEqual(UsageError.httpStatus(code: 401, service: "Claude API", retryAfter: nil).localizedDescription, "HTTP 401 from Claude API", "HTTP status error names Claude API")
 expectEqual(UsageError.httpStatus(code: 429, service: "Claude API", retryAfter: 300).localizedDescription, "HTTP 429 from Claude API; retrying after 5m", "HTTP 429 error includes retry delay")
 expectEqual(UsageError.timedOut(service: "Claude API").localizedDescription, "Timed out contacting Claude API", "timeout error names Claude API")

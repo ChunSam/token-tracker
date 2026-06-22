@@ -14,6 +14,9 @@ public static class AppPaths
     public static string SnapshotCachePath =>
         Path.Combine(AppDataDirectory, "usage-cache.json");
 
+    public static string UsageHistoryPath =>
+        Path.Combine(AppDataDirectory, "usage-history.json");
+
     public static string CodexAuthPath(string? homeDirectory = null) =>
         Path.Combine(homeDirectory ?? HomeDirectory, ".codex", "auth.json");
 

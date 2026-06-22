@@ -154,9 +154,43 @@ ExpectEqual(staleApplied.Claude.Source, UsageSource.StaleCache, "Claude stale ca
 ExpectEqual(staleApplied.Claude.RemainingPercent5h, 63, "Claude stale cache percent");
 ExpectEqual(staleApplied.Claude.Error, "HTTP 429 from Claude API", "Claude stale cache preserves fresh error");
 ExpectEqual(staleApplied.Codex.Source, UsageSource.Api, "Fresh Codex remains API source");
+var cachedIssue = UsageIssueFormatter.Issue(staleApplied.Claude);
+ExpectEqual(cachedIssue.Kind, UsageIssueKind.UsingCachedData, "Stale cache issue is classified");
+ExpectEqual(cachedIssue.TechnicalDetail, "HTTP 429 from Claude API", "Stale cache keeps technical detail");
+ExpectEqual(UsageIssueFormatter.Kind("Disabled"), UsageIssueKind.Disabled, "Disabled issue is classified");
+ExpectEqual(UsageIssueFormatter.Kind("HTTP 429 from Claude API; retrying after 5m"), UsageIssueKind.RateLimited, "429 issue is classified");
+ExpectEqual(UsageIssueFormatter.Kind("Missing credentials"), UsageIssueKind.MissingCredentials, "Missing credentials issue is classified");
+ExpectEqual(UsageIssueFormatter.Kind("Timed out contacting Claude API"), UsageIssueKind.TimedOut, "Timeout issue is classified");
 
 var disabledStale = UsageSnapshotCachePolicy.Apply(freshFailure, staleSnapshot, claudeEnabled: false, updatedAt: now.AddMinutes(1));
 ExpectEqual(disabledStale.Claude.Source, UsageSource.Unavailable, "Disabled Claude does not use stale cache");
+
+var alertSnapshot = new UsageSnapshot(
+    Claude: new ProviderUsage(
+        Provider.Claude,
+        RemainingPercent5h: 19,
+        RemainingPercent7d: 9,
+        ResetAt5h: now.AddMinutes(5),
+        ResetAt7d: now.AddHours(2),
+        UsageSource.Api,
+        Error: null,
+        Plan: null,
+        Model: null,
+        UpdatedAt: now),
+    Codex: Usage(Provider.Codex, 80, 90, now),
+    UpdatedAt: now);
+var alerts = UsageAlertEvaluator.Candidates(
+    alertSnapshot,
+    new UsageAlertSettings(true, 20, 10, 10),
+    now);
+ExpectEqual(
+    string.Join(",", alerts.Select(alert => alert.Id)),
+    $"claude-5h-low,claude-7d-low,claude-5h-reset-{now.AddMinutes(5).ToUnixTimeSeconds()}",
+    "Alert evaluator emits low usage and reset alerts");
+ExpectEqual(
+    UsageAlertEvaluator.Candidates(alertSnapshot, new UsageAlertSettings(false, 20, 10, 10), now).Count,
+    0,
+    "Disabled notifications emit no alerts");
 
 var cachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cache-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
 var cacheStore = new CacheStore(cachePath);
@@ -166,16 +200,44 @@ Expect(loadedSnapshot is not null, "Cache loads saved snapshot");
 ExpectEqual(loadedSnapshot!.Claude.RemainingPercent5h, 63, "Cache preserves Claude percent");
 Directory.Delete(Path.GetDirectoryName(cachePath)!, recursive: true);
 
+var historyPath = Path.Combine(Path.GetTempPath(), "token-tracker-history-" + Guid.NewGuid().ToString("N"), "usage-history.json");
+var historyStore = new UsageHistoryStore(historyPath);
+historyStore.Append(staleSnapshot, retentionDays: 7, now);
+historyStore.Append(snapshot, retentionDays: 7, now.AddHours(1));
+var historyEntries = historyStore.Load();
+ExpectEqual(historyEntries.Count, 2, "History preserves entries outside merge window");
+var trend = UsageHistoryFormatter.TrendSummary(
+    historyEntries,
+    snapshot,
+    TimeSpan.FromDays(1),
+    new Localizer(AppLanguage.English));
+ExpectEqual(trend, "24h trend: Claude 5h 0% Codex 5h 0%", "History trend summarizes provider deltas");
+var csv = historyStore.CsvString();
+Expect(csv.Contains("recorded_at,provider,remaining_5h", StringComparison.Ordinal), "History CSV includes header");
+Expect(csv.Contains("claude,63,80", StringComparison.Ordinal), "History CSV includes Claude row");
+Directory.Delete(Path.GetDirectoryName(historyPath)!, recursive: true);
+
 var korean = new Localizer(AppLanguage.Korean);
 ExpectEqual(korean.Text(L10nKey.RefreshNow), "지금 새로고침", "Korean refresh label");
 ExpectEqual(korean.Text(L10nKey.ClaudeOnly), "Claude만", "Korean Claude-only label");
+ExpectEqual(korean.Text(L10nKey.Diagnostics), "진단", "Korean diagnostics label");
 
 var settingsPath = Path.Combine(Path.GetTempPath(), "token-tracker-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
 var settingsStore = new SettingsStore(settingsPath);
-settingsStore.Save(new AppSettings { Language = AppLanguage.Korean, DisplayMode = DisplayMode.ClaudeOnly });
+settingsStore.Save(new AppSettings
+{
+    Language = AppLanguage.Korean,
+    DisplayMode = DisplayMode.ClaudeOnly,
+    NotificationsEnabled = true,
+    FiveHourAlertThreshold = 25,
+    HistoryRetentionDays = 30
+});
 var loadedSettings = settingsStore.Load();
 ExpectEqual(loadedSettings.Language, AppLanguage.Korean, "Language setting persists");
 ExpectEqual(loadedSettings.DisplayMode, DisplayMode.ClaudeOnly, "Display mode setting persists");
+ExpectEqual(loadedSettings.NotificationsEnabled, true, "Notification setting persists");
+ExpectEqual(loadedSettings.FiveHourAlertThreshold, 25, "Alert threshold persists");
+ExpectEqual(loadedSettings.HistoryRetentionDays, 30, "History retention persists");
 Directory.Delete(Path.GetDirectoryName(settingsPath)!, recursive: true);
 
 Console.WriteLine("TokenTracker.Windows.Tests passed");

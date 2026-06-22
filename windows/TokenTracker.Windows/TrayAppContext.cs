@@ -14,10 +14,14 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer timer = new();
     private readonly SettingsStore settingsStore = new();
     private readonly CacheStore cacheStore = new();
+    private readonly UsageHistoryStore historyStore = new();
     private readonly UsageClient usageClient = new();
     private readonly ProviderLogoStore providerLogos = new();
+    private readonly HashSet<string> deliveredAlertIds = new(StringComparer.Ordinal);
     private AppSettings settings;
     private UsageSnapshot? snapshot;
+    private DateTimeOffset? lastSuccessfulRefreshAt;
+    private SettingsForm? settingsForm;
     private Icon? currentIcon;
     private bool refreshing;
     private Localizer Localizer => new(settings.Language);
@@ -80,6 +84,13 @@ internal sealed class TrayAppContext : ApplicationContext
                 settings.ClaudeEnabled,
                 settings.CodexEnabled);
             cacheStore.Save(snapshot);
+            if (snapshot.Claude.Source == UsageSource.Api || snapshot.Codex.Source == UsageSource.Api)
+            {
+                lastSuccessfulRefreshAt = snapshot.UpdatedAt;
+            }
+
+            historyStore.Append(snapshot, settings.HistoryRetentionDays);
+            HandleNotifications(snapshot);
             SetIcon(snapshot);
             notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
         }
@@ -117,15 +128,18 @@ internal sealed class TrayAppContext : ApplicationContext
             AddProvider(menu, snapshot.Codex);
             menu.Items.Add(new ToolStripSeparator());
             AddDisabled(menu.Items, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
+            AddDisabled(
+                menu.Items,
+                lastSuccessfulRefreshAt is null
+                    ? Localizer.Text(L10nKey.NoSuccessfulUpdate)
+                    : $"{Localizer.Text(L10nKey.LastSuccessfulUpdate)}: {Relative(lastSuccessfulRefreshAt.Value)} {Localizer.Text(L10nKey.Ago)}");
         }
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(Localizer.Text(L10nKey.RefreshNow), null, async (_, _) => await RefreshAsync());
-        menu.Items.Add(DisplayModeMenu());
-        menu.Items.Add(ProviderLabelStyleMenu());
-        menu.Items.Add(ProvidersMenu());
-        menu.Items.Add(RefreshIntervalMenu());
-        menu.Items.Add(LanguageMenu());
+        menu.Items.Add(Localizer.Text(L10nKey.Preferences), null, (_, _) => ShowSettings());
+        menu.Items.Add(DiagnosticsMenu());
+        menu.Items.Add(HistoryMenu());
 
         var launchItem = new ToolStripMenuItem(Localizer.Text(L10nKey.LaunchAtLogin))
         {
@@ -160,13 +174,21 @@ internal sealed class TrayAppContext : ApplicationContext
             provider.ImageScaling = ToolStripItemImageScaling.None;
         }
 
+        var issue = UsageIssueFormatter.Issue(usage, Localizer);
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Status)}: {issue.Title}");
+        AddDisabled(provider.DropDownItems, $"  {issue.Detail}");
+        if (!string.IsNullOrWhiteSpace(issue.Recovery))
+        {
+            AddDisabled(provider.DropDownItems, $"  {Localizer.Text(L10nKey.Recovery)}: {issue.Recovery}");
+        }
+
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
-        if (!string.IsNullOrWhiteSpace(usage.Error))
+        if (!string.IsNullOrWhiteSpace(issue.TechnicalDetail))
         {
-            AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Error)}: {usage.Error}");
+            AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.TechnicalError)}: {issue.TechnicalDetail}");
         }
 
         if (!string.IsNullOrWhiteSpace(usage.Plan))
@@ -192,127 +214,119 @@ internal sealed class TrayAppContext : ApplicationContext
             ? providerLogos.MenuLogo(usage.Provider)
             : null;
 
-    private ToolStripMenuItem DisplayModeMenu()
+    private ToolStripMenuItem DiagnosticsMenu()
     {
-        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.DisplayMode));
-        foreach (var mode in Enum.GetValues<DisplayMode>())
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.Diagnostics));
+        root.DropDownItems.Add(Localizer.Text(L10nKey.CopyDiagnostics), null, (_, _) =>
         {
-            var item = new ToolStripMenuItem(DisplayModeLabel(mode))
-            {
-                Checked = settings.DisplayMode == mode
-            };
-            item.Click += (_, _) =>
-            {
-                settings.DisplayMode = mode;
-                SaveSettings();
-                SetIcon(snapshot);
-                notifyIcon.ContextMenuStrip = BuildMenu();
-            };
-            root.DropDownItems.Add(item);
+            Clipboard.SetText(Diagnostics().DiagnosticsText());
+            notifyIcon.ShowBalloonTip(3000, "Token Tracker", Localizer.Text(L10nKey.DiagnosticsCopied), ToolTipIcon.Info);
+        });
+        root.DropDownItems.Add(new ToolStripSeparator());
+        root.DropDownItems.Add(Localizer.Text(L10nKey.OpenClaudeCredentials), null, (_, _) => RevealInExplorer(DiagnosticsReporter.ClaudeCredentialsPath));
+        root.DropDownItems.Add(Localizer.Text(L10nKey.OpenCodexAuth), null, (_, _) => RevealInExplorer(DiagnosticsReporter.CodexAuthPath));
+        root.DropDownItems.Add(new ToolStripSeparator());
+        AddDisabled(root.DropDownItems, $"{Localizer.Text(L10nKey.DuplicateInstances)}: {RunningInstanceCount()}");
+        if (settings.RefreshIntervalSeconds < 60)
+        {
+            AddDisabled(root.DropDownItems, Localizer.Text(L10nKey.RefreshIntervalWarning));
         }
 
         return root;
     }
 
-    private ToolStripMenuItem ProvidersMenu()
+    private ToolStripMenuItem HistoryMenu()
     {
-        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.Providers));
-        root.DropDownItems.Add(ProviderToggleItem("Claude", settings.ClaudeEnabled, enabled => settings.ClaudeEnabled = enabled));
-        root.DropDownItems.Add(ProviderToggleItem("Codex", settings.CodexEnabled, enabled => settings.CodexEnabled = enabled));
+        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.History));
+        AddDisabled(root.DropDownItems, Diagnostics().HistoryTrendText());
+        AddDisabled(root.DropDownItems, $"{Localizer.Text(L10nKey.HistoryRetentionDays)}: {settings.HistoryRetentionDays}d");
+        root.DropDownItems.Add(new ToolStripSeparator());
+        root.DropDownItems.Add(Localizer.Text(L10nKey.ExportHistoryCsv), null, (_, _) => ExportHistoryCsv());
         return root;
     }
 
-    private ToolStripMenuItem ProviderToggleItem(string label, bool enabled, Action<bool> setEnabled)
+    private DiagnosticsReporter Diagnostics() =>
+        new(settings, historyStore, snapshot, lastSuccessfulRefreshAt, RunningInstanceCount());
+
+    private void ShowSettings()
     {
-        var item = new ToolStripMenuItem(label)
+        if (settingsForm is null || settingsForm.IsDisposed)
         {
-            Checked = enabled,
-            CheckOnClick = true
+            settingsForm = new SettingsForm(
+                settings,
+                async () =>
+                {
+                    SaveSettings();
+                    notifyIcon.ContextMenuStrip = BuildMenu();
+                    await RefreshAsync();
+                },
+                () =>
+                {
+                    SaveSettings();
+                    SetIcon(snapshot);
+                    notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
+                    notifyIcon.ContextMenuStrip = BuildMenu();
+                },
+                () =>
+                {
+                    SaveSettings();
+                    notifyIcon.ContextMenuStrip = BuildMenu();
+                });
+            settingsForm.FormClosed += (_, _) => settingsForm = null;
+        }
+
+        settingsForm.Show();
+        settingsForm.Activate();
+    }
+
+    private void ExportHistoryCsv()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            FileName = "token-tracker-history.csv",
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            DefaultExt = "csv",
+            AddExtension = true
         };
-        item.Click += async (_, _) =>
-        {
-            setEnabled(item.Checked);
-            SaveSettings();
-            notifyIcon.ContextMenuStrip = BuildMenu();
-            await RefreshAsync();
-        };
-        return item;
-    }
 
-    private ToolStripMenuItem RefreshIntervalMenu()
-    {
-        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.RefreshInterval));
-        foreach (var option in new[] { 30, 60, 300 })
+        if (dialog.ShowDialog() != DialogResult.OK)
         {
-            var item = new ToolStripMenuItem(option < 60 ? $"{option}s" : $"{option / 60}m")
-            {
-                Checked = settings.RefreshIntervalSeconds == option
-            };
-            item.Click += (_, _) =>
-            {
-                settings.RefreshIntervalSeconds = option;
-                SaveSettings();
-                notifyIcon.ContextMenuStrip = BuildMenu();
-            };
-            root.DropDownItems.Add(item);
+            return;
         }
 
-        return root;
+        try
+        {
+            File.WriteAllText(dialog.FileName, historyStore.CsvString());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Token Tracker", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
-    private ToolStripMenuItem ProviderLabelStyleMenu()
+    private void HandleNotifications(UsageSnapshot usage)
     {
-        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.ProviderLabels));
-        foreach (var style in Enum.GetValues<ProviderLabelStyle>())
+        if (!settings.NotificationsEnabled)
         {
-            var item = new ToolStripMenuItem(ProviderLabelStyleLabel(style))
-            {
-                Checked = settings.ProviderLabelStyle == style,
-                Image = style == ProviderLabelStyle.Icon ? providerLogos.MenuLogo(Provider.Codex) : null
-            };
-            if (item.Image is not null)
-            {
-                item.ImageScaling = ToolStripItemImageScaling.None;
-            }
-            item.Click += (_, _) =>
-            {
-                settings.ProviderLabelStyle = style;
-                SaveSettings();
-                notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
-                notifyIcon.ContextMenuStrip = BuildMenu();
-            };
-            root.DropDownItems.Add(item);
+            deliveredAlertIds.Clear();
+            return;
         }
 
-        return root;
-    }
+        var candidates = UsageAlertEvaluator.Candidates(
+            usage,
+            new UsageAlertSettings(
+                settings.NotificationsEnabled,
+                settings.FiveHourAlertThreshold,
+                settings.SevenDayAlertThreshold,
+                settings.ResetAlertMinutes),
+            localizer: Localizer);
+        var activeIds = candidates.Select(candidate => candidate.Id).ToHashSet(StringComparer.Ordinal);
+        deliveredAlertIds.IntersectWith(activeIds);
 
-    private string ProviderLabelStyleLabel(ProviderLabelStyle style) => style switch
-    {
-        ProviderLabelStyle.Abbreviation => "Cdx / Cl",
-        ProviderLabelStyle.Icon => Localizer.Text(L10nKey.OfficialLogos),
-        _ => style.ToString()
-    };
-
-    private ToolStripMenuItem LanguageMenu()
-    {
-        var root = new ToolStripMenuItem(Localizer.Text(L10nKey.Language));
-        foreach (var language in Enum.GetValues<AppLanguage>())
+        foreach (var candidate in candidates.Where(candidate => deliveredAlertIds.Add(candidate.Id)))
         {
-            var item = new ToolStripMenuItem(Localizer.LanguageLabel(language))
-            {
-                Checked = settings.Language == language
-            };
-            item.Click += (_, _) =>
-            {
-                settings.Language = language;
-                SaveSettings();
-                notifyIcon.ContextMenuStrip = BuildMenu();
-            };
-            root.DropDownItems.Add(item);
+            notifyIcon.ShowBalloonTip(5000, candidate.Title, candidate.Body, ToolTipIcon.Warning);
         }
-
-        return root;
     }
 
     private static void AddDisabled(ToolStripItemCollection items, string text, Image? image = null) =>
@@ -393,14 +407,39 @@ internal sealed class TrayAppContext : ApplicationContext
         }
     }
 
-    private string DisplayModeLabel(DisplayMode mode) => mode switch
+    private static void RevealInExplorer(string path)
     {
-        DisplayMode.LowestRemaining => Localizer.Text(L10nKey.LowestRemaining),
-        DisplayMode.Both => Localizer.Text(L10nKey.Both),
-        DisplayMode.CodexOnly => Localizer.Text(L10nKey.CodexOnly),
-        DisplayMode.ClaudeOnly => Localizer.Text(L10nKey.ClaudeOnly),
-        _ => mode.ToString()
-    };
+        var existingPath = File.Exists(path) ? path : Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(existingPath))
+        {
+            return;
+        }
+
+        var arguments = File.Exists(path)
+            ? $"/select,\"{path}\""
+            : $"\"{existingPath}\"";
+        Process.Start(new ProcessStartInfo("explorer.exe", arguments)
+        {
+            UseShellExecute = true
+        });
+    }
+
+    private static int RunningInstanceCount()
+    {
+        using var current = Process.GetCurrentProcess();
+        var processes = Process.GetProcessesByName(current.ProcessName);
+        try
+        {
+            return processes.Length;
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+        }
+    }
 
     private static string Relative(DateTimeOffset date)
     {

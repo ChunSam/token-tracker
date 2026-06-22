@@ -12,6 +12,11 @@ public sealed class AppSettings
     public bool CodexEnabled { get; set; } = true;
     public bool LaunchAtLogin { get; set; }
     public AppLanguage Language { get; set; } = AppLanguage.System;
+    public bool NotificationsEnabled { get; set; }
+    public int FiveHourAlertThreshold { get; set; } = 20;
+    public int SevenDayAlertThreshold { get; set; } = 10;
+    public int ResetAlertMinutes { get; set; } = 10;
+    public int HistoryRetentionDays { get; set; } = 7;
 }
 
 public sealed class SettingsStore

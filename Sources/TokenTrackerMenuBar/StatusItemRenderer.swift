@@ -3,9 +3,14 @@ import Foundation
 import TokenTrackerCore
 
 private enum StatusSegment {
-    case icon(NSImage)
+    case icon(StatusIcon)
     case text(String, NSColor)
     case separator
+}
+
+private struct StatusIcon {
+    let image: NSImage
+    let contentRect: NSRect
 }
 
 @MainActor
@@ -14,18 +19,18 @@ final class StatusItemRenderer {
     private lazy var claudeIcon = loadIcon(named: "claudeTemplate@2x")
     private lazy var codexIcon = loadIcon(named: "codexTemplate@2x")
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
-    private let statusItemHorizontalPadding: CGFloat = 10
+    private let statusItemHorizontalPadding: CGFloat = 4
 
     func setMenu(_ menu: NSMenu) {
         statusItem.menu = menu
     }
 
-    func setPlaceholder(mode: DisplayMode, labelStyle: ProviderLabelStyle) {
-        setStatusTitle("AI --", mode: mode, labelStyle: labelStyle)
+    func setPlaceholder(mode _: DisplayMode, labelStyle _: ProviderLabelStyle) {
+        setStatusTitle("AI --")
     }
 
-    func setLoading(mode: DisplayMode, labelStyle: ProviderLabelStyle) {
-        setStatusTitle("AI ...", mode: mode, labelStyle: labelStyle)
+    func setLoading(mode _: DisplayMode, labelStyle _: ProviderLabelStyle) {
+        setStatusTitle("AI ...")
     }
 
     func update(snapshot: UsageSnapshot?, mode: DisplayMode, labelStyle: ProviderLabelStyle) {
@@ -45,21 +50,15 @@ final class StatusItemRenderer {
             )
         } else {
             setStatusTitle(
-                DisplayFormatter.statusTitle(snapshot: snapshot, mode: mode),
-                mode: mode,
-                labelStyle: labelStyle
+                DisplayFormatter.statusTitle(snapshot: snapshot, mode: mode, labelStyle: labelStyle)
             )
         }
     }
 
-    private func setStatusTitle(
-        _ title: String,
-        mode: DisplayMode = .lowestRemaining,
-        labelStyle: ProviderLabelStyle = .abbreviation
-    ) {
+    private func setStatusTitle(_ title: String) {
         guard let button = statusItem.button else { return }
         let image = statusTitleImage(title, color: statusTextColor)
-        setStatusImage(image, on: button, mode: mode, labelStyle: labelStyle)
+        setStatusImage(image, on: button)
     }
 
     private func setStatusSegments(
@@ -70,19 +69,14 @@ final class StatusItemRenderer {
     ) {
         guard let button = statusItem.button else { return }
         let image = statusTitleImage(segments: segments, iconTint: iconTint)
-        setStatusImage(image, on: button, mode: mode, labelStyle: labelStyle)
+        setStatusImage(image, on: button)
     }
 
     private func setStatusImage(
         _ image: NSImage,
-        on button: NSStatusBarButton,
-        mode: DisplayMode,
-        labelStyle: ProviderLabelStyle
+        on button: NSStatusBarButton
     ) {
-        let targetLength = max(
-            image.size.width + statusItemHorizontalPadding,
-            reservedStatusItemLength(mode: mode, labelStyle: labelStyle)
-        )
+        let targetLength = ceil(image.size.width + statusItemHorizontalPadding)
         if abs(statusItem.length - targetLength) > 0.5 {
             statusItem.length = targetLength
         }
@@ -91,54 +85,7 @@ final class StatusItemRenderer {
         button.contentTintColor = nil
         button.image = image
         button.imagePosition = .imageOnly
-    }
-
-    private func reservedStatusItemLength(mode: DisplayMode, labelStyle: ProviderLabelStyle) -> CGFloat {
-        let sampleSnapshot = UsageSnapshot(
-            claude: sampleUsage(.claude),
-            codex: sampleUsage(.codex),
-            updatedAt: Date()
-        )
-
-        let image: NSImage
-        if labelStyle == .icon {
-            image = statusTitleImage(
-                segments: statusSegments(
-                    snapshot: sampleSnapshot,
-                    mode: mode,
-                    labelStyle: labelStyle,
-                    baseColor: statusTextColor,
-                    warningColor: statusWarningColor
-                ),
-                iconTint: statusTextColor
-            )
-        } else {
-            image = statusTitleImage(
-                DisplayFormatter.statusTitle(
-                    snapshot: sampleSnapshot,
-                    mode: mode,
-                    labelStyle: labelStyle
-                ),
-                color: statusTextColor
-            )
-        }
-
-        return image.size.width + statusItemHorizontalPadding
-    }
-
-    private func sampleUsage(_ provider: Provider) -> ProviderUsage {
-        ProviderUsage(
-            provider: provider,
-            remainingPercent5h: 100,
-            remainingPercent7d: 100,
-            resetAt5h: nil,
-            resetAt7d: nil,
-            source: .api,
-            error: nil,
-            plan: nil,
-            model: nil,
-            updatedAt: Date()
-        )
+        button.imageScaling = .scaleNone
     }
 
     private func statusTitleImage(_ title: String, color: NSColor) -> NSImage {
@@ -280,20 +227,74 @@ final class StatusItemRenderer {
         return .text(DisplayFormatter.formatPercent(DisplayFormatter.displayPercent(usage)), color)
     }
 
-    private func loadIcon(named name: String) -> NSImage {
+    private func loadIcon(named name: String) -> StatusIcon {
         if let url = Bundle.module.url(forResource: name, withExtension: "png"),
            let image = NSImage(contentsOf: url) {
-            return image
+            return StatusIcon(image: image, contentRect: visibleContentRect(for: image))
         }
-        return NSImage(size: NSSize(width: 14, height: 14))
+        let image = NSImage(size: NSSize(width: 14, height: 14))
+        return StatusIcon(image: image, contentRect: NSRect(origin: .zero, size: image.size))
     }
 
-    private func drawIcon(_ icon: NSImage, in rect: NSRect, tint: NSColor) {
+    private func drawIcon(_ icon: StatusIcon, in rect: NSRect, tint: NSColor) {
         NSGraphicsContext.saveGraphicsState()
         tint.setFill()
         rect.fill()
-        icon.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1.0)
+        icon.image.draw(in: rect, from: icon.contentRect, operation: .destinationIn, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func visibleContentRect(for image: NSImage) -> NSRect {
+        guard
+            let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+            let data = cgImage.dataProvider?.data,
+            let bytes = CFDataGetBytePtr(data)
+        else {
+            return NSRect(origin: .zero, size: image.size)
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        let bytesPerPixel = max(1, cgImage.bitsPerPixel / 8)
+        let bytesPerRow = cgImage.bytesPerRow
+        let alphaOffset: Int
+        switch cgImage.alphaInfo {
+        case .first, .premultipliedFirst:
+            alphaOffset = 0
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return NSRect(origin: .zero, size: image.size)
+        default:
+            alphaOffset = bytesPerPixel - 1
+        }
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let alpha = bytes[(y * bytesPerRow) + (x * bytesPerPixel) + alphaOffset]
+                if alpha > 0 {
+                    minX = min(minX, x)
+                    minY = min(minY, y)
+                    maxX = max(maxX, x)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+
+        guard maxX >= minX, maxY >= minY else {
+            return NSRect(origin: .zero, size: image.size)
+        }
+
+        let scaleX = image.size.width / CGFloat(width)
+        let scaleY = image.size.height / CGFloat(height)
+        return NSRect(
+            x: CGFloat(minX) * scaleX,
+            y: CGFloat(height - maxY - 1) * scaleY,
+            width: CGFloat(maxX - minX + 1) * scaleX,
+            height: CGFloat(maxY - minY + 1) * scaleY
+        )
     }
 
     private var statusTextColor: NSColor {

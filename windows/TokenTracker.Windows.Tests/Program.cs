@@ -127,19 +127,40 @@ ExpectEqual(codexAuth.AccountId, "account-id", "Codex account id read");
 ExpectEqual(credentials.ReadClaudeAccessToken(home), "claude-token", "Claude access token read");
 ExpectEqual(credentials.ReadClaudeCredential(home).Plan, "max", "Claude credential plan read");
 
-var rateLimitedResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-rateLimitedResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
-var rateLimitedHandler = new QueueHttpMessageHandler(rateLimitedResponse);
-var rateLimitedClient = new UsageClient(new HttpClient(rateLimitedHandler), new CredentialReader(), home);
-var firstRateLimit = await rateLimitedClient.FetchClaudeAsync();
-ExpectEqual(firstRateLimit.Source, UsageSource.Unavailable, "Claude 429 is unavailable");
-Expect(firstRateLimit.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude 429 error includes retry delay");
-ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude 429 first call reaches HTTP");
-var skippedDuringBackoff = await rateLimitedClient.FetchClaudeAsync();
-ExpectEqual(skippedDuringBackoff.Source, UsageSource.Unavailable, "Claude backoff returns unavailable");
-Expect(skippedDuringBackoff.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude backoff error includes retry delay");
-ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude backoff skips HTTP");
-Directory.Delete(home, recursive: true);
+var rateLimitStatePath = Path.Combine(Path.GetTempPath(), $"tt-rate-limit-{Guid.NewGuid():N}.json");
+try
+{
+    var rateLimitedResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    rateLimitedResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
+    var rateLimitedHandler = new QueueHttpMessageHandler(rateLimitedResponse);
+    var rateLimitedClient = new UsageClient(new HttpClient(rateLimitedHandler), new CredentialReader(), home, rateLimitStatePath);
+    var firstRateLimit = await rateLimitedClient.FetchClaudeAsync();
+    ExpectEqual(firstRateLimit.Source, UsageSource.Unavailable, "Claude 429 is unavailable");
+    Expect(firstRateLimit.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude 429 error includes retry delay");
+    ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude 429 first call reaches HTTP");
+    var skippedDuringBackoff = await rateLimitedClient.FetchClaudeAsync();
+    ExpectEqual(skippedDuringBackoff.Source, UsageSource.Unavailable, "Claude backoff returns unavailable");
+    Expect(skippedDuringBackoff.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude backoff error includes retry delay");
+    ExpectEqual(rateLimitedHandler.CallCount, 1, "Claude backoff skips HTTP");
+
+    // The cooldown must survive an app restart: a brand-new client reading the
+    // same state file honors the outstanding cooldown without touching HTTP.
+    Expect(File.Exists(rateLimitStatePath), "Claude 429 cooldown is persisted to disk");
+    var restartHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+    var restartedClient = new UsageClient(new HttpClient(restartHandler), new CredentialReader(), home, rateLimitStatePath);
+    var afterRestart = await restartedClient.FetchClaudeAsync();
+    ExpectEqual(afterRestart.Source, UsageSource.Unavailable, "Claude cooldown survives restart");
+    Expect(afterRestart.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Restarted client reports persisted cooldown");
+    ExpectEqual(restartHandler.CallCount, 0, "Restarted client honors persisted cooldown without HTTP");
+}
+finally
+{
+    if (File.Exists(rateLimitStatePath))
+    {
+        File.Delete(rateLimitStatePath);
+    }
+    Directory.Delete(home, recursive: true);
+}
 
 var staleSnapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
@@ -194,7 +215,10 @@ ExpectEqual(
 
 var cachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cache-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
 var cacheStore = new CacheStore(cachePath);
-cacheStore.Save(staleSnapshot);
+// CacheStore.Load compares UpdatedAt against the real wall clock, so save a
+// snapshot stamped at the current time rather than the fixed test `now`
+// (otherwise this assertion becomes a date-bomb once real time drifts past it).
+cacheStore.Save(staleSnapshot with { UpdatedAt = DateTimeOffset.Now });
 var loadedSnapshot = cacheStore.Load(TimeSpan.FromHours(1));
 Expect(loadedSnapshot is not null, "Cache loads saved snapshot");
 ExpectEqual(loadedSnapshot!.Claude.RemainingPercent5h, 63, "Cache preserves Claude percent");

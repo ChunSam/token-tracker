@@ -36,7 +36,7 @@ internal sealed class TrayAppContext : ApplicationContext
         notifyIcon.ContextMenuStrip = BuildMenu();
         SetIcon(null);
 
-        timer.Interval = Math.Max(15, settings.RefreshIntervalSeconds) * 1000;
+        timer.Interval = Math.Max(60, settings.RefreshIntervalSeconds) * 1000;
         timer.Tick += async (_, _) => await RefreshAsync();
         timer.Start();
 
@@ -227,7 +227,7 @@ internal sealed class TrayAppContext : ApplicationContext
         root.DropDownItems.Add(Localizer.Text(L10nKey.OpenCodexAuth), null, (_, _) => RevealInExplorer(DiagnosticsReporter.CodexAuthPath));
         root.DropDownItems.Add(new ToolStripSeparator());
         AddDisabled(root.DropDownItems, $"{Localizer.Text(L10nKey.DuplicateInstances)}: {RunningInstanceCount()}");
-        if (settings.RefreshIntervalSeconds < 60)
+        if (settings.RefreshIntervalSeconds < 300)
         {
             AddDisabled(root.DropDownItems, Localizer.Text(L10nKey.RefreshIntervalWarning));
         }
@@ -378,7 +378,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void SaveSettings()
     {
-        timer.Interval = Math.Max(15, settings.RefreshIntervalSeconds) * 1000;
+        timer.Interval = Math.Max(60, settings.RefreshIntervalSeconds) * 1000;
         settingsStore.Save(settings);
     }
 

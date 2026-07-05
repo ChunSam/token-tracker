@@ -7,7 +7,7 @@ public sealed class AppSettings
 {
     public DisplayMode DisplayMode { get; set; } = DisplayMode.LowestRemaining;
     public ProviderLabelStyle ProviderLabelStyle { get; set; } = ProviderLabelStyle.Abbreviation;
-    public int RefreshIntervalSeconds { get; set; } = 60;
+    public int RefreshIntervalSeconds { get; set; } = 300;
     public bool ClaudeEnabled { get; set; } = true;
     public bool CodexEnabled { get; set; } = true;
     public bool LaunchAtLogin { get; set; }

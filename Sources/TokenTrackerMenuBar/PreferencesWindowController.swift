@@ -116,7 +116,7 @@ final class PreferencesWindowController: NSWindowController {
 
         reloadPopup(displayMode, values: DisplayMode.allCases.map { ($0.label, $0.rawValue) }, selected: settings.displayMode.rawValue)
         reloadPopup(labelStyle, values: ProviderLabelStyle.allCases.map { ($0.label, $0.rawValue) }, selected: settings.providerLabelStyle.rawValue)
-        reloadPopup(refreshInterval, values: [(title: "30s", value: "30"), (title: "1m", value: "60"), (title: "5m", value: "300")], selected: String(Int(settings.refreshInterval)))
+        reloadPopup(refreshInterval, values: [(title: "1m", value: "60"), (title: "5m", value: "300"), (title: "15m", value: "900")], selected: String(Int(settings.refreshInterval)))
         reloadPopup(language, values: AppLanguage.allCases.map { ($0.label, $0.rawValue) }, selected: settings.language.rawValue)
 
         fiveHourStepper.integerValue = settings.fiveHourAlertThreshold

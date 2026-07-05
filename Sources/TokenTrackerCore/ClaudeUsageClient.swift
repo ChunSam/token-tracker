@@ -3,7 +3,7 @@ import Foundation
 struct ClaudeUsageClient: Sendable {
     private let http: HTTPClient
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
-    private let rateLimitState = ClaudeRateLimitState()
+    private let rateLimitState = ClaudeRateLimitState(store: ClaudeRateLimitStore(url: AppPaths.claudeRateLimit))
     fileprivate static let defaultRateLimitCooldown: TimeInterval = 300
     fileprivate static let minimumRateLimitCooldown: TimeInterval = 120
 
@@ -186,9 +186,26 @@ private enum TokenSource {
 }
 
 private actor ClaudeRateLimitState {
+    private let store: ClaudeRateLimitStore
     private var retryAllowedAt: Date?
+    private var didLoad = false
+
+    init(store: ClaudeRateLimitStore) {
+        self.store = store
+    }
+
+    /// Seed the in-memory cooldown from disk on first use so a relaunch during a
+    /// cooldown does not immediately re-fire a still-rate-limited request.
+    private func loadIfNeeded() {
+        guard !didLoad else {
+            return
+        }
+        didLoad = true
+        retryAllowedAt = store.load()
+    }
 
     func currentError(serviceName: String) -> UsageError? {
+        loadIfNeeded()
         guard let retryAllowedAt else {
             return nil
         }
@@ -196,20 +213,26 @@ private actor ClaudeRateLimitState {
         let remaining = retryAllowedAt.timeIntervalSinceNow
         if remaining <= 0 {
             self.retryAllowedAt = nil
+            store.clear()
             return nil
         }
         return .httpStatus(code: 429, service: serviceName, retryAfter: remaining)
     }
 
     func backOff(for retryAfter: TimeInterval) {
+        loadIfNeeded()
         let cooldown = max(
             ClaudeUsageClient.minimumRateLimitCooldown,
             retryAfter
         )
-        retryAllowedAt = Date().addingTimeInterval(cooldown)
+        let allowedAt = Date().addingTimeInterval(cooldown)
+        retryAllowedAt = allowedAt
+        store.save(retryAllowedAt: allowedAt)
     }
 
     func clear() {
+        loadIfNeeded()
         retryAllowedAt = nil
+        store.clear()
     }
 }

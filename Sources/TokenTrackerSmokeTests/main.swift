@@ -157,4 +157,30 @@ rateLimitStore.save(retryAllowedAt: futureRetry)
 rateLimitStore.clear()
 expect(rateLimitStore.load() == nil, "cleared cooldown reads as empty")
 
+expectEqual(RateLimitBackoff.cooldown(retryAfter: 300, failureCount: 0, jitter: 0), 300, "first headerless 429 waits the 300s default")
+expectEqual(RateLimitBackoff.cooldown(retryAfter: 0, failureCount: 0, jitter: 0), 120, "absent Retry-After falls back to the 120s minimum")
+expectEqual(RateLimitBackoff.cooldown(retryAfter: 300, failureCount: 2, jitter: 0), 1200, "repeated 429 escalates exponentially")
+expectEqual(RateLimitBackoff.cooldown(retryAfter: 300, failureCount: 5, jitter: 0), 1800, "escalation is capped at 30m")
+expectEqual(RateLimitBackoff.cooldown(retryAfter: 3600, failureCount: 0, jitter: 0), 3600, "an explicit longer Retry-After is honored above the cap")
+let jitteredCooldown = RateLimitBackoff.cooldown(retryAfter: 300, failureCount: 0, jitter: RateLimitBackoff.jitterFraction)
+expect(jitteredCooldown > 300 && jitteredCooldown <= 360, "jitter adds up to 20 percent on top of the base cooldown")
+
+let arbiterNow = Date()
+expect(!InstanceArbiter.shouldYield(current: .init(pid: 100, launchDate: arbiterNow), others: []), "a lone instance keeps running")
+expect(InstanceArbiter.shouldYield(current: .init(pid: 100, launchDate: arbiterNow), others: [.init(pid: 50, launchDate: arbiterNow.addingTimeInterval(-1))]), "an earlier instance owns the slot")
+expect(!InstanceArbiter.shouldYield(current: .init(pid: 100, launchDate: arbiterNow), others: [.init(pid: 200, launchDate: arbiterNow.addingTimeInterval(1))]), "a later instance yields to us")
+expect(InstanceArbiter.shouldYield(current: .init(pid: 100, launchDate: arbiterNow), others: [.init(pid: 50, launchDate: arbiterNow)]), "simultaneous launch: the lower pid owns the slot")
+expect(!InstanceArbiter.shouldYield(current: .init(pid: 50, launchDate: arbiterNow), others: [.init(pid: 100, launchDate: arbiterNow)]), "simultaneous launch: we survive as the lower pid")
+
+let settingsSuiteName = "tt-settings-\(UUID().uuidString)"
+if let migrationDefaults = UserDefaults(suiteName: settingsSuiteName) {
+    defer { migrationDefaults.removeSuite(named: settingsSuiteName) }
+    migrationDefaults.set(30.0, forKey: "refreshInterval")
+    expectEqual(Settings(defaults: migrationDefaults).refreshInterval, 60, "legacy sub-60 refresh interval migrates to the 60s floor")
+    migrationDefaults.set(300.0, forKey: "refreshInterval")
+    expectEqual(Settings(defaults: migrationDefaults).refreshInterval, 300, "valid refresh interval is left unchanged")
+} else {
+    expect(false, "settings migration suite is available")
+}
+
 print("TokenTrackerSmokeTests passed")

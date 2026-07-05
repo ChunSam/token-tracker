@@ -43,7 +43,16 @@ public sealed class SettingsStore
 
         try
         {
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path), Options) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Path), Options) ?? new AppSettings();
+            // A saved interval below the current 60s floor (for example the removed
+            // 30s option) is no longer selectable and must never poll faster than
+            // the floor, so raise it on load. Values at or above 60s are untouched.
+            if (settings.RefreshIntervalSeconds < 60)
+            {
+                settings.RefreshIntervalSeconds = 60;
+            }
+
+            return settings;
         }
         catch
         {

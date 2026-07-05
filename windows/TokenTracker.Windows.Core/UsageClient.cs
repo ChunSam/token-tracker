@@ -174,10 +174,10 @@ public sealed class UsageHttpException : Exception
 
 internal sealed class ClaudeRateLimitState
 {
-    private static readonly TimeSpan MinimumCooldown = TimeSpan.FromMinutes(2);
     private readonly object gate = new();
     private readonly ClaudeRateLimitStore store;
     private DateTimeOffset? retryAllowedAt;
+    private int failureCount;
     private bool loaded;
 
     public ClaudeRateLimitState(ClaudeRateLimitStore store)
@@ -225,7 +225,13 @@ internal sealed class ClaudeRateLimitState
         lock (gate)
         {
             EnsureLoaded();
-            var cooldown = retryAfter > MinimumCooldown ? retryAfter : MinimumCooldown;
+            // Escalate the cooldown per consecutive 429 and add jitter so repeated
+            // rate limiting backs off further instead of retrying at a fixed cadence.
+            var cooldown = RateLimitBackoff.Cooldown(
+                retryAfter,
+                failureCount,
+                Random.Shared.NextDouble() * RateLimitBackoff.JitterFraction);
+            failureCount++;
             retryAllowedAt = DateTimeOffset.Now.Add(cooldown);
             store.Save(retryAllowedAt.Value);
         }
@@ -236,6 +242,7 @@ internal sealed class ClaudeRateLimitState
         lock (gate)
         {
             EnsureLoaded();
+            failureCount = 0;
             retryAllowedAt = null;
             store.Clear();
         }

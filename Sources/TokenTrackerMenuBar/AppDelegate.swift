@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !terminateIfDuplicateInstance() else { return }
         NSApp.setActivationPolicy(.accessory)
         statusItemRenderer.setPlaceholder(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         configureMenu()
@@ -224,5 +225,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func runningInstanceCount() -> Int {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "local.token-tracker.menubar"
         return NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).count
+    }
+
+    /// Quit immediately when another instance is already running so a duplicate
+    /// launch does not double the polling rate against the shared per-account
+    /// Claude limit (parity with the Windows named-mutex guard). Returns `true`
+    /// when this instance yielded and the caller must skip the rest of launch.
+    private func terminateIfDuplicateInstance() -> Bool {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "local.token-tracker.menubar"
+        let current = NSRunningApplication.current
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .filter { $0.processIdentifier != current.processIdentifier }
+            .map { InstanceArbiter.Instance(pid: $0.processIdentifier, launchDate: $0.launchDate) }
+        let currentInstance = InstanceArbiter.Instance(pid: current.processIdentifier, launchDate: current.launchDate)
+        guard InstanceArbiter.shouldYield(current: currentInstance, others: others) else {
+            return false
+        }
+        NSApp.terminate(nil)
+        return true
     }
 }

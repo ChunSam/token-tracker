@@ -264,6 +264,22 @@ ExpectEqual(loadedSettings.FiveHourAlertThreshold, 25, "Alert threshold persists
 ExpectEqual(loadedSettings.HistoryRetentionDays, 30, "History retention persists");
 Directory.Delete(Path.GetDirectoryName(settingsPath)!, recursive: true);
 
+ExpectEqual(RateLimitBackoff.Cooldown(TimeSpan.FromSeconds(300), 0, 0).TotalSeconds, 300.0, "First headerless 429 waits the 300s default");
+ExpectEqual(RateLimitBackoff.Cooldown(TimeSpan.Zero, 0, 0).TotalSeconds, 120.0, "Absent Retry-After falls back to the 120s minimum");
+ExpectEqual(RateLimitBackoff.Cooldown(TimeSpan.FromSeconds(300), 2, 0).TotalSeconds, 1200.0, "Repeated 429 escalates exponentially");
+ExpectEqual(RateLimitBackoff.Cooldown(TimeSpan.FromSeconds(300), 5, 0).TotalSeconds, 1800.0, "Escalation is capped at 30m");
+ExpectEqual(RateLimitBackoff.Cooldown(TimeSpan.FromSeconds(3600), 0, 0).TotalSeconds, 3600.0, "An explicit longer Retry-After is honored above the cap");
+var jitteredCooldown = RateLimitBackoff.Cooldown(TimeSpan.FromSeconds(300), 0, RateLimitBackoff.JitterFraction).TotalSeconds;
+Expect(jitteredCooldown > 300.0 && jitteredCooldown <= 360.0, "Jitter adds up to 20 percent on top of the base cooldown");
+
+var legacyIntervalPath = Path.Combine(Path.GetTempPath(), "token-tracker-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+var legacyIntervalStore = new SettingsStore(legacyIntervalPath);
+legacyIntervalStore.Save(new AppSettings { RefreshIntervalSeconds = 30 });
+ExpectEqual(legacyIntervalStore.Load().RefreshIntervalSeconds, 60, "Legacy sub-60 refresh interval migrates to the 60s floor");
+legacyIntervalStore.Save(new AppSettings { RefreshIntervalSeconds = 300 });
+ExpectEqual(legacyIntervalStore.Load().RefreshIntervalSeconds, 300, "Valid refresh interval is left unchanged");
+Directory.Delete(Path.GetDirectoryName(legacyIntervalPath)!, recursive: true);
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static ProviderUsage Usage(

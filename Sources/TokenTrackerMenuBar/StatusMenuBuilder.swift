@@ -93,7 +93,7 @@ struct StatusMenuBuilder {
         )
         diagnosticsMenu.addItem(.separator())
         diagnosticsMenu.addItem(infoItem("\(context.localizer.text(.duplicateInstances)): \(context.runningInstanceCount)"))
-        if context.settings.refreshInterval < 60 {
+        if context.settings.refreshInterval < 300 {
             diagnosticsMenu.addItem(infoItem(context.localizer.text(.refreshIntervalWarning)))
         }
 

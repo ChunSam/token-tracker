@@ -17,6 +17,9 @@ public static class AppPaths
     public static string UsageHistoryPath =>
         Path.Combine(AppDataDirectory, "usage-history.json");
 
+    public static string ClaudeRateLimitStatePath =>
+        Path.Combine(AppDataDirectory, "claude-rate-limit.json");
+
     public static string CodexAuthPath(string? homeDirectory = null) =>
         Path.Combine(homeDirectory ?? HomeDirectory, ".codex", "auth.json");
 

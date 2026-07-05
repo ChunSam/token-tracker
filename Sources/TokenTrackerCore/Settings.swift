@@ -90,7 +90,7 @@ public final class Settings {
         defaults.register(defaults: [
             Key.displayMode: DisplayMode.lowestRemaining.rawValue,
             Key.providerLabelStyle: ProviderLabelStyle.abbreviation.rawValue,
-            Key.refreshInterval: 60.0,
+            Key.refreshInterval: 300.0,
             Key.claudeEnabled: true,
             Key.codexEnabled: true,
             Key.language: AppLanguage.system.rawValue,

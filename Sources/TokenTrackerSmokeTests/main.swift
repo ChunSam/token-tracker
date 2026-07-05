@@ -138,4 +138,23 @@ let csv = UsageHistoryFormatter.csvString(for: [UsageHistoryEntry(recordedAt: no
 expect(csv.contains("recorded_at,provider,remaining_5h"), "history csv includes header")
 expect(csv.contains("claude,63,80"), "history csv includes claude row")
 
+let rateLimitStoreURL = FileManager.default.temporaryDirectory
+    .appendingPathComponent("tt-rate-limit-\(UUID().uuidString).json")
+let rateLimitStore = ClaudeRateLimitStore(url: rateLimitStoreURL)
+defer { try? FileManager.default.removeItem(at: rateLimitStoreURL) }
+
+expect(rateLimitStore.load() == nil, "rate limit store starts empty")
+let futureRetry = Date().addingTimeInterval(300)
+rateLimitStore.save(retryAllowedAt: futureRetry)
+if let persisted = rateLimitStore.load() {
+    expect(abs(persisted.timeIntervalSince(futureRetry)) < 1, "future cooldown survives a reload")
+} else {
+    expect(false, "future cooldown survives a reload")
+}
+rateLimitStore.save(retryAllowedAt: Date().addingTimeInterval(-1))
+expect(rateLimitStore.load() == nil, "expired cooldown reads as empty")
+rateLimitStore.save(retryAllowedAt: futureRetry)
+rateLimitStore.clear()
+expect(rateLimitStore.load() == nil, "cleared cooldown reads as empty")
+
 print("TokenTrackerSmokeTests passed")

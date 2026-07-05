@@ -78,9 +78,9 @@ internal sealed class SettingsForm : Form
             localizer.Text(L10nKey.RefreshInterval),
             new[]
             {
-                new Option<int>("30s", 30),
                 new Option<int>("1m", 60),
-                new Option<int>("5m", 300)
+                new Option<int>("5m", 300),
+                new Option<int>("15m", 900)
             },
             settings.RefreshIntervalSeconds,
             value =>

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 
 namespace TokenTracker.Windows.Core;
 
@@ -11,14 +12,20 @@ public sealed class UsageClient
 
     private readonly HttpClient http;
     private readonly CredentialReader credentialReader;
-    private readonly ClaudeRateLimitState claudeRateLimitState = new();
+    private readonly ClaudeRateLimitState claudeRateLimitState;
     private readonly string? homeDirectory;
 
-    public UsageClient(HttpClient? http = null, CredentialReader? credentialReader = null, string? homeDirectory = null)
+    public UsageClient(
+        HttpClient? http = null,
+        CredentialReader? credentialReader = null,
+        string? homeDirectory = null,
+        string? rateLimitStatePath = null)
     {
         this.http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         this.credentialReader = credentialReader ?? new CredentialReader();
         this.homeDirectory = homeDirectory;
+        this.claudeRateLimitState = new ClaudeRateLimitState(
+            new ClaudeRateLimitStore(rateLimitStatePath ?? AppPaths.ClaudeRateLimitStatePath));
     }
 
     public async Task<UsageSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
@@ -169,12 +176,33 @@ internal sealed class ClaudeRateLimitState
 {
     private static readonly TimeSpan MinimumCooldown = TimeSpan.FromMinutes(2);
     private readonly object gate = new();
+    private readonly ClaudeRateLimitStore store;
     private DateTimeOffset? retryAllowedAt;
+    private bool loaded;
+
+    public ClaudeRateLimitState(ClaudeRateLimitStore store)
+    {
+        this.store = store;
+    }
+
+    // Seed the in-memory cooldown from disk on first use so a relaunch during a
+    // cooldown does not immediately re-fire a still-rate-limited request.
+    private void EnsureLoaded()
+    {
+        if (loaded)
+        {
+            return;
+        }
+
+        loaded = true;
+        retryAllowedAt = store.Load();
+    }
 
     public UsageHttpException? CurrentError(string serviceName)
     {
         lock (gate)
         {
+            EnsureLoaded();
             if (retryAllowedAt is null)
             {
                 return null;
@@ -184,6 +212,7 @@ internal sealed class ClaudeRateLimitState
             if (remaining <= TimeSpan.Zero)
             {
                 retryAllowedAt = null;
+                store.Clear();
                 return null;
             }
 
@@ -195,8 +224,10 @@ internal sealed class ClaudeRateLimitState
     {
         lock (gate)
         {
+            EnsureLoaded();
             var cooldown = retryAfter > MinimumCooldown ? retryAfter : MinimumCooldown;
             retryAllowedAt = DateTimeOffset.Now.Add(cooldown);
+            store.Save(retryAllowedAt.Value);
         }
     }
 
@@ -204,7 +235,79 @@ internal sealed class ClaudeRateLimitState
     {
         lock (gate)
         {
+            EnsureLoaded();
             retryAllowedAt = null;
+            store.Clear();
         }
     }
+}
+
+/// <summary>
+/// Persists the Claude usage endpoint's 429 cooldown across app restarts. The
+/// <c>/api/oauth/usage</c> rate limit is enforced per account and shared with
+/// everything using the same OAuth token, so keeping the cooldown only in memory
+/// meant a relaunch during a cooldown immediately re-fired a still-rate-limited
+/// request. Persisting the retry instant lets a restarted app honor it instead.
+/// </summary>
+internal sealed class ClaudeRateLimitStore
+{
+    private readonly string path;
+
+    public ClaudeRateLimitStore(string path)
+    {
+        this.path = path;
+    }
+
+    // Returns the persisted retry instant only while it is still in the future;
+    // an expired or missing record reads as null.
+    public DateTimeOffset? Load()
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var record = JsonSerializer.Deserialize<Record>(File.ReadAllText(path));
+            if (record is null || record.RetryAllowedAt <= DateTimeOffset.Now)
+            {
+                return null;
+            }
+
+            return record.RetryAllowedAt;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public void Save(DateTimeOffset retryAllowedAt)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(new Record(retryAllowedAt)));
+        }
+        catch
+        {
+        }
+    }
+
+    public void Clear()
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private sealed record Record(DateTimeOffset RetryAllowedAt);
 }

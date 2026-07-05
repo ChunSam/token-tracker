@@ -19,6 +19,10 @@ enum AppPaths {
         cacheDirectory.appendingPathComponent("usage-history.json")
     }
 
+    static var claudeRateLimit: URL {
+        cacheDirectory.appendingPathComponent("claude-rate-limit.json")
+    }
+
     static var codexAuth: URL {
         home.appendingPathComponent(".codex/auth.json")
     }

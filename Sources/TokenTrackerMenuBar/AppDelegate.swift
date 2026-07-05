@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: max(15, settings.refreshInterval), repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: max(60, settings.refreshInterval), repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.startRefresh(showLoadingIndicator: false)
             }

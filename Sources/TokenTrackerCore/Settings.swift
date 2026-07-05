@@ -20,6 +20,7 @@ public final class Settings {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         registerDefaults()
+        migrateLegacyRefreshInterval()
     }
 
     public var displayMode: DisplayMode {
@@ -84,6 +85,21 @@ public final class Settings {
     public var historyRetentionDays: Int {
         get { defaults.integer(forKey: Key.historyRetentionDays) }
         set { defaults.set(max(1, min(365, newValue)), forKey: Key.historyRetentionDays) }
+    }
+
+    /// A saved refresh interval below the current 60s floor (for example the
+    /// removed 30s option) can no longer be selected in Preferences and would
+    /// otherwise only be clamped by the poll timer. Raise it once to the minimum
+    /// so the stored value matches a real option and never polls faster than the
+    /// floor. Values at or above 60s (including the registered 300s default) are
+    /// left untouched.
+    private func migrateLegacyRefreshInterval() {
+        guard let stored = defaults.object(forKey: Key.refreshInterval) as? Double else {
+            return
+        }
+        if stored > 0 && stored < 60 {
+            defaults.set(60.0, forKey: Key.refreshInterval)
+        }
     }
 
     private func registerDefaults() {

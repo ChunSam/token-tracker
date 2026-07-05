@@ -5,7 +5,6 @@ struct ClaudeUsageClient: Sendable {
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let rateLimitState = ClaudeRateLimitState(store: ClaudeRateLimitStore(url: AppPaths.claudeRateLimit))
     fileprivate static let defaultRateLimitCooldown: TimeInterval = 300
-    fileprivate static let minimumRateLimitCooldown: TimeInterval = 120
 
     init(http: HTTPClient = HTTPClient()) {
         self.http = http
@@ -188,6 +187,7 @@ private enum TokenSource {
 private actor ClaudeRateLimitState {
     private let store: ClaudeRateLimitStore
     private var retryAllowedAt: Date?
+    private var failureCount = 0
     private var didLoad = false
 
     init(store: ClaudeRateLimitStore) {
@@ -221,10 +221,14 @@ private actor ClaudeRateLimitState {
 
     func backOff(for retryAfter: TimeInterval) {
         loadIfNeeded()
-        let cooldown = max(
-            ClaudeUsageClient.minimumRateLimitCooldown,
-            retryAfter
+        // Escalate the cooldown per consecutive 429 and add jitter so repeated
+        // rate limiting backs off further instead of retrying at a fixed cadence.
+        let cooldown = RateLimitBackoff.cooldown(
+            retryAfter: retryAfter,
+            failureCount: failureCount,
+            jitter: Double.random(in: 0...RateLimitBackoff.jitterFraction)
         )
+        failureCount += 1
         let allowedAt = Date().addingTimeInterval(cooldown)
         retryAllowedAt = allowedAt
         store.save(retryAllowedAt: allowedAt)
@@ -232,6 +236,7 @@ private actor ClaudeRateLimitState {
 
     func clear() {
         loadIfNeeded()
+        failureCount = 0
         retryAllowedAt = nil
         store.clear()
     }

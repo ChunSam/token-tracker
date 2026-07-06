@@ -64,6 +64,13 @@ internal sealed class TrayAppContext : ApplicationContext
             return;
         }
 
+        if (PauseController.IsPaused(settings.PollPausedUntil))
+        {
+            // Skip the network fetch while paused; keep the menu's countdown fresh.
+            notifyIcon.ContextMenuStrip = BuildMenu();
+            return;
+        }
+
         refreshing = true;
         notifyIcon.Text = TrimTooltip("Token Tracker: refreshing...");
 
@@ -136,8 +143,20 @@ internal sealed class TrayAppContext : ApplicationContext
         }
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(Localizer.Text(L10nKey.RefreshNow), null, async (_, _) => await RefreshAsync());
+        menu.Items.Add(Localizer.Text(L10nKey.RefreshNow), null, async (_, _) =>
+        {
+            // A manual refresh is an explicit request to fetch now, so it also
+            // lifts an active pause.
+            if (PauseController.IsPaused(settings.PollPausedUntil))
+            {
+                settings.PollPausedUntil = null;
+                SaveSettings();
+            }
+
+            await RefreshAsync();
+        });
         menu.Items.Add(Localizer.Text(L10nKey.Preferences), null, (_, _) => ShowSettings());
+        AddPauseControls(menu);
         menu.Items.Add(DiagnosticsMenu());
         menu.Items.Add(HistoryMenu());
 
@@ -223,6 +242,38 @@ internal sealed class TrayAppContext : ApplicationContext
         settings.ProviderLabelStyle == ProviderLabelStyle.Icon
             ? providerLogos.MenuLogo(usage.Provider)
             : null;
+
+    private void AddPauseControls(ContextMenuStrip menu)
+    {
+        if (PauseController.IsPaused(settings.PollPausedUntil))
+        {
+            var remainingText = PauseController.IsIndefinite(settings.PollPausedUntil)
+                ? Localizer.Text(L10nKey.PauseUntilResumed)
+                : UsageForecaster.DurationText(PauseController.Remaining(settings.PollPausedUntil).TotalSeconds);
+            AddDisabled(menu.Items, $"{Localizer.Text(L10nKey.UpdatesPaused)}: {remainingText}");
+            menu.Items.Add(Localizer.Text(L10nKey.ResumeNow), null, async (_, _) =>
+            {
+                settings.PollPausedUntil = null;
+                SaveSettings();
+                await RefreshAsync();
+            });
+        }
+
+        var pauseRoot = new ToolStripMenuItem(Localizer.Text(L10nKey.PausePolling));
+        pauseRoot.DropDownItems.Add(Localizer.Text(L10nKey.Pause1h), null, (_, _) => PausePolling(TimeSpan.FromHours(1)));
+        pauseRoot.DropDownItems.Add(Localizer.Text(L10nKey.Pause3h), null, (_, _) => PausePolling(TimeSpan.FromHours(3)));
+        pauseRoot.DropDownItems.Add(Localizer.Text(L10nKey.PauseUntilResumed), null, (_, _) => PausePolling(null));
+        menu.Items.Add(pauseRoot);
+    }
+
+    private void PausePolling(TimeSpan? duration)
+    {
+        settings.PollPausedUntil = duration is null
+            ? DateTimeOffset.MaxValue
+            : DateTimeOffset.Now + duration.Value;
+        SaveSettings();
+        notifyIcon.ContextMenuStrip = BuildMenu();
+    }
 
     private ToolStripMenuItem DiagnosticsMenu()
     {

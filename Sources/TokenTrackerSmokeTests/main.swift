@@ -246,4 +246,14 @@ expectEqual(UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled:
 let safeForecastInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: earlyResetForecast!, resetAt: now.addingTimeInterval(3600))
 expectEqual(UsageForecastAlert.candidates(inputs: [safeForecastInput], enabled: true).count, 0, "no forecast alert when the reset comes first")
 
+// MARK: Pause controller
+let pauseNow = Date()
+expect(PauseController.isPaused(until: pauseNow.addingTimeInterval(3600), now: pauseNow), "paused while the resume instant is in the future")
+expect(!PauseController.isPaused(until: pauseNow.addingTimeInterval(-10), now: pauseNow), "not paused once the resume instant has passed")
+expect(!PauseController.isPaused(until: nil, now: pauseNow), "not paused when unset")
+expectEqual(Int(PauseController.remaining(until: pauseNow.addingTimeInterval(1800), now: pauseNow)), 1800, "remaining reports seconds until resume")
+expectEqual(Int(PauseController.remaining(until: nil, now: pauseNow)), 0, "remaining is zero when not paused")
+expect(PauseController.isIndefinite(until: .distantFuture, now: pauseNow), "a distant-future pause is indefinite")
+expect(!PauseController.isIndefinite(until: pauseNow.addingTimeInterval(3600), now: pauseNow), "a timed pause is not indefinite")
+
 print("TokenTrackerSmokeTests passed")

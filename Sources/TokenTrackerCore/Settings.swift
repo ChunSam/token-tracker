@@ -15,6 +15,7 @@ public final class Settings {
         static let historyRetentionDays = "historyRetentionDays"
         static let showForecast = "showForecast"
         static let depletionAlertEnabled = "depletionAlertEnabled"
+        static let pollPausedUntil = "pollPausedUntil"
     }
 
     private let defaults: UserDefaults
@@ -97,6 +98,16 @@ public final class Settings {
     public var depletionAlertEnabled: Bool {
         get { defaults.bool(forKey: Key.depletionAlertEnabled) }
         set { defaults.set(newValue, forKey: Key.depletionAlertEnabled) }
+    }
+
+    /// When updates are paused, the instant polling resumes (persisted, so a
+    /// restart during a pause stays paused). `nil`/absent means not paused.
+    public var pollPausedUntil: Date? {
+        get {
+            let value = defaults.double(forKey: Key.pollPausedUntil)
+            return value > 0 ? Date(timeIntervalSince1970: value) : nil
+        }
+        set { defaults.set(newValue?.timeIntervalSince1970 ?? 0, forKey: Key.pollPausedUntil) }
     }
 
     /// A saved refresh interval below the current 60s floor (for example the

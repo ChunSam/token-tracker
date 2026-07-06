@@ -59,11 +59,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshNow() {
+        // A manual refresh is an explicit request to fetch now, so it also
+        // lifts an active pause.
+        if PauseController.isPaused(until: settings.pollPausedUntil) {
+            settings.pollPausedUntil = nil
+        }
         startRefresh(showLoadingIndicator: true)
     }
 
     private func startRefresh(showLoadingIndicator: Bool) {
         guard refreshTask == nil else { return }
+        if PauseController.isPaused(until: settings.pollPausedUntil) {
+            // Skip the network fetch while paused; keep the menu's countdown fresh.
+            configureMenu()
+            return
+        }
         if showLoadingIndicator || snapshot == nil {
             statusItemRenderer.setLoading(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         }
@@ -116,6 +126,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openCodexAuth: #selector(openCodexAuth),
             exportHistoryCSV: #selector(exportHistoryCSV),
             toggleLaunchAtLogin: #selector(toggleLaunchAtLogin),
+            pause1h: #selector(pausePolling1h),
+            pause3h: #selector(pausePolling3h),
+            pauseUntilResumed: #selector(pausePollingUntilResumed),
+            resumePolling: #selector(resumePolling),
             quit: #selector(quit)
         )
     }
@@ -128,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             snapshot: snapshot,
             lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
             forecastLines: forecastLines(),
+            pausedRemainingText: pauseRemainingText(),
             historyTrendText: reporter.historyTrendText(),
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
@@ -176,6 +191,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         return UsageForecastAlert.candidates(inputs: inputs, enabled: true, localizer: localizer)
+    }
+
+    /// The "Updates paused" menu text, or `nil` when not paused. Shows the
+    /// localized "until I resume" for an indefinite pause, else a countdown.
+    private func pauseRemainingText() -> String? {
+        let until = settings.pollPausedUntil
+        guard PauseController.isPaused(until: until) else { return nil }
+        if PauseController.isIndefinite(until: until) {
+            return localizer.text(.pauseUntilResumed)
+        }
+        return UsageForecaster.durationText(PauseController.remaining(until: until))
+    }
+
+    @objc private func pausePolling1h() { pausePolling(for: 3600) }
+
+    @objc private func pausePolling3h() { pausePolling(for: 3 * 3600) }
+
+    @objc private func pausePollingUntilResumed() {
+        settings.pollPausedUntil = .distantFuture
+        applyPauseChange()
+    }
+
+    @objc private func resumePolling() {
+        settings.pollPausedUntil = nil
+        applyPauseChange()
+        refreshNow()
+    }
+
+    private func pausePolling(for seconds: TimeInterval) {
+        settings.pollPausedUntil = Date().addingTimeInterval(seconds)
+        applyPauseChange()
+    }
+
+    private func applyPauseChange() {
+        updateStatusTitle()
+        configureMenu()
     }
 
     @objc private func showPreferences() {

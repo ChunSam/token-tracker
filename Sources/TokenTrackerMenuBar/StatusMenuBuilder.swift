@@ -25,6 +25,7 @@ struct StatusMenuContext {
     let lastSuccessfulRefreshAt: Date?
     let forecastLines: [Provider: String]
     let pausedRemainingText: String?
+    let sparklines: [Provider: String]
     let historyTrendText: String
     let launchAtLoginEnabled: Bool
     let launchAtLoginStatus: String
@@ -130,6 +131,11 @@ struct StatusMenuBuilder {
         let historyMenu = NSMenu()
         historyMenu.autoenablesItems = false
         historyMenu.addItem(infoItem(context.historyTrendText))
+        for provider in Provider.allCases {
+            if let sparkline = context.sparklines[provider] {
+                historyMenu.addItem(infoItem(sparkline))
+            }
+        }
         historyMenu.addItem(infoItem("\(context.localizer.text(.historyRetentionDays)): \(context.settings.historyRetentionDays)d"))
         historyMenu.addItem(.separator())
         addAction(

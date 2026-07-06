@@ -335,6 +335,16 @@ ExpectEqual(UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled:
 var safeForecastInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, earlyResetForecast, now.AddHours(1));
 ExpectEqual(UsageForecastAlert.Candidates(new[] { safeForecastInput }, enabled: true).Count, 0, "No forecast alert when the reset comes first");
 
+// Sparkline
+ExpectEqual(SparklineText.Render(new[] { 0, 25, 50, 75, 100 }), "▁▃▅▇█", "Sparkline maps values across the eight blocks");
+ExpectEqual(SparklineText.Render(new[] { 42 }), "", "A single point renders nothing");
+ExpectEqual(SparklineText.Render(Array.Empty<int>()), "", "An empty series renders nothing");
+var sparkEntries = new[] { ForecastEntry(3600, 100), ForecastEntry(1800, 50), ForecastEntry(0, 0) };
+ExpectEqual(string.Join(",", SparklineSeries.Build(sparkEntries, Provider.Claude, ForecastWindow.FiveHour)), "100,50,0", "Sparkline series extracts remaining values in time order");
+ExpectEqual(SparklineText.Render(SparklineSeries.Build(sparkEntries, Provider.Claude, ForecastWindow.FiveHour)), "█▅▁", "End-to-end sparkline render");
+var manySparkEntries = Enumerable.Range(0, 40).Select(i => ForecastEntry((40 - i) * 60, 100)).ToArray();
+ExpectEqual(SparklineSeries.Build(manySparkEntries, Provider.Claude, ForecastWindow.FiveHour, 20).Count, 20, "Sparkline series is downsampled to maxPoints");
+
 // Pause controller
 var pauseNow = now;
 Expect(PauseController.IsPaused(pauseNow.AddHours(1), pauseNow), "Paused while the resume instant is in the future");

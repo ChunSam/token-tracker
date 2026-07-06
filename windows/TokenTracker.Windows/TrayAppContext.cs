@@ -300,6 +300,17 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         var root = new ToolStripMenuItem(Localizer.Text(L10nKey.History));
         AddDisabled(root.DropDownItems, Diagnostics().HistoryTrendText());
+        var historyEntries = historyStore.Load();
+        foreach (var provider in new[] { Provider.Claude, Provider.Codex })
+        {
+            var sparkline = SparklineText.Render(SparklineSeries.Build(historyEntries, provider, ForecastWindow.FiveHour));
+            if (!string.IsNullOrEmpty(sparkline))
+            {
+                var name = provider == Provider.Claude ? "Claude" : "Codex";
+                AddDisabled(root.DropDownItems, $"{name} 5h {sparkline}");
+            }
+        }
+
         AddDisabled(root.DropDownItems, $"{Localizer.Text(L10nKey.HistoryRetentionDays)}: {settings.HistoryRetentionDays}d");
         root.DropDownItems.Add(new ToolStripSeparator());
         root.DropDownItems.Add(Localizer.Text(L10nKey.ExportHistoryCsv), null, (_, _) => ExportHistoryCsv());

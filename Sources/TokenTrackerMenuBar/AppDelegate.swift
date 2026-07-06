@@ -143,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
             forecastLines: forecastLines(),
             pausedRemainingText: pauseRemainingText(),
+            sparklines: sparklines(),
             historyTrendText: reporter.historyTrendText(),
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
@@ -170,6 +171,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             if let line = UsageForecastText.menuLine(forecast: forecast, localizer: loc) {
                 lines[provider] = line
+            }
+        }
+        return lines
+    }
+
+    /// Per-provider 5h remaining sparklines for the History submenu, built from
+    /// stored history (no network). Absent when there aren't enough points.
+    private func sparklines() -> [Provider: String] {
+        let entries = historyStore.load()
+        var lines: [Provider: String] = [:]
+        for provider in Provider.allCases {
+            let series = SparklineSeries.build(entries: entries, provider: provider, window: .fiveHour)
+            let rendered = SparklineText.render(series)
+            if !rendered.isEmpty {
+                lines[provider] = "\(provider.displayName) 5h \(rendered)"
             }
         }
         return lines

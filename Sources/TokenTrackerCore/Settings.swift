@@ -13,6 +13,8 @@ public final class Settings {
         static let sevenDayAlertThreshold = "sevenDayAlertThreshold"
         static let resetAlertMinutes = "resetAlertMinutes"
         static let historyRetentionDays = "historyRetentionDays"
+        static let showForecast = "showForecast"
+        static let depletionAlertEnabled = "depletionAlertEnabled"
     }
 
     private let defaults: UserDefaults
@@ -87,6 +89,16 @@ public final class Settings {
         set { defaults.set(max(1, min(365, newValue)), forKey: Key.historyRetentionDays) }
     }
 
+    public var showForecast: Bool {
+        get { defaults.bool(forKey: Key.showForecast) }
+        set { defaults.set(newValue, forKey: Key.showForecast) }
+    }
+
+    public var depletionAlertEnabled: Bool {
+        get { defaults.bool(forKey: Key.depletionAlertEnabled) }
+        set { defaults.set(newValue, forKey: Key.depletionAlertEnabled) }
+    }
+
     /// A saved refresh interval below the current 60s floor (for example the
     /// removed 30s option) can no longer be selected in Preferences and would
     /// otherwise only be clamped by the poll timer. Raise it once to the minimum
@@ -114,7 +126,9 @@ public final class Settings {
             Key.fiveHourAlertThreshold: 20,
             Key.sevenDayAlertThreshold: 10,
             Key.resetAlertMinutes: 10,
-            Key.historyRetentionDays: 7
+            Key.historyRetentionDays: 7,
+            Key.showForecast: true,
+            Key.depletionAlertEnabled: false
         ])
     }
 

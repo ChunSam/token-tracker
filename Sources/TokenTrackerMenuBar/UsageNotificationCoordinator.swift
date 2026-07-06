@@ -15,7 +15,11 @@ final class UsageNotificationCoordinator {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func handleNotifications(for snapshot: UsageSnapshot, localizer: Localizer) {
+    func handleNotifications(
+        for snapshot: UsageSnapshot,
+        extraCandidates: [UsageAlertCandidate] = [],
+        localizer: Localizer
+    ) {
         guard settings.notificationsEnabled else {
             deliveredAlertIDs.removeAll()
             return
@@ -25,7 +29,7 @@ final class UsageNotificationCoordinator {
             snapshot: snapshot,
             settings: alertSettings(),
             localizer: localizer
-        )
+        ) + extraCandidates
         let activeIDs = Set(candidates.map(\.id))
         deliveredAlertIDs.formIntersection(activeIDs)
 

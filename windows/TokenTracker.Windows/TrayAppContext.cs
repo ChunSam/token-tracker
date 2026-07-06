@@ -182,6 +182,16 @@ internal sealed class TrayAppContext : ApplicationContext
             AddDisabled(provider.DropDownItems, $"  {Localizer.Text(L10nKey.Recovery)}: {issue.Recovery}");
         }
 
+        if (settings.ShowForecast)
+        {
+            var forecast = UsageForecaster.Forecast(historyStore.Load(), usage.Provider, ForecastWindow.FiveHour, usage.ResetAt5h);
+            var forecastLine = UsageForecastText.MenuLine(forecast, Localizer);
+            if (forecastLine is not null)
+            {
+                AddDisabled(provider.DropDownItems, $"  {forecastLine}");
+            }
+        }
+
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
@@ -319,7 +329,8 @@ internal sealed class TrayAppContext : ApplicationContext
                 settings.FiveHourAlertThreshold,
                 settings.SevenDayAlertThreshold,
                 settings.ResetAlertMinutes),
-            localizer: Localizer);
+            localizer: Localizer).ToList();
+        candidates.AddRange(ForecastCandidates(usage));
         var activeIds = candidates.Select(candidate => candidate.Id).ToHashSet(StringComparer.Ordinal);
         deliveredAlertIds.IntersectWith(activeIds);
 
@@ -327,6 +338,34 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             notifyIcon.ShowBalloonTip(5000, candidate.Title, candidate.Body, ToolTipIcon.Warning);
         }
+    }
+
+    private IReadOnlyList<UsageAlertCandidate> ForecastCandidates(UsageSnapshot usage)
+    {
+        if (!settings.DepletionAlertEnabled)
+        {
+            return Array.Empty<UsageAlertCandidate>();
+        }
+
+        var entries = historyStore.Load();
+        var inputs = new List<ForecastAlertInput>();
+        foreach (var provider in new[] { Provider.Claude, Provider.Codex })
+        {
+            var providerUsage = usage.Usage(provider);
+            var fiveHour = UsageForecaster.Forecast(entries, provider, ForecastWindow.FiveHour, providerUsage.ResetAt5h, usage.UpdatedAt);
+            if (fiveHour is not null)
+            {
+                inputs.Add(new ForecastAlertInput(provider, ForecastWindow.FiveHour, fiveHour, providerUsage.ResetAt5h));
+            }
+
+            var sevenDay = UsageForecaster.Forecast(entries, provider, ForecastWindow.SevenDay, providerUsage.ResetAt7d, usage.UpdatedAt);
+            if (sevenDay is not null)
+            {
+                inputs.Add(new ForecastAlertInput(provider, ForecastWindow.SevenDay, sevenDay, providerUsage.ResetAt7d));
+            }
+        }
+
+        return UsageForecastAlert.Candidates(inputs, enabled: true, Localizer);
     }
 
     private static void AddDisabled(ToolStripItemCollection items, string text, Image? image = null) =>

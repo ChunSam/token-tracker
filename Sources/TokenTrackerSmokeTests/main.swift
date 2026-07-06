@@ -206,4 +206,44 @@ if let migrationDefaults = UserDefaults(suiteName: settingsSuiteName) {
     expect(false, "settings migration suite is available")
 }
 
+// MARK: Usage forecast
+func forecastEntry(_ secondsAgo: TimeInterval, claude5h: Int?, claude7d: Int? = 100) -> UsageHistoryEntry {
+    let at = now.addingTimeInterval(-secondsAgo)
+    let claudeUsage = ProviderUsage(provider: .claude, remainingPercent5h: claude5h, remainingPercent7d: claude7d, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: at)
+    let codexUsage = ProviderUsage(provider: .codex, remainingPercent5h: 100, remainingPercent7d: 100, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: at)
+    return UsageHistoryEntry(recordedAt: at, snapshot: UsageSnapshot(claude: claudeUsage, codex: codexUsage, updatedAt: at))
+}
+
+let steadyEntries = [forecastEntry(3600, claude5h: 60), forecastEntry(1800, claude5h: 50), forecastEntry(0, claude5h: 40)]
+let steadyForecast = UsageForecaster.forecast(entries: steadyEntries, provider: .claude, window: .fiveHour, resetAt: now.addingTimeInterval(10800), now: now)
+expect(steadyForecast != nil, "forecast is produced for a steady decline")
+expectEqual(Int(steadyForecast?.burnPerHour ?? 0), 20, "burn rate is 20%/h")
+expectEqual(Int(steadyForecast?.secondsToEmpty ?? 0), 7200, "5h window empties in 2h at the observed rate")
+expectEqual(steadyForecast?.willEmptyBeforeReset, true, "empties before a 3h reset")
+
+let earlyResetForecast = UsageForecaster.forecast(entries: steadyEntries, provider: .claude, window: .fiveHour, resetAt: now.addingTimeInterval(3600), now: now)
+expectEqual(earlyResetForecast?.willEmptyBeforeReset, false, "does not empty before an earlier reset")
+
+let resetEntries = [forecastEntry(3600, claude5h: 30), forecastEntry(1800, claude5h: 80), forecastEntry(900, claude5h: 70), forecastEntry(0, claude5h: 60)]
+let resetForecast = UsageForecaster.forecast(entries: resetEntries, provider: .claude, window: .fiveHour, resetAt: nil, now: now)
+expectEqual(Int(resetForecast?.secondsToEmpty ?? 0), 5400, "forecast uses only the post-reset segment")
+expectEqual(Int(resetForecast?.burnPerHour ?? 0), 40, "post-reset burn rate is 40%/h")
+
+expect(UsageForecaster.forecast(entries: [forecastEntry(3600, claude5h: 40), forecastEntry(0, claude5h: 50)], provider: .claude, window: .fiveHour, resetAt: nil, now: now) == nil, "no forecast while replenishing")
+expect(UsageForecaster.forecast(entries: [forecastEntry(300, claude5h: 60), forecastEntry(0, claude5h: 50)], provider: .claude, window: .fiveHour, resetAt: nil, now: now) == nil, "no forecast under the minimum span")
+
+expectEqual(UsageForecaster.durationText(7800), "2h 10m", "duration formats hours and minutes")
+expectEqual(UsageForecaster.durationText(2700), "45m", "duration formats minutes")
+expectEqual(UsageForecaster.durationText(30), "<1m", "sub-minute duration collapses to <1m")
+
+let forecastAlertInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: steadyForecast!, resetAt: now.addingTimeInterval(10800))
+expectEqual(
+    UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled: true).map(\.id),
+    ["claude-5h-empty-before-reset-\(Int(now.addingTimeInterval(10800).timeIntervalSince1970))"],
+    "forecast alert fires when depletion precedes reset"
+)
+expectEqual(UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled: false).count, 0, "forecast alert suppressed when disabled")
+let safeForecastInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: earlyResetForecast!, resetAt: now.addingTimeInterval(3600))
+expectEqual(UsageForecastAlert.candidates(inputs: [safeForecastInput], enabled: true).count, 0, "no forecast alert when the reset comes first")
+
 print("TokenTrackerSmokeTests passed")

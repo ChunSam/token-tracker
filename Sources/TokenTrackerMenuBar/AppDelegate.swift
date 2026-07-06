@@ -76,7 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lastSuccessfulRefreshAt = result.updatedAt
             }
             historyStore.append(result, retentionDays: settings.historyRetentionDays)
-            notificationCoordinator.handleNotifications(for: result, localizer: localizer)
+            notificationCoordinator.handleNotifications(
+                for: result,
+                extraCandidates: forecastAlertCandidates(for: result),
+                localizer: localizer
+            )
             updateStatusTitle()
             configureMenu()
         }
@@ -123,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             snapshot: snapshot,
             lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
+            forecastLines: forecastLines(),
             historyTrendText: reporter.historyTrendText(),
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
@@ -130,6 +135,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let menu = StatusMenuBuilder(actions: statusMenuActions, context: context).build()
         statusItemRenderer.setMenu(menu)
+    }
+
+    /// Per-provider "projected depletion" menu lines, computed from stored
+    /// history (no network). Empty when the forecast display is off or there is
+    /// not enough signal to project.
+    private func forecastLines() -> [Provider: String] {
+        guard settings.showForecast, let snapshot else { return [:] }
+        let entries = historyStore.load()
+        let loc = localizer
+        var lines: [Provider: String] = [:]
+        for provider in Provider.allCases {
+            let usage = snapshot.usage(for: provider)
+            let forecast = UsageForecaster.forecast(
+                entries: entries,
+                provider: provider,
+                window: .fiveHour,
+                resetAt: usage.resetAt5h
+            )
+            if let line = UsageForecastText.menuLine(forecast: forecast, localizer: loc) {
+                lines[provider] = line
+            }
+        }
+        return lines
+    }
+
+    /// Predictive "will empty before reset" alerts, gated by notifications +
+    /// the depletion-alert toggle. Considers both the 5h and 7d windows.
+    private func forecastAlertCandidates(for snapshot: UsageSnapshot) -> [UsageAlertCandidate] {
+        guard settings.notificationsEnabled, settings.depletionAlertEnabled else { return [] }
+        let entries = historyStore.load()
+        var inputs: [ForecastAlertInput] = []
+        for provider in Provider.allCases {
+            let usage = snapshot.usage(for: provider)
+            if let forecast = UsageForecaster.forecast(entries: entries, provider: provider, window: .fiveHour, resetAt: usage.resetAt5h, now: snapshot.updatedAt) {
+                inputs.append(ForecastAlertInput(provider: provider, window: .fiveHour, forecast: forecast, resetAt: usage.resetAt5h))
+            }
+            if let forecast = UsageForecaster.forecast(entries: entries, provider: provider, window: .sevenDay, resetAt: usage.resetAt7d, now: snapshot.updatedAt) {
+                inputs.append(ForecastAlertInput(provider: provider, window: .sevenDay, forecast: forecast, resetAt: usage.resetAt7d))
+            }
+        }
+        return UsageForecastAlert.candidates(inputs: inputs, enabled: true, localizer: localizer)
     }
 
     @objc private func showPreferences() {

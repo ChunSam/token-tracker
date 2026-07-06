@@ -19,6 +19,7 @@ struct StatusMenuContext {
     let settings: Settings
     let snapshot: UsageSnapshot?
     let lastSuccessfulRefreshAt: Date?
+    let forecastLines: [Provider: String]
     let historyTrendText: String
     let launchAtLoginEnabled: Bool
     let launchAtLoginStatus: String
@@ -137,6 +138,9 @@ struct StatusMenuBuilder {
         menu.addItem(infoItem("  \(issue.detail)"))
         if let recovery = issue.recovery {
             menu.addItem(infoItem("  \(context.localizer.text(.recovery)): \(recovery)"))
+        }
+        if let forecastLine = context.forecastLines[usage.provider] {
+            menu.addItem(infoItem("  \(forecastLine)"))
         }
         menu.addItem(infoItem("  \(context.localizer.text(.fiveHourReset)): \(DisplayFormatter.formatReset(usage.resetAt5h, localizer: context.localizer))"))
         menu.addItem(infoItem("  \(context.localizer.text(.sevenDayReset)): \(DisplayFormatter.formatReset(usage.resetAt7d, localizer: context.localizer))"))

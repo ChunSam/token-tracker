@@ -146,6 +146,9 @@ try
     // The cooldown must survive an app restart: a brand-new client reading the
     // same state file honors the outstanding cooldown without touching HTTP.
     Expect(File.Exists(rateLimitStatePath), "Claude 429 cooldown is persisted to disk");
+    Expect(
+        File.ReadAllText(rateLimitStatePath).Contains("\"FailureCount\":1", StringComparison.Ordinal),
+        "Claude 429 persists the failure count for exponential backoff");
     var restartHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
     var restartedClient = new UsageClient(new HttpClient(restartHandler), new CredentialReader(), home, rateLimitStatePath);
     var afterRestart = await restartedClient.FetchClaudeAsync();

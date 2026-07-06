@@ -195,7 +195,11 @@ internal sealed class ClaudeRateLimitState
         }
 
         loaded = true;
-        retryAllowedAt = store.Load();
+        if (store.Load() is { } snapshot)
+        {
+            retryAllowedAt = snapshot.RetryAllowedAt;
+            failureCount = snapshot.FailureCount;
+        }
     }
 
     public UsageHttpException? CurrentError(string serviceName)
@@ -233,7 +237,7 @@ internal sealed class ClaudeRateLimitState
                 Random.Shared.NextDouble() * RateLimitBackoff.JitterFraction);
             failureCount++;
             retryAllowedAt = DateTimeOffset.Now.Add(cooldown);
-            store.Save(retryAllowedAt.Value);
+            store.Save(retryAllowedAt.Value, failureCount);
         }
     }
 
@@ -265,9 +269,9 @@ internal sealed class ClaudeRateLimitStore
         this.path = path;
     }
 
-    // Returns the persisted retry instant only while it is still in the future;
-    // an expired or missing record reads as null.
-    public DateTimeOffset? Load()
+    // Returns the persisted cooldown only while its retry instant is still in the
+    // future; an expired or missing record reads as null.
+    public ClaudeRateLimitSnapshot? Load()
     {
         try
         {
@@ -282,7 +286,7 @@ internal sealed class ClaudeRateLimitStore
                 return null;
             }
 
-            return record.RetryAllowedAt;
+            return new ClaudeRateLimitSnapshot(record.RetryAllowedAt, Math.Max(0, record.FailureCount));
         }
         catch
         {
@@ -290,12 +294,12 @@ internal sealed class ClaudeRateLimitStore
         }
     }
 
-    public void Save(DateTimeOffset retryAllowedAt)
+    public void Save(DateTimeOffset retryAllowedAt, int failureCount)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new Record(retryAllowedAt)));
+            File.WriteAllText(path, JsonSerializer.Serialize(new Record(retryAllowedAt, failureCount)));
         }
         catch
         {
@@ -316,5 +320,11 @@ internal sealed class ClaudeRateLimitStore
         }
     }
 
-    private sealed record Record(DateTimeOffset RetryAllowedAt);
+    // FailureCount is optional so a legacy record written before backoff was
+    // persisted (retry instant only) still deserializes, defaulting to 0.
+    private sealed record Record(DateTimeOffset RetryAllowedAt, int FailureCount = 0);
 }
+
+/// <summary>A persisted 429 cooldown: when the app may retry, and how many
+/// consecutive failures preceded it so exponential backoff survives a restart.</summary>
+internal readonly record struct ClaudeRateLimitSnapshot(DateTimeOffset RetryAllowedAt, int FailureCount);

@@ -238,7 +238,18 @@ var trend = UsageHistoryFormatter.TrendSummary(
     snapshot,
     TimeSpan.FromDays(1),
     new Localizer(AppLanguage.English));
-ExpectEqual(trend, "24h trend: Claude 5h 0% Codex 5h 0%", "History trend summarizes provider deltas");
+ExpectEqual(trend, "24h trend: Claude 5h 0% 7d 0% Codex 5h 0% 7d 0%", "History trend summarizes 5h and 7d provider deltas");
+
+var missingSevenDayBaseline = new UsageSnapshot(
+    Claude: Usage(Provider.Claude, 40, null, now),
+    Codex: Usage(Provider.Codex, 90, 99, now),
+    UpdatedAt: now);
+var missingSevenDayTrend = UsageHistoryFormatter.TrendSummary(
+    new[] { new UsageHistoryEntry(now, missingSevenDayBaseline) },
+    snapshot,
+    TimeSpan.FromDays(1),
+    new Localizer(AppLanguage.English));
+ExpectEqual(missingSevenDayTrend, "24h trend: Claude 5h +23% 7d -- Codex 5h +1% 7d 0%", "History trend shows -- when a 7d value is missing");
 var csv = historyStore.CsvString();
 Expect(csv.Contains("recorded_at,provider,remaining_5h", StringComparison.Ordinal), "History CSV includes header");
 Expect(csv.Contains("claude,63,80", StringComparison.Ordinal), "History CSV includes Claude row");

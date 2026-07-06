@@ -133,7 +133,19 @@ let trend = UsageHistoryFormatter.trendSummary(
     current: snapshot,
     window: 24 * 60 * 60
 )
-expectEqual(trend, "24h trend: Claude 5h +23% Codex 5h +1%", "history trend summarizes provider deltas")
+expectEqual(trend, "24h trend: Claude 5h +23% 7d +10% Codex 5h +1% 7d 0%", "history trend summarizes 5h and 7d provider deltas")
+
+let missingSevenDayBaseline = UsageSnapshot(
+    claude: ProviderUsage(provider: .claude, remainingPercent5h: 40, remainingPercent7d: nil, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),
+    codex: earlierSnapshot.codex,
+    updatedAt: now.addingTimeInterval(-3600)
+)
+let missingSevenDayTrend = UsageHistoryFormatter.trendSummary(
+    entries: [UsageHistoryEntry(recordedAt: now.addingTimeInterval(-3600), snapshot: missingSevenDayBaseline)],
+    current: snapshot,
+    window: 24 * 60 * 60
+)
+expectEqual(missingSevenDayTrend, "24h trend: Claude 5h +23% 7d -- Codex 5h +1% 7d 0%", "history trend shows -- when a 7d value is missing")
 let csv = UsageHistoryFormatter.csvString(for: [UsageHistoryEntry(recordedAt: now, snapshot: snapshot)])
 expect(csv.contains("recorded_at,provider,remaining_5h"), "history csv includes header")
 expect(csv.contains("claude,63,80"), "history csv includes claude row")

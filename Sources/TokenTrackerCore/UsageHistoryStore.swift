@@ -124,16 +124,19 @@ public enum UsageHistoryFormatter {
     }
 
     private static func providerTrend(_ provider: Provider, baseline: UsageSnapshot, current: UsageSnapshot) -> String {
-        let previous = baseline.usage(for: provider).remainingPercent5h
-        let latest = current.usage(for: provider).remainingPercent5h
+        let baselineUsage = baseline.usage(for: provider)
+        let currentUsage = current.usage(for: provider)
+        let fiveHour = deltaText(previous: baselineUsage.remainingPercent5h, latest: currentUsage.remainingPercent5h)
+        let sevenDay = deltaText(previous: baselineUsage.remainingPercent7d, latest: currentUsage.remainingPercent7d)
+        return "\(provider.displayName) 5h \(fiveHour) 7d \(sevenDay)"
+    }
+
+    private static func deltaText(previous: Int?, latest: Int?) -> String {
         guard let previous, let latest else {
-            return "\(provider.displayName) 5h --"
+            return "--"
         }
         let delta = latest - previous
-        if delta > 0 {
-            return "\(provider.displayName) 5h +\(delta)%"
-        }
-        return "\(provider.displayName) 5h \(delta)%"
+        return delta > 0 ? "+\(delta)%" : "\(delta)%"
     }
 
     private static func optionalInt(_ value: Int?) -> String {

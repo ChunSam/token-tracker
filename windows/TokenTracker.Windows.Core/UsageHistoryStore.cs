@@ -141,17 +141,22 @@ public static class UsageHistoryFormatter
 
     private static string ProviderTrend(Provider provider, UsageSnapshot baseline, UsageSnapshot current)
     {
-        var previous = baseline.Usage(provider).RemainingPercent5h;
-        var latest = current.Usage(provider).RemainingPercent5h;
+        var baselineUsage = baseline.Usage(provider);
+        var currentUsage = current.Usage(provider);
+        var fiveHour = DeltaText(baselineUsage.RemainingPercent5h, currentUsage.RemainingPercent5h);
+        var sevenDay = DeltaText(baselineUsage.RemainingPercent7d, currentUsage.RemainingPercent7d);
+        return $"{baselineUsage.DisplayName} 5h {fiveHour} 7d {sevenDay}";
+    }
+
+    private static string DeltaText(int? previous, int? latest)
+    {
         if (previous is null || latest is null)
         {
-            return $"{baseline.Usage(provider).DisplayName} 5h --";
+            return "--";
         }
 
         var delta = latest.Value - previous.Value;
-        return delta > 0
-            ? $"{baseline.Usage(provider).DisplayName} 5h +{delta}%"
-            : $"{baseline.Usage(provider).DisplayName} 5h {delta}%";
+        return delta > 0 ? $"+{delta}%" : $"{delta}%";
     }
 
     private static string OptionalInt(int? value) =>

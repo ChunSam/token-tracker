@@ -35,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         statusItemRenderer.setPlaceholder(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         configureMenu()
-        refreshNow()
+        // Use startRefresh (not refreshNow) on launch so a persisted pause is
+        // honored across restarts — only an explicit user "Refresh Now" lifts it.
+        startRefresh(showLoadingIndicator: true)
         scheduleTimer()
         observeAppearanceChanges()
         if settings.notificationsEnabled {

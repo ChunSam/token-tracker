@@ -45,3 +45,17 @@ jobs:
 
       - name: Build WinForms app
         run: dotnet build windows/TokenTracker.Windows/TokenTracker.Windows.csproj -c Release
+
+      # Release-path smoke: exercise the same self-contained single-file publish
+      # the release workflow uses (windows-release.yml), so a publish-only quirk
+      # is caught on every PR instead of surfacing only at release. win-x64 only
+      # (primary target); win-arm64 remains validated by the release workflow.
+      - name: Publish WinForms app (release-path smoke)
+        run: >
+          dotnet publish windows/TokenTracker.Windows/TokenTracker.Windows.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          /p:PublishSingleFile=true
+          /p:PublishReadyToRun=false
+          -o ${{ runner.temp }}/publish-smoke

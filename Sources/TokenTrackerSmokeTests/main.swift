@@ -145,17 +145,28 @@ defer { try? FileManager.default.removeItem(at: rateLimitStoreURL) }
 
 expect(rateLimitStore.load() == nil, "rate limit store starts empty")
 let futureRetry = Date().addingTimeInterval(300)
-rateLimitStore.save(retryAllowedAt: futureRetry)
+rateLimitStore.save(.init(retryAllowedAt: futureRetry, failureCount: 3))
 if let persisted = rateLimitStore.load() {
-    expect(abs(persisted.timeIntervalSince(futureRetry)) < 1, "future cooldown survives a reload")
+    expect(abs(persisted.retryAllowedAt.timeIntervalSince(futureRetry)) < 1, "future cooldown survives a reload")
+    expectEqual(persisted.failureCount, 3, "failure count survives a reload for exponential backoff")
 } else {
     expect(false, "future cooldown survives a reload")
 }
-rateLimitStore.save(retryAllowedAt: Date().addingTimeInterval(-1))
+rateLimitStore.save(.init(retryAllowedAt: Date().addingTimeInterval(-1), failureCount: 3))
 expect(rateLimitStore.load() == nil, "expired cooldown reads as empty")
-rateLimitStore.save(retryAllowedAt: futureRetry)
+rateLimitStore.save(.init(retryAllowedAt: futureRetry, failureCount: 1))
 rateLimitStore.clear()
 expect(rateLimitStore.load() == nil, "cleared cooldown reads as empty")
+
+// Backward compatibility: a legacy record with only a retry instant (written
+// before the failure count was persisted) loads with a zero failure count.
+let legacyISO = ISO8601DateFormatter().string(from: futureRetry)
+try? Data("{\"retryAllowedAt\":\"\(legacyISO)\"}".utf8).write(to: rateLimitStoreURL)
+if let legacyState = rateLimitStore.load() {
+    expectEqual(legacyState.failureCount, 0, "a legacy record without a failure count loads as zero")
+} else {
+    expect(false, "a legacy record still loads")
+}
 
 expectEqual(RateLimitBackoff.cooldown(retryAfter: 300, failureCount: 0, jitter: 0), 300, "first headerless 429 waits the 300s default")
 expectEqual(RateLimitBackoff.cooldown(retryAfter: 0, failureCount: 0, jitter: 0), 120, "absent Retry-After falls back to the 120s minimum")

@@ -201,7 +201,10 @@ private actor ClaudeRateLimitState {
             return
         }
         didLoad = true
-        retryAllowedAt = store.load()
+        if let state = store.load() {
+            retryAllowedAt = state.retryAllowedAt
+            failureCount = state.failureCount
+        }
     }
 
     func currentError(serviceName: String) -> UsageError? {
@@ -231,7 +234,7 @@ private actor ClaudeRateLimitState {
         failureCount += 1
         let allowedAt = Date().addingTimeInterval(cooldown)
         retryAllowedAt = allowedAt
-        store.save(retryAllowedAt: allowedAt)
+        store.save(.init(retryAllowedAt: allowedAt, failureCount: failureCount))
     }
 
     func clear() {

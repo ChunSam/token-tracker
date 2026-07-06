@@ -80,6 +80,12 @@ public struct Localizer {
         .depletionAlertTitle: "May run out before reset",
         .showForecastLabel: "Show depletion forecast",
         .depletionAlertToggle: "Depletion alert (before reset)",
+        .pausePolling: "Pause updates",
+        .pause1h: "For 1 hour",
+        .pause3h: "For 3 hours",
+        .pauseUntilResumed: "Until I resume",
+        .resumeNow: "Resume now",
+        .updatesPaused: "Updates paused",
         .plan: "Plan",
         .launchFailed: "Launch at Login failed",
         .statusEnabled: "Enabled",
@@ -163,6 +169,12 @@ public struct Localizer {
         .depletionAlertTitle: "리셋 전 소진 예상",
         .showForecastLabel: "소진 예측 표시",
         .depletionAlertToggle: "소진 예측 알림 (리셋 전)",
+        .pausePolling: "업데이트 일시중지",
+        .pause1h: "1시간",
+        .pause3h: "3시간",
+        .pauseUntilResumed: "재개할 때까지",
+        .resumeNow: "지금 재개",
+        .updatesPaused: "업데이트 일시중지됨",
         .plan: "플랜",
         .launchFailed: "로그인 시 실행 설정 실패",
         .statusEnabled: "켜짐",
@@ -247,6 +259,12 @@ public enum L10nKey: String {
     case depletionAlertTitle
     case showForecastLabel
     case depletionAlertToggle
+    case pausePolling
+    case pause1h
+    case pause3h
+    case pauseUntilResumed
+    case resumeNow
+    case updatesPaused
     case plan
     case launchFailed
     case statusEnabled

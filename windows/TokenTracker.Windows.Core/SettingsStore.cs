@@ -19,6 +19,10 @@ public sealed class AppSettings
     public int HistoryRetentionDays { get; set; } = 7;
     public bool ShowForecast { get; set; } = true;
     public bool DepletionAlertEnabled { get; set; }
+
+    /// When updates are paused, the instant polling resumes (persisted, so a
+    /// restart during a pause stays paused). <c>null</c> means not paused.
+    public DateTimeOffset? PollPausedUntil { get; set; }
 }
 
 public sealed class SettingsStore
@@ -65,6 +69,10 @@ public sealed class SettingsStore
     public void Save(AppSettings settings)
     {
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-        File.WriteAllText(Path, JsonSerializer.Serialize(settings, Options));
+        // Atomic write (temp + move) so a crash mid-save can't truncate the
+        // settings file — matches UsageHistoryStore.Save.
+        var tempPath = Path + ".tmp";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(settings, Options));
+        File.Move(tempPath, Path, overwrite: true);
     }
 }

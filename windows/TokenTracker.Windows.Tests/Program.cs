@@ -335,6 +335,23 @@ ExpectEqual(UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled:
 var safeForecastInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, earlyResetForecast, now.AddHours(1));
 ExpectEqual(UsageForecastAlert.Candidates(new[] { safeForecastInput }, enabled: true).Count, 0, "No forecast alert when the reset comes first");
 
+// Pause controller
+var pauseNow = now;
+Expect(PauseController.IsPaused(pauseNow.AddHours(1), pauseNow), "Paused while the resume instant is in the future");
+Expect(!PauseController.IsPaused(pauseNow.AddSeconds(-10), pauseNow), "Not paused once the resume instant has passed");
+Expect(!PauseController.IsPaused(null, pauseNow), "Not paused when unset");
+ExpectEqual((int)PauseController.Remaining(pauseNow.AddMinutes(30), pauseNow).TotalSeconds, 1800, "Remaining reports seconds until resume");
+ExpectEqual((int)PauseController.Remaining(null, pauseNow).TotalSeconds, 0, "Remaining is zero when not paused");
+Expect(PauseController.IsIndefinite(DateTimeOffset.MaxValue, pauseNow), "A max-value pause is indefinite");
+Expect(!PauseController.IsIndefinite(pauseNow.AddHours(1), pauseNow), "A timed pause is not indefinite");
+
+var pausePath = Path.Combine(Path.GetTempPath(), "token-tracker-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+var pauseStore = new SettingsStore(pausePath);
+pauseStore.Save(new AppSettings { PollPausedUntil = pauseNow.AddHours(2) });
+var reloadedPause = pauseStore.Load().PollPausedUntil;
+Expect(reloadedPause is not null && reloadedPause.Value.ToUnixTimeSeconds() == pauseNow.AddHours(2).ToUnixTimeSeconds(), "PollPausedUntil round-trips through the settings store");
+Directory.Delete(Path.GetDirectoryName(pausePath)!, recursive: true);
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static ProviderUsage Usage(

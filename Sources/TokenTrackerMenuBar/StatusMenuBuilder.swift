@@ -11,6 +11,10 @@ struct StatusMenuActions {
     let openCodexAuth: Selector
     let exportHistoryCSV: Selector
     let toggleLaunchAtLogin: Selector
+    let pause1h: Selector
+    let pause3h: Selector
+    let pauseUntilResumed: Selector
+    let resumePolling: Selector
     let quit: Selector
 }
 
@@ -20,6 +24,7 @@ struct StatusMenuContext {
     let snapshot: UsageSnapshot?
     let lastSuccessfulRefreshAt: Date?
     let forecastLines: [Provider: String]
+    let pausedRemainingText: String?
     let historyTrendText: String
     let launchAtLoginEnabled: Bool
     let launchAtLoginStatus: String
@@ -64,6 +69,7 @@ struct StatusMenuBuilder {
             to: menu
         )
 
+        addPauseControls(to: menu)
         menu.addItem(diagnosticsItem())
         menu.addItem(historyItem())
         menu.addItem(.separator())
@@ -71,6 +77,23 @@ struct StatusMenuBuilder {
         addAction(title: context.localizer.text(.quit), selector: actions.quit, keyEquivalent: "q", to: menu)
 
         return menu
+    }
+
+    private func addPauseControls(to menu: NSMenu) {
+        if let remaining = context.pausedRemainingText {
+            menu.addItem(infoItem("\(context.localizer.text(.updatesPaused)): \(remaining)"))
+            addAction(title: context.localizer.text(.resumeNow), selector: actions.resumePolling, to: menu)
+        }
+
+        let pauseMenu = NSMenu()
+        pauseMenu.autoenablesItems = false
+        addAction(title: context.localizer.text(.pause1h), selector: actions.pause1h, to: pauseMenu)
+        addAction(title: context.localizer.text(.pause3h), selector: actions.pause3h, to: pauseMenu)
+        addAction(title: context.localizer.text(.pauseUntilResumed), selector: actions.pauseUntilResumed, to: pauseMenu)
+
+        let pauseItem = NSMenuItem(title: context.localizer.text(.pausePolling), action: nil, keyEquivalent: "")
+        pauseItem.submenu = pauseMenu
+        menu.addItem(pauseItem)
     }
 
     private func diagnosticsItem() -> NSMenuItem {

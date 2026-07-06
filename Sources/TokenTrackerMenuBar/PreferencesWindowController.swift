@@ -70,6 +70,13 @@ final class PreferencesWindowController: NSWindowController {
             return
         }
 
+        // Rebuildable: clear any previous content (e.g. after a language change)
+        // and re-apply the localized checkbox titles that were set once at init.
+        contentView.subviews.forEach { $0.removeFromSuperview() }
+        notificationsEnabled.title = localizer.text(.statusEnabled)
+        showForecast.title = localizer.text(.showForecastLabel)
+        depletionAlert.title = localizer.text(.depletionAlertToggle)
+
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -188,6 +195,12 @@ final class PreferencesWindowController: NSWindowController {
            let value = AppLanguage(rawValue: raw) {
             settings.language = value
             onGeneralChange()
+            // Re-localize this window's own labels. Deferred so we don't mutate
+            // the view hierarchy from inside the popup's own action.
+            DispatchQueue.main.async { [weak self] in
+                self?.buildContent()
+                self?.reload()
+            }
         }
     }
 

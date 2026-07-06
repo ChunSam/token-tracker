@@ -10,7 +10,7 @@ internal sealed class SettingsForm : Form
     private readonly Func<Task> onProviderChange;
     private readonly Action onGeneralChange;
     private readonly Action onNotificationsEnabled;
-    private readonly Localizer localizer;
+    private Localizer localizer;
 
     public SettingsForm(
         AppSettings settings,
@@ -31,6 +31,19 @@ internal sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+
+        BuildContent();
+    }
+
+    private void RebuildContent()
+    {
+        localizer = new Localizer(settings.Language);
+        var previous = Controls.Cast<Control>().ToArray();
+        Controls.Clear();
+        foreach (var control in previous)
+        {
+            control.Dispose();
+        }
 
         BuildContent();
     }
@@ -97,6 +110,9 @@ internal sealed class SettingsForm : Form
             {
                 settings.Language = value;
                 onGeneralChange();
+                // Re-localize this form's own labels. Deferred via BeginInvoke so
+                // we don't dispose the combo from inside its own change event.
+                BeginInvoke(new Action(RebuildContent));
             });
         AddCheckbox(layout, localizer.Text(L10nKey.ShowForecastLabel), settings.ShowForecast, value =>
         {

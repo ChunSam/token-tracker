@@ -246,6 +246,16 @@ expectEqual(UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled:
 let safeForecastInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: earlyResetForecast!, resetAt: now.addingTimeInterval(3600))
 expectEqual(UsageForecastAlert.candidates(inputs: [safeForecastInput], enabled: true).count, 0, "no forecast alert when the reset comes first")
 
+// MARK: Sparkline
+expectEqual(SparklineText.render([0, 25, 50, 75, 100]), "▁▃▅▇█", "sparkline maps values across the eight blocks")
+expectEqual(SparklineText.render([42]), "", "a single point renders nothing")
+expectEqual(SparklineText.render([]), "", "an empty series renders nothing")
+let sparkEntries = [forecastEntry(3600, claude5h: 100), forecastEntry(1800, claude5h: 50), forecastEntry(0, claude5h: 0)]
+expectEqual(SparklineSeries.build(entries: sparkEntries, provider: .claude, window: .fiveHour), [100, 50, 0], "sparkline series extracts remaining values in time order")
+expectEqual(SparklineText.render(SparklineSeries.build(entries: sparkEntries, provider: .claude, window: .fiveHour)), "█▅▁", "end-to-end sparkline render")
+let manySparkEntries = (0..<40).map { forecastEntry(TimeInterval(40 - $0) * 60, claude5h: 100) }
+expectEqual(SparklineSeries.build(entries: manySparkEntries, provider: .claude, window: .fiveHour, maxPoints: 20).count, 20, "sparkline series is downsampled to maxPoints")
+
 // MARK: Pause controller
 let pauseNow = Date()
 expect(PauseController.isPaused(until: pauseNow.addingTimeInterval(3600), now: pauseNow), "paused while the resume instant is in the future")

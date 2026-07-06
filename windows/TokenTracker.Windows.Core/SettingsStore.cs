@@ -17,6 +17,8 @@ public sealed class AppSettings
     public int SevenDayAlertThreshold { get; set; } = 10;
     public int ResetAlertMinutes { get; set; } = 10;
     public int HistoryRetentionDays { get; set; } = 7;
+    public bool ShowForecast { get; set; } = true;
+    public bool DepletionAlertEnabled { get; set; }
 }
 
 public sealed class SettingsStore

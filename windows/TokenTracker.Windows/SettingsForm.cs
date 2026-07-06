@@ -26,7 +26,7 @@ internal sealed class SettingsForm : Form
 
         Text = "Token Tracker";
         Width = 430;
-        Height = 470;
+        Height = 520;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -98,6 +98,11 @@ internal sealed class SettingsForm : Form
                 settings.Language = value;
                 onGeneralChange();
             });
+        AddCheckbox(layout, localizer.Text(L10nKey.ShowForecastLabel), settings.ShowForecast, value =>
+        {
+            settings.ShowForecast = value;
+            onGeneralChange();
+        });
 
         AddHeader(layout, localizer.Text(L10nKey.Notifications));
         AddCheckbox(
@@ -129,6 +134,11 @@ internal sealed class SettingsForm : Form
         AddNumber(layout, localizer.Text(L10nKey.ResetAlertMinutes), settings.ResetAlertMinutes, 0, 1440, "m", value =>
         {
             settings.ResetAlertMinutes = value;
+            onGeneralChange();
+        });
+        AddCheckbox(layout, localizer.Text(L10nKey.DepletionAlertToggle), settings.DepletionAlertEnabled, value =>
+        {
+            settings.DepletionAlertEnabled = value;
             onGeneralChange();
         });
 

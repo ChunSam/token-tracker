@@ -294,6 +294,47 @@ legacyIntervalStore.Save(new AppSettings { RefreshIntervalSeconds = 300 });
 ExpectEqual(legacyIntervalStore.Load().RefreshIntervalSeconds, 300, "Valid refresh interval is left unchanged");
 Directory.Delete(Path.GetDirectoryName(legacyIntervalPath)!, recursive: true);
 
+// Usage forecast
+UsageHistoryEntry ForecastEntry(double secondsAgo, int? claude5h, int? claude7d = 100)
+{
+    var at = now.AddSeconds(-secondsAgo);
+    return new UsageHistoryEntry(at, new UsageSnapshot(
+        Usage(Provider.Claude, claude5h, claude7d, at),
+        Usage(Provider.Codex, 100, 100, at),
+        at));
+}
+
+var steadyEntries = new[] { ForecastEntry(3600, 60), ForecastEntry(1800, 50), ForecastEntry(0, 40) };
+var steadyForecast = UsageForecaster.Forecast(steadyEntries, Provider.Claude, ForecastWindow.FiveHour, now.AddHours(3), now);
+Expect(steadyForecast is not null, "Forecast is produced for a steady decline");
+ExpectEqual((int)steadyForecast!.BurnPerHour, 20, "Burn rate is 20%/h");
+ExpectEqual((int)steadyForecast.SecondsToEmpty, 7200, "5h window empties in 2h at the observed rate");
+Expect(steadyForecast.WillEmptyBeforeReset, "Empties before a 3h reset");
+
+var earlyResetForecast = UsageForecaster.Forecast(steadyEntries, Provider.Claude, ForecastWindow.FiveHour, now.AddHours(1), now);
+Expect(!earlyResetForecast!.WillEmptyBeforeReset, "Does not empty before an earlier reset");
+
+var resetEntries = new[] { ForecastEntry(3600, 30), ForecastEntry(1800, 80), ForecastEntry(900, 70), ForecastEntry(0, 60) };
+var resetForecast = UsageForecaster.Forecast(resetEntries, Provider.Claude, ForecastWindow.FiveHour, null, now);
+ExpectEqual((int)resetForecast!.SecondsToEmpty, 5400, "Forecast uses only the post-reset segment");
+ExpectEqual((int)resetForecast.BurnPerHour, 40, "Post-reset burn rate is 40%/h");
+
+Expect(UsageForecaster.Forecast(new[] { ForecastEntry(3600, 40), ForecastEntry(0, 50) }, Provider.Claude, ForecastWindow.FiveHour, null, now) is null, "No forecast while replenishing");
+Expect(UsageForecaster.Forecast(new[] { ForecastEntry(300, 60), ForecastEntry(0, 50) }, Provider.Claude, ForecastWindow.FiveHour, null, now) is null, "No forecast under the minimum span");
+
+ExpectEqual(UsageForecaster.DurationText(7800), "2h 10m", "Duration formats hours and minutes");
+ExpectEqual(UsageForecaster.DurationText(2700), "45m", "Duration formats minutes");
+ExpectEqual(UsageForecaster.DurationText(30), "<1m", "Sub-minute duration collapses to <1m");
+
+var forecastAlertInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, steadyForecast, now.AddHours(3));
+ExpectEqual(
+    string.Join(",", UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled: true).Select(candidate => candidate.Id)),
+    $"claude-5h-empty-before-reset-{now.AddHours(3).ToUnixTimeSeconds()}",
+    "Forecast alert fires when depletion precedes reset");
+ExpectEqual(UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled: false).Count, 0, "Forecast alert suppressed when disabled");
+var safeForecastInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, earlyResetForecast, now.AddHours(1));
+ExpectEqual(UsageForecastAlert.Candidates(new[] { safeForecastInput }, enabled: true).Count, 0, "No forecast alert when the reset comes first");
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static ProviderUsage Usage(

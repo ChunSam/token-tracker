@@ -15,6 +15,8 @@ final class PreferencesWindowController: NSWindowController {
     private lazy var refreshInterval = NSPopUpButton()
     private lazy var language = NSPopUpButton()
     private lazy var notificationsEnabled = NSButton(checkboxWithTitle: localizer.text(.statusEnabled), target: self, action: #selector(toggleNotifications))
+    private lazy var showForecast = NSButton(checkboxWithTitle: localizer.text(.showForecastLabel), target: self, action: #selector(toggleShowForecast))
+    private lazy var depletionAlert = NSButton(checkboxWithTitle: localizer.text(.depletionAlertToggle), target: self, action: #selector(toggleDepletionAlert))
     private lazy var fiveHourValue = NSTextField(labelWithString: "")
     private lazy var fiveHourStepper = NSStepper()
     private lazy var sevenDayValue = NSTextField(labelWithString: "")
@@ -39,7 +41,7 @@ final class PreferencesWindowController: NSWindowController {
         self.onProviderChange = onProviderChange
         self.onNotificationsEnabled = onNotificationsEnabled
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -94,10 +96,12 @@ final class PreferencesWindowController: NSWindowController {
         stack.addArrangedSubview(row(label: localizer.text(.providerLabelStyle), control: labelStyle))
         stack.addArrangedSubview(row(label: localizer.text(.refreshInterval), control: refreshInterval))
         stack.addArrangedSubview(row(label: localizer.text(.language), control: language))
+        stack.addArrangedSubview(showForecast)
         stack.addArrangedSubview(section(localizer.text(.notifications), views: [notificationsEnabled]))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.fiveHourAlertThreshold), value: fiveHourValue, stepper: fiveHourStepper))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.sevenDayAlertThreshold), value: sevenDayValue, stepper: sevenDayStepper))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.resetAlertMinutes), value: resetValue, stepper: resetStepper))
+        stack.addArrangedSubview(depletionAlert)
         stack.addArrangedSubview(stepperRow(label: localizer.text(.historyRetentionDays), value: historyValue, stepper: historyStepper))
 
         contentView.addSubview(stack)
@@ -113,6 +117,8 @@ final class PreferencesWindowController: NSWindowController {
         claudeEnabled.state = settings.claudeEnabled ? .on : .off
         codexEnabled.state = settings.codexEnabled ? .on : .off
         notificationsEnabled.state = settings.notificationsEnabled ? .on : .off
+        showForecast.state = settings.showForecast ? .on : .off
+        depletionAlert.state = settings.depletionAlertEnabled ? .on : .off
 
         reloadPopup(displayMode, values: DisplayMode.allCases.map { ($0.label, $0.rawValue) }, selected: settings.displayMode.rawValue)
         reloadPopup(labelStyle, values: ProviderLabelStyle.allCases.map { ($0.label, $0.rawValue) }, selected: settings.providerLabelStyle.rawValue)
@@ -215,6 +221,16 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func changeHistoryRetention() {
         settings.historyRetentionDays = historyStepper.integerValue
         updateStepperLabels()
+        onGeneralChange()
+    }
+
+    @objc private func toggleShowForecast() {
+        settings.showForecast = showForecast.state == .on
+        onGeneralChange()
+    }
+
+    @objc private func toggleDepletionAlert() {
+        settings.depletionAlertEnabled = depletionAlert.state == .on
         onGeneralChange()
     }
 

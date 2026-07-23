@@ -32,8 +32,11 @@ public static class DisplayFormatter
         return usage.RemainingPercent5h ?? usage.RemainingPercent7d;
     }
 
-    public static bool DisplaysSevenDayPercent(ProviderUsage usage) =>
-        usage.RemainingPercent7d is not null && (usage.RemainingPercent7d <= 10 || usage.RemainingPercent5h is null);
+    /// Warning emphasis is reserved for an actually low 7d window. Showing the
+    /// 7d number merely because the 5h window is absent (the normal Codex state
+    /// since OpenAI removed the 5h limit) must not read as a warning.
+    public static bool IsSevenDayWarning(ProviderUsage usage) =>
+        usage.RemainingPercent7d is <= 10;
 
     public static string ProviderLabel(Provider provider, ProviderLabelStyle style) =>
         style == ProviderLabelStyle.Abbreviation
@@ -95,7 +98,7 @@ public static class DisplayFormatter
         };
     }
 
-    public static bool TrayIconUsesSevenDay(UsageSnapshot? snapshot, DisplayMode mode)
+    public static bool TrayIconShowsWarning(UsageSnapshot? snapshot, DisplayMode mode)
     {
         if (snapshot is null)
         {
@@ -104,17 +107,17 @@ public static class DisplayFormatter
 
         return mode switch
         {
-            DisplayMode.CodexOnly => DisplaysSevenDayPercent(snapshot.Codex),
-            DisplayMode.ClaudeOnly => DisplaysSevenDayPercent(snapshot.Claude),
-            _ => AnyLowestUsageUsesSevenDay(snapshot, mode)
+            DisplayMode.CodexOnly => IsSevenDayWarning(snapshot.Codex),
+            DisplayMode.ClaudeOnly => IsSevenDayWarning(snapshot.Claude),
+            _ => AnyLowestUsageShowsWarning(snapshot, mode)
         };
     }
 
-    private static bool AnyLowestUsageUsesSevenDay(UsageSnapshot snapshot, DisplayMode mode)
+    private static bool AnyLowestUsageShowsWarning(UsageSnapshot snapshot, DisplayMode mode)
     {
         var trayPercent = TrayIconPercent(snapshot, mode);
         return new[] { snapshot.Codex, snapshot.Claude }
-            .Any(usage => DisplayPercent(usage) == trayPercent && DisplaysSevenDayPercent(usage));
+            .Any(usage => DisplayPercent(usage) == trayPercent && IsSevenDayWarning(usage));
     }
 
     private static string FormatLowest(UsageSnapshot snapshot)

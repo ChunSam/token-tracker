@@ -30,9 +30,14 @@ public enum UsageForecaster {
     /// near-simultaneous samples can't extrapolate to a wild ETA.
     public static let minimumSpan: TimeInterval = 600 // 10 minutes
 
+    /// Newest sample must be at most this old, so a window that stopped
+    /// reporting (or a long pause) doesn't keep projecting from stale data.
+    public static let maximumSampleAge: TimeInterval = 1800 // 30 minutes
+
     /// Project when the given provider/window runs out at its recent burn rate.
     /// Returns `nil` when there isn't enough signal: fewer than two post-reset
-    /// samples, a span under `minimumSpan`, or a flat/replenishing window.
+    /// samples, a span under `minimumSpan`, a newest sample older than
+    /// `maximumSampleAge`, or a flat/replenishing window.
     public static func forecast(
         entries: [UsageHistoryEntry],
         provider: Provider,
@@ -63,6 +68,7 @@ public enum UsageForecaster {
 
         let elapsed = last.t.timeIntervalSince(first.t)
         guard elapsed >= minimumSpan else { return nil }
+        guard now.timeIntervalSince(last.t) <= maximumSampleAge else { return nil }
 
         let drop = Double(first.r - last.r)
         guard drop > 0 else { return nil } // steady or replenishing → no forecast

@@ -23,9 +23,14 @@ public static class UsageForecaster
     /// near-simultaneous samples can't extrapolate to a wild ETA.
     public static readonly TimeSpan MinimumSpan = TimeSpan.FromMinutes(10);
 
+    /// Newest sample must be at most this old, so a window that stopped
+    /// reporting (or a long pause) doesn't keep projecting from stale data.
+    public static readonly TimeSpan MaximumSampleAge = TimeSpan.FromMinutes(30);
+
     /// Project when the given provider/window runs out at its recent burn rate.
     /// Returns <c>null</c> when there isn't enough signal: fewer than two
-    /// post-reset samples, a span under <see cref="MinimumSpan"/>, or a
+    /// post-reset samples, a span under <see cref="MinimumSpan"/>, a newest
+    /// sample older than <see cref="MaximumSampleAge"/>, or a
     /// flat/replenishing window.
     public static UsageForecast? Forecast(
         IReadOnlyList<UsageHistoryEntry> entries,
@@ -71,6 +76,11 @@ public static class UsageForecaster
 
         var elapsed = (last.T - first.T).TotalSeconds;
         if (elapsed < MinimumSpan.TotalSeconds)
+        {
+            return null;
+        }
+
+        if ((current - last.T).TotalSeconds > MaximumSampleAge.TotalSeconds)
         {
             return null;
         }

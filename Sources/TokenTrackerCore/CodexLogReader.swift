@@ -20,14 +20,16 @@ struct CodexLogReader {
                     continue
                 }
 
-                let primary = rateLimits["primary"] as? [String: Any]
-                let secondary = rateLimits["secondary"] as? [String: Any]
+                let mapped = CodexWindowMapper.map(
+                    primary: logWindow(rateLimits["primary"]),
+                    secondary: logWindow(rateLimits["secondary"])
+                )
                 let usage = ProviderUsage(
                     provider: .codex,
-                    remainingPercent5h: remainingPercent(fromUsed: primary?["used_percent"] as? Double),
-                    remainingPercent7d: remainingPercent(fromUsed: secondary?["used_percent"] as? Double),
-                    resetAt5h: timestampDate(primary?["resets_at"]),
-                    resetAt7d: timestampDate(secondary?["resets_at"]),
+                    remainingPercent5h: remainingPercent(fromUsed: mapped.fiveHour?.usedPercent),
+                    remainingPercent7d: remainingPercent(fromUsed: mapped.sevenDay?.usedPercent),
+                    resetAt5h: mapped.fiveHour?.resetAt,
+                    resetAt7d: mapped.sevenDay?.resetAt,
                     source: .localLog,
                     error: nil,
                     plan: rateLimits["plan_type"] as? String,
@@ -42,6 +44,16 @@ struct CodexLogReader {
         }
 
         return best?.usage
+    }
+
+    private func logWindow(_ value: Any?) -> CodexRateWindow? {
+        guard let dict = value as? [String: Any] else { return nil }
+        let minutes = dict["window_minutes"] as? Double
+        return CodexRateWindow(
+            usedPercent: dict["used_percent"] as? Double,
+            resetAt: timestampDate(dict["resets_at"]),
+            windowSeconds: minutes.map { $0 * 60 }
+        )
     }
 
     private func rolloutFiles() -> [URL] {

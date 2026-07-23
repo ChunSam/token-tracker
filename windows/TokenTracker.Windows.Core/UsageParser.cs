@@ -13,18 +13,32 @@ public static class UsageParser
 
         TryGetObject(rateLimit, "primary_window", out var primary);
         TryGetObject(rateLimit, "secondary_window", out var secondary);
+        var mapped = CodexWindowMapper.Map(ToCodexWindow(primary), ToCodexWindow(secondary));
 
         return new ProviderUsage(
             Provider.Codex,
-            PercentMath.RemainingPercent(TryGetDouble(primary, "used_percent")),
-            PercentMath.RemainingPercent(TryGetDouble(secondary, "used_percent")),
-            TryGetUnixTime(primary, "reset_at"),
-            TryGetUnixTime(secondary, "reset_at"),
+            PercentMath.RemainingPercent(mapped.FiveHour?.UsedPercent),
+            PercentMath.RemainingPercent(mapped.SevenDay?.UsedPercent),
+            mapped.FiveHour?.ResetAt,
+            mapped.SevenDay?.ResetAt,
             UsageSource.Api,
             null,
             TryGetString(root, "plan_type"),
             null,
             updatedAt ?? DateTimeOffset.Now);
+    }
+
+    private static CodexRateWindow? ToCodexWindow(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new CodexRateWindow(
+            TryGetDouble(element, "used_percent"),
+            TryGetUnixTime(element, "reset_at"),
+            TryGetDouble(element, "limit_window_seconds"));
     }
 
     public static ProviderUsage ParseClaudeUsage(string json, DateTimeOffset? updatedAt = null, string? fallbackPlan = null)

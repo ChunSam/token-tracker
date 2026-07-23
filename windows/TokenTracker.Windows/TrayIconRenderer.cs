@@ -14,7 +14,7 @@ internal static class TrayIconRenderer
     public static Icon Render(UsageSnapshot? snapshot, DisplayMode mode)
     {
         var value = DisplayFormatter.TrayIconPercent(snapshot, mode);
-        var warning = DisplayFormatter.TrayIconUsesSevenDay(snapshot, mode);
+        var warning = DisplayFormatter.TrayIconShowsWarning(snapshot, mode);
         var text = value is null ? "--" : value.Value.ToString();
 
         using var bitmap = new Bitmap(32, 32);

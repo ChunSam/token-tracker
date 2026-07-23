@@ -30,7 +30,7 @@ var healthySevenDay = Usage(
     remainingPercent7d: 90,
     now);
 ExpectEqual(DisplayFormatter.DisplayPercent(healthySevenDay), 100, "healthy 7d does not override 5h");
-Expect(!DisplayFormatter.DisplaysSevenDayPercent(healthySevenDay), "healthy 7d is not highlighted");
+Expect(!DisplayFormatter.IsSevenDayWarning(healthySevenDay), "healthy 7d is not highlighted");
 
 var thresholdSevenDay = Usage(
     Provider.Claude,
@@ -38,7 +38,7 @@ var thresholdSevenDay = Usage(
     remainingPercent7d: 10,
     now);
 ExpectEqual(DisplayFormatter.DisplayPercent(thresholdSevenDay), 10, "7d threshold overrides 5h");
-Expect(DisplayFormatter.DisplaysSevenDayPercent(thresholdSevenDay), "7d threshold is highlighted");
+Expect(DisplayFormatter.IsSevenDayWarning(thresholdSevenDay), "7d threshold is highlighted");
 
 var missingFiveHour = Usage(
     Provider.Claude,
@@ -46,7 +46,7 @@ var missingFiveHour = Usage(
     remainingPercent7d: 42,
     now);
 ExpectEqual(DisplayFormatter.DisplayPercent(missingFiveHour), 42, "7d is used when 5h is missing");
-Expect(DisplayFormatter.DisplaysSevenDayPercent(missingFiveHour), "7d fallback is highlighted");
+Expect(!DisplayFormatter.IsSevenDayWarning(missingFiveHour), "healthy 7d fallback is not highlighted when 5h is missing");
 
 var snapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
@@ -79,6 +79,35 @@ var codexUsage = UsageParser.ParseCodexUsage(codexJson, now);
 ExpectEqual(codexUsage.RemainingPercent5h, 76, "Codex primary remaining percent");
 ExpectEqual(codexUsage.RemainingPercent7d, 2, "Codex secondary remaining percent");
 ExpectEqual(codexUsage.Plan, "prolite", "Codex plan");
+
+// Since 2026-07 the API can report the weekly window as primary_window (the 5h
+// window was removed); windows carrying limit_window_seconds map by length.
+var codexWeeklyOnlyJson = """
+{
+  "plan_type": "plus",
+  "rate_limit": {
+    "primary_window": { "used_percent": 4, "limit_window_seconds": 604800, "reset_at": 1785331564 }
+  }
+}
+""";
+var codexWeeklyOnly = UsageParser.ParseCodexUsage(codexWeeklyOnlyJson, now);
+ExpectEqual(codexWeeklyOnly.RemainingPercent5h, null, "a weekly primary window leaves the 5h lane empty");
+ExpectEqual(codexWeeklyOnly.RemainingPercent7d, 96, "a weekly primary window fills the 7d lane");
+ExpectEqual(codexWeeklyOnly.ResetAt5h, null, "no 5h reset when the 5h window is absent");
+ExpectEqual(codexWeeklyOnly.ResetAt7d, DateTimeOffset.FromUnixTimeSeconds(1785331564), "the weekly reset lands in the 7d lane");
+ExpectEqual(codexWeeklyOnly.Plan, "plus", "the plan is preserved");
+
+var swappedWindows = CodexWindowMapper.Map(
+    new CodexRateWindow(20, null, 604800),
+    new CodexRateWindow(10, null, 18000));
+ExpectEqual(swappedWindows.FiveHour?.UsedPercent, 10, "an 18000s window maps to the 5h lane regardless of position");
+ExpectEqual(swappedWindows.SevenDay?.UsedPercent, 20, "a 604800s window maps to the 7d lane regardless of position");
+
+var collidingWindows = CodexWindowMapper.Map(
+    new CodexRateWindow(20, null, 604800),
+    new CodexRateWindow(30, null, 604800));
+ExpectEqual(collidingWindows.SevenDay?.UsedPercent, 20, "the first window wins a lane collision");
+Expect(collidingWindows.FiveHour is null, "a colliding window is dropped rather than mislabeled");
 
 var claudeJson = """
 {
@@ -321,6 +350,7 @@ ExpectEqual((int)resetForecast.BurnPerHour, 40, "Post-reset burn rate is 40%/h")
 
 Expect(UsageForecaster.Forecast(new[] { ForecastEntry(3600, 40), ForecastEntry(0, 50) }, Provider.Claude, ForecastWindow.FiveHour, null, now) is null, "No forecast while replenishing");
 Expect(UsageForecaster.Forecast(new[] { ForecastEntry(300, 60), ForecastEntry(0, 50) }, Provider.Claude, ForecastWindow.FiveHour, null, now) is null, "No forecast under the minimum span");
+Expect(UsageForecaster.Forecast(new[] { ForecastEntry(10800, 60), ForecastEntry(7200, 40) }, Provider.Claude, ForecastWindow.FiveHour, null, now) is null, "No forecast when the newest sample is stale");
 
 ExpectEqual(UsageForecaster.DurationText(7800), "2h 10m", "Duration formats hours and minutes");
 ExpectEqual(UsageForecaster.DurationText(2700), "45m", "Duration formats minutes");

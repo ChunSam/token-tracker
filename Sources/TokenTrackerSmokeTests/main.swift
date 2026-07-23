@@ -51,8 +51,8 @@ let healthySevenDaySnapshot = UsageSnapshot(
 )
 
 expectEqual(DisplayFormatter.statusTitle(snapshot: healthySevenDaySnapshot, mode: .both), "Cdx 98% · Cl 100%", "healthy seven day value does not override five hour display")
-expectEqual(DisplayFormatter.displaysSevenDayPercent(healthySevenDaySnapshot.claude), false, "healthy seven day value is not highlighted")
-expectEqual(DisplayFormatter.displaysSevenDayPercent(exhaustedSevenDaySnapshot.claude), true, "exhausted seven day value is highlighted")
+expectEqual(DisplayFormatter.isSevenDayWarning(healthySevenDaySnapshot.claude), false, "healthy seven day value is not highlighted")
+expectEqual(DisplayFormatter.isSevenDayWarning(exhaustedSevenDaySnapshot.claude), true, "exhausted seven day value is highlighted")
 
 let sevenDayThresholdUsage = ProviderUsage(provider: .claude, remainingPercent5h: 100, remainingPercent7d: 10, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
 let missingSevenDayUsage = ProviderUsage(provider: .claude, remainingPercent5h: 73, remainingPercent7d: nil, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
@@ -60,11 +60,11 @@ let missingFiveHourUsage = ProviderUsage(provider: .claude, remainingPercent5h: 
 let staleClaudeUsage = ProviderUsage(provider: .claude, remainingPercent5h: 64, remainingPercent7d: 82, resetAt5h: nil, resetAt7d: nil, source: .staleCache, error: "HTTP 429 from Claude API", plan: nil, model: nil, updatedAt: now)
 
 expectEqual(DisplayFormatter.displayPercent(sevenDayThresholdUsage), 10, "7d value is shown at 10 percent threshold")
-expectEqual(DisplayFormatter.displaysSevenDayPercent(sevenDayThresholdUsage), true, "7d threshold value is highlighted")
+expectEqual(DisplayFormatter.isSevenDayWarning(sevenDayThresholdUsage), true, "7d threshold value is highlighted")
 expectEqual(DisplayFormatter.displayPercent(missingSevenDayUsage), 73, "5h value is shown when 7d is missing")
-expectEqual(DisplayFormatter.displaysSevenDayPercent(missingSevenDayUsage), false, "missing 7d is not highlighted")
+expectEqual(DisplayFormatter.isSevenDayWarning(missingSevenDayUsage), false, "missing 7d is not highlighted")
 expectEqual(DisplayFormatter.displayPercent(missingFiveHourUsage), 42, "7d value is shown when 5h is missing")
-expectEqual(DisplayFormatter.displaysSevenDayPercent(missingFiveHourUsage), true, "7d fallback is highlighted when 5h is missing")
+expectEqual(DisplayFormatter.isSevenDayWarning(missingFiveHourUsage), false, "healthy 7d fallback is not highlighted when 5h is missing")
 expectEqual(DisplayFormatter.displayPercent(staleClaudeUsage), 64, "stale cache still displays cached percent")
 expectEqual(staleClaudeUsage.source, .staleCache, "stale cache source is preserved")
 expectEqual(staleClaudeUsage.error, "HTTP 429 from Claude API", "stale cache keeps the fetch failure reason")
@@ -231,6 +231,7 @@ expectEqual(Int(resetForecast?.burnPerHour ?? 0), 40, "post-reset burn rate is 4
 
 expect(UsageForecaster.forecast(entries: [forecastEntry(3600, claude5h: 40), forecastEntry(0, claude5h: 50)], provider: .claude, window: .fiveHour, resetAt: nil, now: now) == nil, "no forecast while replenishing")
 expect(UsageForecaster.forecast(entries: [forecastEntry(300, claude5h: 60), forecastEntry(0, claude5h: 50)], provider: .claude, window: .fiveHour, resetAt: nil, now: now) == nil, "no forecast under the minimum span")
+expect(UsageForecaster.forecast(entries: [forecastEntry(10800, claude5h: 60), forecastEntry(7200, claude5h: 40)], provider: .claude, window: .fiveHour, resetAt: nil, now: now) == nil, "no forecast when the newest sample is stale")
 
 expectEqual(UsageForecaster.durationText(7800), "2h 10m", "duration formats hours and minutes")
 expectEqual(UsageForecaster.durationText(2700), "45m", "duration formats minutes")
@@ -265,5 +266,51 @@ expectEqual(Int(PauseController.remaining(until: pauseNow.addingTimeInterval(180
 expectEqual(Int(PauseController.remaining(until: nil, now: pauseNow)), 0, "remaining is zero when not paused")
 expect(PauseController.isIndefinite(until: .distantFuture, now: pauseNow), "a distant-future pause is indefinite")
 expect(!PauseController.isIndefinite(until: pauseNow.addingTimeInterval(3600), now: pauseNow), "a timed pause is not indefinite")
+
+// MARK: Codex window mapping
+let weeklyOnlyObject: [String: Any] = [
+    "plan_type": "plus",
+    "rate_limit": [
+        "primary_window": [
+            "used_percent": 4.0,
+            "limit_window_seconds": 604_800.0,
+            "reset_at": 1_785_331_564.0
+        ]
+    ]
+]
+let weeklyOnlyUsage = CodexUsageParser.parse(object: weeklyOnlyObject, updatedAt: now)
+expect(weeklyOnlyUsage != nil, "a weekly-only payload parses")
+expectEqual(weeklyOnlyUsage?.remainingPercent5h, nil, "a weekly primary window leaves the 5h lane empty")
+expectEqual(weeklyOnlyUsage?.remainingPercent7d, 96, "a weekly primary window fills the 7d lane")
+expectEqual(weeklyOnlyUsage?.resetAt5h, nil, "no 5h reset when the 5h window is absent")
+expectEqual(weeklyOnlyUsage?.resetAt7d, Date(timeIntervalSince1970: 1_785_331_564), "the weekly reset lands in the 7d lane")
+expectEqual(weeklyOnlyUsage?.plan, "plus", "the plan is preserved")
+
+let legacyObject: [String: Any] = [
+    "plan_type": "prolite",
+    "rate_limit": [
+        "primary_window": ["used_percent": 24.2, "reset_at": 1_770_000_000.0],
+        "secondary_window": ["used_percent": 98.0, "reset_at": 1_770_500_000.0]
+    ]
+]
+let legacyUsage = CodexUsageParser.parse(object: legacyObject, updatedAt: now)
+expectEqual(legacyUsage?.remainingPercent5h, 76, "windows without a length keep positional lanes (primary → 5h)")
+expectEqual(legacyUsage?.remainingPercent7d, 2, "windows without a length keep positional lanes (secondary → 7d)")
+
+let swappedWindows = CodexWindowMapper.map(
+    primary: CodexRateWindow(usedPercent: 20, resetAt: nil, windowSeconds: 604_800),
+    secondary: CodexRateWindow(usedPercent: 10, resetAt: nil, windowSeconds: 18_000)
+)
+expectEqual(swappedWindows.fiveHour?.usedPercent, 10, "an 18000s window maps to the 5h lane regardless of position")
+expectEqual(swappedWindows.sevenDay?.usedPercent, 20, "a 604800s window maps to the 7d lane regardless of position")
+
+let collidingWindows = CodexWindowMapper.map(
+    primary: CodexRateWindow(usedPercent: 20, resetAt: nil, windowSeconds: 604_800),
+    secondary: CodexRateWindow(usedPercent: 30, resetAt: nil, windowSeconds: 604_800)
+)
+expectEqual(collidingWindows.sevenDay?.usedPercent, 20, "the first window wins a lane collision")
+expect(collidingWindows.fiveHour == nil, "a colliding window is dropped rather than mislabeled")
+
+expect(CodexUsageParser.parse(object: [:]) == nil, "a payload without rate_limit does not parse")
 
 print("TokenTrackerSmokeTests passed")

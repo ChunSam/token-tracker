@@ -31,9 +31,12 @@ public struct DisplayFormatter {
         return usage.remainingPercent5h ?? usage.remainingPercent7d
     }
 
-    public static func displaysSevenDayPercent(_ usage: ProviderUsage) -> Bool {
+    /// Warning emphasis is reserved for an actually low 7d window. Showing the
+    /// 7d number merely because the 5h window is absent (the normal Codex state
+    /// since OpenAI removed the 5h limit) must not read as a warning.
+    public static func isSevenDayWarning(_ usage: ProviderUsage) -> Bool {
         guard let sevenDay = usage.remainingPercent7d else { return false }
-        return sevenDay <= 10 || usage.remainingPercent5h == nil
+        return sevenDay <= 10
     }
 
     public static func providerLabel(_ provider: Provider, style: ProviderLabelStyle) -> String {

@@ -181,7 +181,7 @@ final class StatusItemRenderer {
             let usages = [snapshot.claude, snapshot.codex]
             let lowest = usages.compactMap { DisplayFormatter.displayPercent($0) }.min()
             let color = usages.contains { usage in
-                DisplayFormatter.displayPercent(usage) == lowest && DisplayFormatter.displaysSevenDayPercent(usage)
+                DisplayFormatter.displayPercent(usage) == lowest && DisplayFormatter.isSevenDayWarning(usage)
             } ? warningColor : baseColor
             return [.text("AI ", baseColor), .text(DisplayFormatter.formatPercent(lowest), color)]
         case .both:
@@ -221,7 +221,7 @@ final class StatusItemRenderer {
     }
 
     private func percentSegment(_ usage: ProviderUsage, baseColor: NSColor, warningColor: NSColor) -> StatusSegment {
-        let color = DisplayFormatter.displaysSevenDayPercent(usage)
+        let color = DisplayFormatter.isSevenDayWarning(usage)
             ? warningColor
             : baseColor
         return .text(DisplayFormatter.formatPercent(DisplayFormatter.displayPercent(usage)), color)

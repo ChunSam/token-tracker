@@ -29,25 +29,11 @@ struct CodexUsageClient: Sendable {
         )
         guard
             let object = raw as? [String: Any],
-            let rateLimit = object["rate_limit"] as? [String: Any]
+            let usage = CodexUsageParser.parse(object: object)
         else {
             throw UsageError.invalidResponse
         }
-
-        let primary = rateLimit["primary_window"] as? [String: Any]
-        let secondary = rateLimit["secondary_window"] as? [String: Any]
-        return ProviderUsage(
-            provider: .codex,
-            remainingPercent5h: remainingPercent(fromUsed: primary?["used_percent"] as? Double),
-            remainingPercent7d: remainingPercent(fromUsed: secondary?["used_percent"] as? Double),
-            resetAt5h: timestampDate(primary?["reset_at"]),
-            resetAt7d: timestampDate(secondary?["reset_at"]),
-            source: .api,
-            error: nil,
-            plan: object["plan_type"] as? String,
-            model: nil,
-            updatedAt: Date()
-        )
+        return usage
     }
 
     private func readAuth() throws -> (accessToken: String, accountId: String) {

@@ -7,6 +7,13 @@ public enum ForecastWindow
     SevenDay
 }
 
+public static class ForecastWindowExtensions
+{
+    /// Language-neutral window marker used in menu lines and alert bodies.
+    public static string ShortLabel(this ForecastWindow window) =>
+        window == ForecastWindow.FiveHour ? "5h" : "7d";
+}
+
 /// A depletion forecast for one provider/window: how fast remaining budget is
 /// being consumed and when, at that pace, it reaches zero. Derived purely from
 /// locally stored history — it makes no network call. Mirrors the Swift
@@ -104,7 +111,8 @@ public static class UsageForecaster
         return new UsageForecast(burnPerHour, secondsToEmpty, emptyAt, willEmptyBeforeReset);
     }
 
-    /// Compact, language-neutral duration like <c>2h 10m</c> / <c>45m</c> / <c>&lt;1m</c>.
+    /// Compact, language-neutral duration like <c>3d 4h</c> / <c>2h 10m</c> /
+    /// <c>45m</c> / <c>&lt;1m</c>.
     public static string DurationText(double seconds)
     {
         var totalMinutes = (int)(seconds / 60);
@@ -118,7 +126,13 @@ public static class UsageForecaster
             return $"{totalMinutes}m";
         }
 
-        return $"{totalMinutes / 60}h {totalMinutes % 60}m";
+        var hours = totalMinutes / 60;
+        if (hours < 24)
+        {
+            return $"{hours}h {totalMinutes % 60}m";
+        }
+
+        return $"{hours / 24}d {hours % 24}h";
     }
 
     private static int? Remaining(ProviderUsage usage, ForecastWindow window) =>
@@ -127,8 +141,10 @@ public static class UsageForecaster
 
 public static class UsageForecastText
 {
-    /// The per-provider menu line, or <c>null</c> when there is no forecast to show.
-    public static string? MenuLine(UsageForecast? forecast, Localizer localizer)
+    /// The per-provider menu line, or <c>null</c> when there is no forecast to
+    /// show. A 7d forecast is marked with the window label; 5h is the unmarked
+    /// norm.
+    public static string? MenuLine(UsageForecast? forecast, ForecastWindow window, Localizer localizer)
     {
         if (forecast is null)
         {
@@ -136,6 +152,11 @@ public static class UsageForecastText
         }
 
         var line = $"{localizer.Text(L10nKey.ForecastLabel)}: ~{UsageForecaster.DurationText(forecast.SecondsToEmpty)}";
+        if (window == ForecastWindow.SevenDay)
+        {
+            line += $" ({window.ShortLabel()})";
+        }
+
         if (forecast.WillEmptyBeforeReset)
         {
             line += $" · {localizer.Text(L10nKey.ForecastBeforeReset)}";
@@ -178,7 +199,7 @@ public static class UsageForecastAlert
                 continue;
             }
 
-            var windowLabel = input.Window == ForecastWindow.FiveHour ? "5h" : "7d";
+            var windowLabel = input.Window.ShortLabel();
             var resetId = input.ResetAt.Value.ToUnixTimeSeconds();
             var name = input.Provider == Provider.Claude ? "Claude" : "Codex";
             result.Add(new UsageAlertCandidate(

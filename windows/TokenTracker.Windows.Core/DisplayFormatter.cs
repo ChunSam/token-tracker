@@ -38,6 +38,20 @@ public static class DisplayFormatter
     public static bool IsSevenDayWarning(ProviderUsage usage) =>
         usage.RemainingPercent7d is <= 10;
 
+    /// Which window the forecast and sparkline surfaces should use: the 5h
+    /// window when it reports, otherwise the 7d window (Codex's normal state
+    /// since OpenAI removed the 5h limit — without the fallback Codex would
+    /// have no forecast or sparkline at all).
+    public static ForecastWindow PreferredForecastWindow(ProviderUsage usage)
+    {
+        if (usage.RemainingPercent5h is not null)
+        {
+            return ForecastWindow.FiveHour;
+        }
+
+        return usage.RemainingPercent7d is not null ? ForecastWindow.SevenDay : ForecastWindow.FiveHour;
+    }
+
     public static string ProviderLabel(Provider provider, ProviderLabelStyle style) =>
         style == ProviderLabelStyle.Abbreviation
             ? provider == Provider.Codex ? "Cdx" : "Cl"

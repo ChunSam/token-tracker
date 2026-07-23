@@ -39,6 +39,15 @@ public struct DisplayFormatter {
         return sevenDay <= 10
     }
 
+    /// Which window the forecast and sparkline surfaces should use: the 5h
+    /// window when it reports, otherwise the 7d window (Codex's normal state
+    /// since OpenAI removed the 5h limit — without the fallback Codex would
+    /// have no forecast or sparkline at all).
+    public static func preferredForecastWindow(_ usage: ProviderUsage) -> ForecastWindow {
+        if usage.remainingPercent5h != nil { return .fiveHour }
+        return usage.remainingPercent7d != nil ? .sevenDay : .fiveHour
+    }
+
     public static func providerLabel(_ provider: Provider, style: ProviderLabelStyle) -> String {
         switch style {
         case .abbreviation:

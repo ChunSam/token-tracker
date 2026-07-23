@@ -165,29 +165,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var lines: [Provider: String] = [:]
         for provider in Provider.allCases {
             let usage = snapshot.usage(for: provider)
+            let window = DisplayFormatter.preferredForecastWindow(usage)
             let forecast = UsageForecaster.forecast(
                 entries: entries,
                 provider: provider,
-                window: .fiveHour,
-                resetAt: usage.resetAt5h
+                window: window,
+                resetAt: window == .fiveHour ? usage.resetAt5h : usage.resetAt7d
             )
-            if let line = UsageForecastText.menuLine(forecast: forecast, localizer: loc) {
+            if let line = UsageForecastText.menuLine(forecast: forecast, window: window, localizer: loc) {
                 lines[provider] = line
             }
         }
         return lines
     }
 
-    /// Per-provider 5h remaining sparklines for the History submenu, built from
-    /// stored history (no network). Absent when there aren't enough points.
+    /// Per-provider remaining sparklines for the History submenu, built from
+    /// stored history (no network) against each provider's preferred window.
+    /// Absent when there aren't enough points.
     private func sparklines() -> [Provider: String] {
         let entries = historyStore.load()
         var lines: [Provider: String] = [:]
         for provider in Provider.allCases {
-            let series = SparklineSeries.build(entries: entries, provider: provider, window: .fiveHour)
+            let window = snapshot.map { DisplayFormatter.preferredForecastWindow($0.usage(for: provider)) } ?? .fiveHour
+            let series = SparklineSeries.build(entries: entries, provider: provider, window: window)
             let rendered = SparklineText.render(series)
             if !rendered.isEmpty {
-                lines[provider] = "\(provider.displayName) 5h \(rendered)"
+                lines[provider] = "\(provider.displayName) \(window.shortLabel) \(rendered)"
             }
         }
         return lines

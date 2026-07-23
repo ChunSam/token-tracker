@@ -48,6 +48,11 @@ var missingFiveHour = Usage(
 ExpectEqual(DisplayFormatter.DisplayPercent(missingFiveHour), 42, "7d is used when 5h is missing");
 Expect(!DisplayFormatter.IsSevenDayWarning(missingFiveHour), "healthy 7d fallback is not highlighted when 5h is missing");
 
+var missingBothWindows = Usage(Provider.Codex, null, null, now);
+ExpectEqual(DisplayFormatter.PreferredForecastWindow(Usage(Provider.Claude, 73, null, now)), ForecastWindow.FiveHour, "5h window is preferred when it reports");
+ExpectEqual(DisplayFormatter.PreferredForecastWindow(missingFiveHour), ForecastWindow.SevenDay, "forecast surfaces fall back to 7d when 5h is missing");
+ExpectEqual(DisplayFormatter.PreferredForecastWindow(missingBothWindows), ForecastWindow.FiveHour, "default window is 5h when neither reports");
+
 var snapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
     Codex: Usage(Provider.Codex, 91, 99, now, plan: "plus"),
@@ -355,6 +360,19 @@ Expect(UsageForecaster.Forecast(new[] { ForecastEntry(10800, 60), ForecastEntry(
 ExpectEqual(UsageForecaster.DurationText(7800), "2h 10m", "Duration formats hours and minutes");
 ExpectEqual(UsageForecaster.DurationText(2700), "45m", "Duration formats minutes");
 ExpectEqual(UsageForecaster.DurationText(30), "<1m", "Sub-minute duration collapses to <1m");
+ExpectEqual(UsageForecaster.DurationText(86400), "1d 0h", "One-day duration switches to days");
+ExpectEqual(UsageForecaster.DurationText(273000), "3d 3h", "Duration formats days and hours");
+
+var forecastLocalizer = new Localizer(AppLanguage.English);
+ExpectEqual(
+    UsageForecastText.MenuLine(steadyForecast, ForecastWindow.FiveHour, forecastLocalizer),
+    "Projected depletion: ~2h 0m · empties before reset",
+    "5h forecast menu line format is unchanged");
+ExpectEqual(
+    UsageForecastText.MenuLine(steadyForecast, ForecastWindow.SevenDay, forecastLocalizer),
+    "Projected depletion: ~2h 0m (7d) · empties before reset",
+    "7d fallback forecast line carries the window marker");
+Expect(UsageForecastText.MenuLine(null, ForecastWindow.SevenDay, forecastLocalizer) is null, "No forecast menu line without a forecast");
 
 var forecastAlertInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, steadyForecast, now.AddHours(3));
 ExpectEqual(

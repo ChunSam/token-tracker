@@ -2,8 +2,8 @@
 set -euo pipefail
 
 APP_NAME="Token Tracker"
-APP_VERSION="${APP_VERSION:-1.1.1}"
-APP_BUILD="${APP_BUILD:-3}"
+APP_VERSION="${APP_VERSION:-1.1.2}"
+APP_BUILD="${APP_BUILD:-4}"
 APP_ARCHS="${APP_ARCHS:-$(uname -m)}"
 BUNDLE_DIR=".build/${APP_NAME}.app"
 EXECUTABLE_NAME="TokenTrackerMenuBar"

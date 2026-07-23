@@ -203,8 +203,10 @@ internal sealed class TrayAppContext : ApplicationContext
 
         if (settings.ShowForecast)
         {
-            var forecast = UsageForecaster.Forecast(historyStore.Load(), usage.Provider, ForecastWindow.FiveHour, usage.ResetAt5h);
-            var forecastLine = UsageForecastText.MenuLine(forecast, Localizer);
+            var window = DisplayFormatter.PreferredForecastWindow(usage);
+            var resetAt = window == ForecastWindow.FiveHour ? usage.ResetAt5h : usage.ResetAt7d;
+            var forecast = UsageForecaster.Forecast(historyStore.Load(), usage.Provider, window, resetAt);
+            var forecastLine = UsageForecastText.MenuLine(forecast, window, Localizer);
             if (forecastLine is not null)
             {
                 AddDisabled(provider.DropDownItems, $"  {forecastLine}");
@@ -303,11 +305,14 @@ internal sealed class TrayAppContext : ApplicationContext
         var historyEntries = historyStore.Load();
         foreach (var provider in new[] { Provider.Claude, Provider.Codex })
         {
-            var sparkline = SparklineText.Render(SparklineSeries.Build(historyEntries, provider, ForecastWindow.FiveHour));
+            var window = snapshot is null
+                ? ForecastWindow.FiveHour
+                : DisplayFormatter.PreferredForecastWindow(provider == Provider.Claude ? snapshot.Claude : snapshot.Codex);
+            var sparkline = SparklineText.Render(SparklineSeries.Build(historyEntries, provider, window));
             if (!string.IsNullOrEmpty(sparkline))
             {
                 var name = provider == Provider.Claude ? "Claude" : "Codex";
-                AddDisabled(root.DropDownItems, $"{name} 5h {sparkline}");
+                AddDisabled(root.DropDownItems, $"{name} {window.ShortLabel()} {sparkline}");
             }
         }
 

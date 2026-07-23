@@ -65,6 +65,11 @@ expectEqual(DisplayFormatter.displayPercent(missingSevenDayUsage), 73, "5h value
 expectEqual(DisplayFormatter.isSevenDayWarning(missingSevenDayUsage), false, "missing 7d is not highlighted")
 expectEqual(DisplayFormatter.displayPercent(missingFiveHourUsage), 42, "7d value is shown when 5h is missing")
 expectEqual(DisplayFormatter.isSevenDayWarning(missingFiveHourUsage), false, "healthy 7d fallback is not highlighted when 5h is missing")
+
+let missingBothWindowsUsage = ProviderUsage(provider: .codex, remainingPercent5h: nil, remainingPercent7d: nil, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now)
+expectEqual(DisplayFormatter.preferredForecastWindow(missingSevenDayUsage), .fiveHour, "5h window is preferred when it reports")
+expectEqual(DisplayFormatter.preferredForecastWindow(missingFiveHourUsage), .sevenDay, "forecast surfaces fall back to 7d when 5h is missing")
+expectEqual(DisplayFormatter.preferredForecastWindow(missingBothWindowsUsage), .fiveHour, "default window is 5h when neither reports")
 expectEqual(DisplayFormatter.displayPercent(staleClaudeUsage), 64, "stale cache still displays cached percent")
 expectEqual(staleClaudeUsage.source, .staleCache, "stale cache source is preserved")
 expectEqual(staleClaudeUsage.error, "HTTP 429 from Claude API", "stale cache keeps the fetch failure reason")
@@ -236,6 +241,21 @@ expect(UsageForecaster.forecast(entries: [forecastEntry(10800, claude5h: 60), fo
 expectEqual(UsageForecaster.durationText(7800), "2h 10m", "duration formats hours and minutes")
 expectEqual(UsageForecaster.durationText(2700), "45m", "duration formats minutes")
 expectEqual(UsageForecaster.durationText(30), "<1m", "sub-minute duration collapses to <1m")
+expectEqual(UsageForecaster.durationText(86400), "1d 0h", "one-day duration switches to days")
+expectEqual(UsageForecaster.durationText(273000), "3d 3h", "duration formats days and hours")
+
+let forecastLocalizer = Localizer(language: .english)
+expectEqual(
+    UsageForecastText.menuLine(forecast: steadyForecast, window: .fiveHour, localizer: forecastLocalizer),
+    "Projected depletion: ~2h 0m · empties before reset",
+    "5h forecast menu line format is unchanged"
+)
+expectEqual(
+    UsageForecastText.menuLine(forecast: steadyForecast, window: .sevenDay, localizer: forecastLocalizer),
+    "Projected depletion: ~2h 0m (7d) · empties before reset",
+    "7d fallback forecast line carries the window marker"
+)
+expect(UsageForecastText.menuLine(forecast: nil, window: .sevenDay, localizer: forecastLocalizer) == nil, "no forecast menu line without a forecast")
 
 let forecastAlertInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: steadyForecast!, resetAt: now.addingTimeInterval(10800))
 expectEqual(

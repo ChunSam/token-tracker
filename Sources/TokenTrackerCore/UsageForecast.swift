@@ -4,6 +4,14 @@ import Foundation
 public enum ForecastWindow: Sendable {
     case fiveHour
     case sevenDay
+
+    /// Language-neutral window marker used in menu lines and alert bodies.
+    public var shortLabel: String {
+        switch self {
+        case .fiveHour: return "5h"
+        case .sevenDay: return "7d"
+        }
+    }
 }
 
 /// A depletion forecast for one provider/window: how fast remaining budget is
@@ -88,12 +96,14 @@ public enum UsageForecaster {
         )
     }
 
-    /// Compact, language-neutral duration like `2h 10m` / `45m` / `<1m`.
+    /// Compact, language-neutral duration like `3d 4h` / `2h 10m` / `45m` / `<1m`.
     public static func durationText(_ seconds: Double) -> String {
         let totalMinutes = Int(seconds / 60)
         if totalMinutes <= 0 { return "<1m" }
         if totalMinutes < 60 { return "\(totalMinutes)m" }
-        return "\(totalMinutes / 60)h \(totalMinutes % 60)m"
+        let hours = totalMinutes / 60
+        if hours < 24 { return "\(hours)h \(totalMinutes % 60)m" }
+        return "\(hours / 24)d \(hours % 24)h"
     }
 
     private static func remaining(_ usage: ProviderUsage, _ window: ForecastWindow) -> Int? {
@@ -106,9 +116,13 @@ public enum UsageForecaster {
 
 public enum UsageForecastText {
     /// The per-provider menu line, or `nil` when there is no forecast to show.
-    public static func menuLine(forecast: UsageForecast?, localizer: Localizer) -> String? {
+    /// A 7d forecast is marked with the window label; 5h is the unmarked norm.
+    public static func menuLine(forecast: UsageForecast?, window: ForecastWindow, localizer: Localizer) -> String? {
         guard let forecast else { return nil }
         var line = "\(localizer.text(.forecastLabel)): ~\(UsageForecaster.durationText(forecast.secondsToEmpty))"
+        if window == .sevenDay {
+            line += " (\(window.shortLabel))"
+        }
         if forecast.willEmptyBeforeReset {
             line += " · \(localizer.text(.forecastBeforeReset))"
         }
@@ -147,7 +161,7 @@ public enum UsageForecastAlert {
             guard input.forecast.willEmptyBeforeReset, let resetAt = input.resetAt else {
                 return nil
             }
-            let windowLabel = input.window == .fiveHour ? "5h" : "7d"
+            let windowLabel = input.window.shortLabel
             let resetID = Int(resetAt.timeIntervalSince1970)
             return UsageAlertCandidate(
                 id: "\(input.provider.rawValue)-\(windowLabel)-empty-before-reset-\(resetID)",

@@ -15,7 +15,6 @@ public enum Provider: String, Codable, CaseIterable, Sendable {
 public enum UsageSource: String, Codable, Sendable {
     case api
     case staleCache
-    case localLog
     case unavailable
 }
 

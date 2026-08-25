@@ -12,11 +12,6 @@ func isoDate(_ value: String?) -> Date? {
         ?? makeISO8601Formatter(includeFractionalSeconds: false).date(from: value)
 }
 
-func parseISO8601(_ value: String) -> Date? {
-    makeISO8601Formatter().date(from: value)
-        ?? makeISO8601Formatter(includeFractionalSeconds: false).date(from: value)
-}
-
 private func makeISO8601Formatter(includeFractionalSeconds: Bool = true) -> ISO8601DateFormatter {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = includeFractionalSeconds

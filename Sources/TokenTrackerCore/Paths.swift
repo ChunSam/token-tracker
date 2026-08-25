@@ -27,10 +27,6 @@ enum AppPaths {
         home.appendingPathComponent(".codex/auth.json")
     }
 
-    static var codexSessions: URL {
-        home.appendingPathComponent(".codex/sessions")
-    }
-
     static var claudeCredentials: URL {
         home.appendingPathComponent(".claude/.credentials.json")
     }

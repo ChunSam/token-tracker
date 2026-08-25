@@ -189,6 +189,68 @@ try
     ExpectEqual(afterRestart.Source, UsageSource.Unavailable, "Claude cooldown survives restart");
     Expect(afterRestart.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Restarted client reports persisted cooldown");
     ExpectEqual(restartHandler.CallCount, 0, "Restarted client honors persisted cooldown without HTTP");
+
+    // A cooldown persisted by a build that stored no fingerprint cannot be shown
+    // to belong to the current token, so it is dropped rather than waited out.
+    File.WriteAllText(
+        rateLimitStatePath,
+        "{\"RetryAllowedAt\":\"" + DateTimeOffset.Now.AddMinutes(30).ToString("O") + "\",\"FailureCount\":40}");
+    var legacyHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent("""
+        { "five_hour": { "utilization": 5.0 }, "seven_day": { "utilization": 5.0 } }
+        """)
+    });
+    var legacyClient = new UsageClient(new HttpClient(legacyHandler), new CredentialReader(), home, rateLimitStatePath);
+    var afterLegacy = await legacyClient.FetchClaudeAsync();
+    ExpectEqual(legacyHandler.CallCount, 1, "A fingerprint-less cooldown is dropped instead of blocking the current token");
+    ExpectEqual(afterLegacy.RemainingPercent5h, 95, "Dropping an unattributable cooldown loads usage again");
+
+    // Restore a fingerprinted cooldown for the re-login case below.
+    var reBackoffResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    reBackoffResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
+    var reBackoffClient = new UsageClient(
+        new HttpClient(new QueueHttpMessageHandler(reBackoffResponse)), new CredentialReader(), home, rateLimitStatePath);
+    await reBackoffClient.FetchClaudeAsync();
+
+    // Signing in again has to take effect immediately: a cooldown earned by the
+    // previous token must not keep blocking refreshes for the new one.
+    File.WriteAllText(Path.Combine(home, ".claude", ".credentials.json"), """
+    {
+      "claudeAiOauth": {
+        "accessToken": "claude-token-after-relogin",
+        "subscriptionType": "max"
+      }
+    }
+    """);
+    var reloginHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent("""
+        { "five_hour": { "utilization": 10.0 }, "seven_day": { "utilization": 20.0 } }
+        """)
+    });
+    var reloginClient = new UsageClient(new HttpClient(reloginHandler), new CredentialReader(), home, rateLimitStatePath);
+    var afterRelogin = await reloginClient.FetchClaudeAsync();
+    ExpectEqual(reloginHandler.CallCount, 1, "New credentials retry immediately instead of waiting out the old cooldown");
+    ExpectEqual(afterRelogin.RemainingPercent5h, 90, "New credentials load usage again");
+
+    // An expired token is reported as such without spending a request on it.
+    var expiredAtMilliseconds = DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeMilliseconds();
+    File.WriteAllText(
+        Path.Combine(home, ".claude", ".credentials.json"),
+        "{\"claudeAiOauth\":{\"accessToken\":\"claude-token-expired\",\"subscriptionType\":\"max\"," +
+        "\"expiresAt\":" + expiredAtMilliseconds + "}}");
+    var expiredHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+    var expiredClient = new UsageClient(new HttpClient(expiredHandler), new CredentialReader(), home, rateLimitStatePath);
+    var expiredResult = await expiredClient.FetchClaudeAsync();
+    ExpectEqual(expiredHandler.CallCount, 0, "An expired token is not spent on a request");
+    Expect(
+        expiredResult.Error?.StartsWith("Credentials expired for Claude API") == true,
+        "An expired token reports the real cause instead of an HTTP code");
+    ExpectEqual(
+        UsageIssueFormatter.Kind(expiredResult.Error!),
+        UsageIssueKind.ExpiredCredentials,
+        "An expired token is classified as needing a new sign-in");
 }
 finally
 {
@@ -218,6 +280,30 @@ ExpectEqual(cachedIssue.TechnicalDetail, "HTTP 429 from Claude API", "Stale cach
 ExpectEqual(UsageIssueFormatter.Kind("Disabled"), UsageIssueKind.Disabled, "Disabled issue is classified");
 ExpectEqual(UsageIssueFormatter.Kind("HTTP 429 from Claude API; retrying after 5m"), UsageIssueKind.RateLimited, "429 issue is classified");
 ExpectEqual(UsageIssueFormatter.Kind("Missing credentials"), UsageIssueKind.MissingCredentials, "Missing credentials issue is classified");
+ExpectEqual(UsageIssueFormatter.Kind("Credentials expired for Codex API"), UsageIssueKind.ExpiredCredentials, "Expired token issue is classified");
+ExpectEqual(UsageIssueFormatter.Kind("HTTP 401 from Claude API"), UsageIssueKind.ExpiredCredentials, "401 is reported as an expired sign-in, not a bare HTTP error");
+ExpectEqual(UsageIssueFormatter.Kind("HTTP 403 from Codex API"), UsageIssueKind.ExpiredCredentials, "403 is reported as an expired sign-in");
+ExpectEqual(UsageIssueFormatter.Kind("HTTP 500 from Claude API"), UsageIssueKind.HttpStatus, "Other HTTP codes stay generic HTTP errors");
+Expect(
+    UsageIssueFormatter.Issue(ProviderUsage.Unavailable(Provider.Codex, "Credentials expired for Codex API")).Recovery?.Contains("codex login") == true,
+    "Expired credentials recovery names the sign-in command");
+
+// Credential expiry: the app reads tokens the provider CLIs refresh, so it has to
+// recognize a lapsed one locally instead of spending a request to be told 401.
+Expect(!CredentialExpiry.IsExpired(null), "An unknown expiry is not treated as expired");
+Expect(!CredentialExpiry.IsExpired(DateTimeOffset.Now.AddHours(1)), "A token valid for an hour is usable");
+Expect(CredentialExpiry.IsExpired(DateTimeOffset.Now.AddSeconds(-1)), "A lapsed token is expired");
+Expect(
+    CredentialExpiry.IsExpired(DateTimeOffset.Now.Add(CredentialExpiry.Skew / 2)),
+    "A token inside the skew window is expired early rather than lapsing mid-request");
+// {"alg":"none"} . {"exp":1770000000}
+ExpectEqual(
+    CredentialExpiry.JwtExpiry("eyJhbGciOiJub25lIn0.eyJleHAiOjE3NzAwMDAwMDB9.sig"),
+    DateTimeOffset.FromUnixTimeSeconds(1_770_000_000),
+    "The exp claim is read out of a JWT access token");
+Expect(CredentialExpiry.JwtExpiry("not-a-jwt") is null, "A non-JWT token has no readable expiry");
+ExpectEqual(TokenFingerprint.Of("a"), TokenFingerprint.Of("a"), "The same token fingerprints the same");
+Expect(TokenFingerprint.Of("a") != TokenFingerprint.Of("b"), "Signing in again changes the fingerprint");
 ExpectEqual(UsageIssueFormatter.Kind("Timed out contacting Claude API"), UsageIssueKind.TimedOut, "Timeout issue is classified");
 
 var disabledStale = UsageSnapshotCachePolicy.Apply(freshFailure, staleSnapshot, claudeEnabled: false, updatedAt: now.AddMinutes(1));

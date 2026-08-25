@@ -11,23 +11,49 @@ struct ClaudeUsageClient: Sendable {
     }
 
     func fetch() async -> ProviderUsage {
-        if let error = await rateLimitState.currentError(serviceName: "Claude API") {
+        let candidates: [TokenCandidate]
+        do {
+            candidates = try readTokenCandidates()
+        } catch {
+            return .unavailable(.claude, error: error.localizedDescription)
+        }
+
+        // Every stored token has lapsed. Spending a request on one would return an
+        // opaque 401 — or a 429 that the backoff below would mistake for a quota
+        // cooldown — so report the real cause and drop any cooldown that a previous
+        // expired-token round already recorded.
+        let usable = candidates.filter { !$0.isExpired }
+        guard !usable.isEmpty else {
+            await rateLimitState.clear()
+            return .unavailable(
+                .claude,
+                error: UsageError.expiredCredentials(
+                    service: "Claude API",
+                    expiredAt: candidates.compactMap(\.expiresAt).max()
+                ).localizedDescription
+            )
+        }
+
+        // A cooldown is only binding for the credentials that earned it; signing in
+        // again has to take effect immediately rather than wait it out.
+        let fingerprint = TokenFingerprint.of(usable.map(\.token))
+        if let error = await rateLimitState.currentError(serviceName: "Claude API", fingerprint: fingerprint) {
             return .unavailable(.claude, error: error.localizedDescription)
         }
 
         do {
-            let usage = try await fetchFromAPI()
+            let usage = try await fetchFromAPI(candidates: usable)
             await rateLimitState.clear()
             return usage
         } catch let error as UsageError {
             if let retryAfter = error.rateLimitRetryAfter {
-                await rateLimitState.backOff(for: retryAfter)
-                let currentError = await rateLimitState.currentError(serviceName: "Claude API")
+                await rateLimitState.backOff(for: retryAfter, fingerprint: fingerprint)
+                let currentError = await rateLimitState.currentError(serviceName: "Claude API", fingerprint: fingerprint)
                 return .unavailable(.claude, error: currentError?.localizedDescription ?? error.localizedDescription)
             }
             if case .httpStatus(429, _, nil) = error {
-                await rateLimitState.backOff(for: Self.defaultRateLimitCooldown)
-                let currentError = await rateLimitState.currentError(serviceName: "Claude API")
+                await rateLimitState.backOff(for: Self.defaultRateLimitCooldown, fingerprint: fingerprint)
+                let currentError = await rateLimitState.currentError(serviceName: "Claude API", fingerprint: fingerprint)
                 return .unavailable(.claude, error: currentError?.localizedDescription ?? error.localizedDescription)
             }
             return .unavailable(.claude, error: error.localizedDescription)
@@ -36,8 +62,8 @@ struct ClaudeUsageClient: Sendable {
         }
     }
 
-    private func fetchFromAPI() async throws -> ProviderUsage {
-        let candidates = try readTokenCandidates()
+    private func fetchFromAPI(candidates: [TokenCandidate]) async throws -> ProviderUsage {
+        var lastError: UsageError = .missingCredentials
         for (index, candidate) in candidates.enumerated() {
             do {
                 return try await fetchFromAPI(token: candidate.token, fallbackPlan: candidate.plan)
@@ -45,10 +71,11 @@ struct ClaudeUsageClient: Sendable {
                 && candidate.source == .keychain
                 && candidates.indices.contains(index + 1)
             {
+                lastError = error
                 continue
             }
         }
-        throw UsageError.missingCredentials
+        throw lastError
     }
 
     private func fetchFromAPI(token: String, fallbackPlan: String?) async throws -> ProviderUsage {
@@ -123,7 +150,11 @@ struct ClaudeUsageClient: Sendable {
             else {
                 return nil
             }
-            return ClaudeCredential(accessToken: token, plan: readPlan(from: claudeOauth))
+            return ClaudeCredential(
+                accessToken: token,
+                plan: readPlan(from: claudeOauth),
+                expiresAt: CredentialExpiry.epochMillisecondsDate(claudeOauth["expiresAt"])
+            )
         } catch {
             return nil
         }
@@ -138,7 +169,11 @@ struct ClaudeUsageClient: Sendable {
         else {
             return nil
         }
-        return ClaudeCredential(accessToken: token, plan: readPlan(from: claudeOauth))
+        return ClaudeCredential(
+            accessToken: token,
+            plan: readPlan(from: claudeOauth),
+            expiresAt: CredentialExpiry.epochMillisecondsDate(claudeOauth["expiresAt"])
+        )
     }
 
     private func readPlan(from object: [String: Any]) -> String? {
@@ -162,12 +197,14 @@ struct ClaudeUsageClient: Sendable {
 private struct ClaudeCredential {
     let accessToken: String
     let plan: String?
+    let expiresAt: Date?
 }
 
 private struct TokenCandidate {
     let source: TokenSource
     let token: String
     let plan: String?
+    let expiresAt: Date?
 
     init?(source: TokenSource, credential: ClaudeCredential) {
         guard !credential.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -176,6 +213,11 @@ private struct TokenCandidate {
         self.source = source
         self.token = credential.accessToken
         self.plan = credential.plan
+        self.expiresAt = credential.expiresAt
+    }
+
+    var isExpired: Bool {
+        CredentialExpiry.isExpired(expiresAt)
     }
 }
 
@@ -188,6 +230,7 @@ private actor ClaudeRateLimitState {
     private let store: ClaudeRateLimitStore
     private var retryAllowedAt: Date?
     private var failureCount = 0
+    private var fingerprint: String?
     private var didLoad = false
 
     init(store: ClaudeRateLimitStore) {
@@ -204,12 +247,24 @@ private actor ClaudeRateLimitState {
         if let state = store.load() {
             retryAllowedAt = state.retryAllowedAt
             failureCount = state.failureCount
+            fingerprint = state.fingerprint
         }
     }
 
-    func currentError(serviceName: String) -> UsageError? {
+    func currentError(serviceName: String, fingerprint: String) -> UsageError? {
         loadIfNeeded()
         guard let retryAllowedAt else {
+            return nil
+        }
+
+        // A cooldown only binds the credentials it was recorded against. A record
+        // that names different credentials — or, from a build before fingerprints
+        // were stored, names none at all — cannot be shown to apply to the token in
+        // hand, so the token gets a fresh attempt. Dropping one costs a single
+        // request that re-establishes the cooldown if the limit is real; honoring
+        // one wrongly blocks refreshes for up to the full escalated cooldown.
+        guard self.fingerprint == fingerprint else {
+            reset()
             return nil
         }
 
@@ -222,8 +277,14 @@ private actor ClaudeRateLimitState {
         return .httpStatus(code: 429, service: serviceName, retryAfter: remaining)
     }
 
-    func backOff(for retryAfter: TimeInterval) {
+    func backOff(for retryAfter: TimeInterval, fingerprint: String) {
         loadIfNeeded()
+        if self.fingerprint != fingerprint {
+            // New credentials start their own backoff ladder rather than inheriting
+            // the escalation earned by a token that is no longer in use.
+            failureCount = 0
+            self.fingerprint = fingerprint
+        }
         // Escalate the cooldown per consecutive 429 and add jitter so repeated
         // rate limiting backs off further instead of retrying at a fixed cadence.
         let cooldown = RateLimitBackoff.cooldown(
@@ -234,13 +295,18 @@ private actor ClaudeRateLimitState {
         failureCount += 1
         let allowedAt = Date().addingTimeInterval(cooldown)
         retryAllowedAt = allowedAt
-        store.save(.init(retryAllowedAt: allowedAt, failureCount: failureCount))
+        store.save(.init(retryAllowedAt: allowedAt, failureCount: failureCount, fingerprint: fingerprint))
     }
 
     func clear() {
         loadIfNeeded()
+        reset()
+    }
+
+    private func reset() {
         failureCount = 0
         retryAllowedAt = nil
+        fingerprint = nil
         store.clear()
     }
 }

@@ -103,6 +103,12 @@ expectEqual(UsageError.network(message: "offline", service: "Claude API").locali
 expectEqual(UsageIssueFormatter.kind(forError: "Disabled"), .disabled, "disabled error is classified")
 expectEqual(UsageIssueFormatter.kind(forError: "HTTP 429 from Claude API; retrying after 5m"), .rateLimited, "429 error is classified as rate limited")
 expectEqual(UsageIssueFormatter.kind(forError: "Missing credentials"), .missingCredentials, "missing credentials is classified")
+expectEqual(UsageIssueFormatter.kind(forError: "Credentials expired for Codex API"), .expiredCredentials, "an expired token is classified")
+expectEqual(UsageIssueFormatter.kind(forError: "HTTP 401 from Claude API"), .expiredCredentials, "401 is reported as an expired sign-in, not a bare HTTP error")
+expectEqual(UsageIssueFormatter.kind(forError: "HTTP 403 from Codex API"), .expiredCredentials, "403 is reported as an expired sign-in")
+expectEqual(UsageIssueFormatter.kind(forError: "HTTP 500 from Claude API"), .httpStatus, "other HTTP codes stay generic HTTP errors")
+let expiredIssue = UsageIssueFormatter.issue(for: .unavailable(.codex, error: "Credentials expired for Codex API"))
+expect(expiredIssue.recovery?.contains("codex login") == true, "expired credentials recovery names the sign-in command")
 expectEqual(UsageIssueFormatter.kind(forError: "Timed out contacting Claude API"), .timedOut, "timeout is classified")
 expectEqual(UsageIssueFormatter.kind(forError: "Network error from Claude API: offline"), .network, "network error is classified")
 
@@ -162,10 +168,11 @@ defer { try? FileManager.default.removeItem(at: rateLimitStoreURL) }
 
 expect(rateLimitStore.load() == nil, "rate limit store starts empty")
 let futureRetry = Date().addingTimeInterval(300)
-rateLimitStore.save(.init(retryAllowedAt: futureRetry, failureCount: 3))
+rateLimitStore.save(.init(retryAllowedAt: futureRetry, failureCount: 3, fingerprint: "abc123"))
 if let persisted = rateLimitStore.load() {
     expect(abs(persisted.retryAllowedAt.timeIntervalSince(futureRetry)) < 1, "future cooldown survives a reload")
     expectEqual(persisted.failureCount, 3, "failure count survives a reload for exponential backoff")
+    expectEqual(persisted.fingerprint, "abc123", "credential fingerprint survives a reload")
 } else {
     expect(false, "future cooldown survives a reload")
 }
@@ -181,6 +188,7 @@ let legacyISO = ISO8601DateFormatter().string(from: futureRetry)
 try? Data("{\"retryAllowedAt\":\"\(legacyISO)\"}".utf8).write(to: rateLimitStoreURL)
 if let legacyState = rateLimitStore.load() {
     expectEqual(legacyState.failureCount, 0, "a legacy record without a failure count loads as zero")
+    expect(legacyState.fingerprint == nil, "a legacy record without a fingerprint loads as nil")
 } else {
     expect(false, "a legacy record still loads")
 }
@@ -332,5 +340,34 @@ expectEqual(collidingWindows.sevenDay?.usedPercent, 20, "the first window wins a
 expect(collidingWindows.fiveHour == nil, "a colliding window is dropped rather than mislabeled")
 
 expect(CodexUsageParser.parse(object: [:]) == nil, "a payload without rate_limit does not parse")
+
+// Credential expiry: the app reads tokens the provider CLIs refresh, so it has to
+// recognize a lapsed one locally instead of spending a request to be told 401.
+expect(CredentialExpiry.isExpired(nil) == false, "an unknown expiry is not treated as expired")
+expect(CredentialExpiry.isExpired(Date().addingTimeInterval(3600)) == false, "a token valid for an hour is usable")
+expect(CredentialExpiry.isExpired(Date().addingTimeInterval(-1)) == true, "a lapsed token is expired")
+expect(
+    CredentialExpiry.isExpired(Date().addingTimeInterval(CredentialExpiry.skew / 2)) == true,
+    "a token inside the skew window is expired early rather than lapsing mid-request"
+)
+
+// {"alg":"none"} . {"exp":1770000000}
+let sampleJWT = "eyJhbGciOiJub25lIn0.eyJleHAiOjE3NzAwMDAwMDB9.sig"
+expectEqual(
+    CredentialExpiry.jwtExpiry(sampleJWT),
+    Date(timeIntervalSince1970: 1_770_000_000),
+    "the exp claim is read out of a JWT access token"
+)
+expect(CredentialExpiry.jwtExpiry("not-a-jwt") == nil, "a non-JWT token has no readable expiry")
+expectEqual(
+    CredentialExpiry.epochMillisecondsDate(1_770_000_000_000),
+    Date(timeIntervalSince1970: 1_770_000_000),
+    "Claude Code's millisecond expiresAt is read as a date"
+)
+expect(CredentialExpiry.epochMillisecondsDate(nil) == nil, "an absent expiresAt has no date")
+
+expectEqual(TokenFingerprint.of(["a"]), TokenFingerprint.of(["a"]), "the same token fingerprints the same")
+expect(TokenFingerprint.of(["a"]) != TokenFingerprint.of(["b"]), "signing in again changes the fingerprint")
+expectEqual(TokenFingerprint.of(["a", "b"]), TokenFingerprint.of(["b", "a"]), "candidate order does not change the fingerprint")
 
 print("TokenTrackerSmokeTests passed")

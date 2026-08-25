@@ -101,6 +101,8 @@ public struct Localizer {
         .statusRateLimitedDetail: "The provider temporarily rejected usage checks because requests were too frequent.",
         .statusMissingCredentials: "Login required",
         .statusMissingCredentialsDetail: "Token Tracker could not find local credentials for this provider.",
+        .statusExpiredCredentials: "Sign in again",
+        .statusExpiredCredentialsDetail: "The saved access token has expired. Token Tracker reads the token the provider's CLI stores and cannot refresh it itself.",
         .statusInvalidResponse: "Unexpected response",
         .statusInvalidResponseDetail: "The provider returned data in a format Token Tracker did not expect.",
         .statusTimedOut: "Timed out",
@@ -116,6 +118,7 @@ public struct Localizer {
         .recoveryEnableProvider: "Enable the provider if you want Token Tracker to check it again.",
         .recoveryWaitForCooldown: "Wait for the cooldown to pass or use a longer refresh interval.",
         .recoveryCheckCredentials: "Sign in to the provider CLI/app, then refresh Token Tracker.",
+        .recoverySignInAgain: "Sign in again — run `claude` then `/login` for Claude, or `codex login` for Codex — then refresh Token Tracker.",
         .recoveryUpdateOrTryLater: "Try again later. If this keeps happening, update Token Tracker.",
         .recoveryCheckNetwork: "Check your network connection and try again.",
         .recoveryRefreshLater: "Refresh again later.",
@@ -190,6 +193,8 @@ public struct Localizer {
         .statusRateLimitedDetail: "요청이 너무 잦아 제공자가 사용량 확인을 일시적으로 거절했습니다.",
         .statusMissingCredentials: "로그인 필요",
         .statusMissingCredentialsDetail: "이 제공자의 로컬 인증 정보를 찾지 못했습니다.",
+        .statusExpiredCredentials: "다시 로그인 필요",
+        .statusExpiredCredentialsDetail: "저장된 액세스 토큰이 만료되었습니다. Token Tracker는 제공자 CLI가 저장한 토큰을 읽기만 하며 직접 갱신하지 않습니다.",
         .statusInvalidResponse: "예상과 다른 응답",
         .statusInvalidResponseDetail: "제공자가 Token Tracker가 예상하지 못한 형식의 데이터를 반환했습니다.",
         .statusTimedOut: "시간 초과",
@@ -205,6 +210,7 @@ public struct Localizer {
         .recoveryEnableProvider: "다시 확인하려면 제공자를 켜세요.",
         .recoveryWaitForCooldown: "쿨다운이 끝날 때까지 기다리거나 새로고침 간격을 늘리세요.",
         .recoveryCheckCredentials: "제공자 CLI/앱에 로그인한 뒤 Token Tracker를 새로고침하세요.",
+        .recoverySignInAgain: "다시 로그인하세요. Claude는 `claude` 실행 후 `/login`, Codex는 `codex login`을 실행한 뒤 Token Tracker를 새로고침하세요.",
         .recoveryUpdateOrTryLater: "나중에 다시 시도하세요. 계속 발생하면 Token Tracker를 업데이트하세요.",
         .recoveryCheckNetwork: "네트워크 연결을 확인한 뒤 다시 시도하세요.",
         .recoveryRefreshLater: "나중에 다시 새로고침하세요.",
@@ -280,6 +286,8 @@ public enum L10nKey: String {
     case statusRateLimitedDetail
     case statusMissingCredentials
     case statusMissingCredentialsDetail
+    case statusExpiredCredentials
+    case statusExpiredCredentialsDetail
     case statusInvalidResponse
     case statusInvalidResponseDetail
     case statusTimedOut
@@ -295,6 +303,7 @@ public enum L10nKey: String {
     case recoveryEnableProvider
     case recoveryWaitForCooldown
     case recoveryCheckCredentials
+    case recoverySignInAgain
     case recoveryUpdateOrTryLater
     case recoveryCheckNetwork
     case recoveryRefreshLater

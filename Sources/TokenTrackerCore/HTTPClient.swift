@@ -54,6 +54,7 @@ struct HTTPClient: Sendable {
 
 public enum UsageError: Error, LocalizedError, Equatable, Sendable {
     case missingCredentials
+    case expiredCredentials(service: String?, expiredAt: Date?)
     case invalidResponse
     case httpStatus(code: Int, service: String?, retryAfter: TimeInterval?)
     case timedOut(service: String?)
@@ -63,6 +64,8 @@ public enum UsageError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .httpStatus(let code, _, _):
             return code == 401 || code == 403
+        case .expiredCredentials:
+            return true
         case .missingCredentials, .invalidResponse, .timedOut, .network:
             return false
         }
@@ -72,7 +75,7 @@ public enum UsageError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .httpStatus(429, _, let retryAfter):
             return retryAfter
-        case .missingCredentials, .invalidResponse, .httpStatus, .timedOut, .network:
+        case .missingCredentials, .expiredCredentials, .invalidResponse, .httpStatus, .timedOut, .network:
             return nil
         }
     }
@@ -81,6 +84,17 @@ public enum UsageError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .missingCredentials:
             return "Missing credentials"
+        case .expiredCredentials(let service, let expiredAt):
+            let prefix: String
+            if let service {
+                prefix = "Credentials expired for \(service)"
+            } else {
+                prefix = "Credentials expired"
+            }
+            guard let expiredAt else {
+                return prefix
+            }
+            return "\(prefix) (expired \(ISO8601DateFormatter().string(from: expiredAt)))"
         case .invalidResponse:
             return "Invalid response"
         case .httpStatus(let code, let service, let retryAfter):

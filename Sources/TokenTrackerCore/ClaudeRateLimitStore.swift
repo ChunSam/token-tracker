@@ -14,10 +14,15 @@ public struct ClaudeRateLimitStore: Sendable {
     public struct State: Sendable, Equatable {
         public let retryAllowedAt: Date
         public let failureCount: Int
+        /// Fingerprint of the credentials the cooldown was recorded against, so a
+        /// cooldown earned by a token the user has since replaced can be dropped
+        /// instead of blocking refreshes for credentials that were never limited.
+        public let fingerprint: String?
 
-        public init(retryAllowedAt: Date, failureCount: Int) {
+        public init(retryAllowedAt: Date, failureCount: Int, fingerprint: String? = nil) {
             self.retryAllowedAt = retryAllowedAt
             self.failureCount = failureCount
+            self.fingerprint = fingerprint
         }
     }
 
@@ -41,7 +46,11 @@ public struct ClaudeRateLimitStore: Sendable {
         else {
             return nil
         }
-        return State(retryAllowedAt: record.retryAllowedAt, failureCount: max(0, record.failureCount ?? 0))
+        return State(
+            retryAllowedAt: record.retryAllowedAt,
+            failureCount: max(0, record.failureCount ?? 0),
+            fingerprint: record.fingerprint
+        )
     }
 
     public func save(_ state: State) {
@@ -52,7 +61,13 @@ public struct ClaudeRateLimitStore: Sendable {
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
-            let data = try encoder.encode(Record(retryAllowedAt: state.retryAllowedAt, failureCount: state.failureCount))
+            let data = try encoder.encode(
+                Record(
+                    retryAllowedAt: state.retryAllowedAt,
+                    failureCount: state.failureCount,
+                    fingerprint: state.fingerprint
+                )
+            )
             try data.write(to: url, options: .atomic)
             // Atomic writes replace the file via a temp file, so re-apply owner-only
             // permissions after each write rather than relying on the umask default.
@@ -65,10 +80,13 @@ public struct ClaudeRateLimitStore: Sendable {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // `failureCount` is optional so a legacy record written before backoff was
-    // persisted (retry instant only) still decodes, defaulting to 0.
+    // `failureCount` and `fingerprint` are optional so a legacy record written
+    // before those were persisted still decodes; a record with no fingerprint is
+    // unattributable and is dropped on the next check rather than applied to
+    // whatever credentials happen to be current.
     private struct Record: Codable {
         let retryAllowedAt: Date
         let failureCount: Int?
+        let fingerprint: String?
     }
 }

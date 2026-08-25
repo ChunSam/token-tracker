@@ -5,6 +5,7 @@ public enum UsageIssueKind: String, Equatable, Sendable {
     case disabled
     case rateLimited
     case missingCredentials
+    case expiredCredentials
     case invalidResponse
     case timedOut
     case network
@@ -84,6 +85,13 @@ public enum UsageIssueFormatter {
         if lower.contains("missing credentials") {
             return .missingCredentials
         }
+        // 401/403 from either usage endpoint is, in practice, always a lapsed
+        // access token: Token Tracker reads whatever the provider CLI last stored
+        // and never refreshes it. Reporting it as a generic HTTP error left the
+        // user with "refresh again later", which never fixes it.
+        if lower.contains("credentials expired") || lower.contains("http 401") || lower.contains("http 403") {
+            return .expiredCredentials
+        }
         if lower.contains("invalid response") {
             return .invalidResponse
         }
@@ -109,6 +117,8 @@ public enum UsageIssueFormatter {
             return localizer.text(.statusRateLimited)
         case .missingCredentials:
             return localizer.text(.statusMissingCredentials)
+        case .expiredCredentials:
+            return localizer.text(.statusExpiredCredentials)
         case .invalidResponse:
             return localizer.text(.statusInvalidResponse)
         case .timedOut:
@@ -134,6 +144,8 @@ public enum UsageIssueFormatter {
             return localizer.text(.statusRateLimitedDetail)
         case .missingCredentials:
             return localizer.text(.statusMissingCredentialsDetail)
+        case .expiredCredentials:
+            return localizer.text(.statusExpiredCredentialsDetail)
         case .invalidResponse:
             return localizer.text(.statusInvalidResponseDetail)
         case .timedOut:
@@ -160,6 +172,8 @@ public enum UsageIssueFormatter {
             return localizer.text(.recoveryWaitForCooldown)
         case .missingCredentials:
             return localizer.text(.recoveryCheckCredentials)
+        case .expiredCredentials:
+            return localizer.text(.recoverySignInAgain)
         case .invalidResponse:
             return localizer.text(.recoveryUpdateOrTryLater)
         case .timedOut, .network:

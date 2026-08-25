@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace TokenTracker.Windows.Core;
 
-public sealed record CodexAuth(string AccessToken, string AccountId);
-public sealed record ClaudeCredential(string AccessToken, string? Plan);
+public sealed record CodexAuth(string AccessToken, string AccountId, DateTimeOffset? ExpiresAt = null);
+public sealed record ClaudeCredential(string AccessToken, string? Plan, DateTimeOffset? ExpiresAt = null);
 
 public sealed class CredentialReader
 {
@@ -19,7 +19,7 @@ public sealed class CredentialReader
             throw new InvalidOperationException("Missing Codex credentials");
         }
 
-        return new CodexAuth(accessToken, accountId);
+        return new CodexAuth(accessToken, accountId, CredentialExpiry.JwtExpiry(accessToken));
     }
 
     public string ReadClaudeAccessToken(string? homeDirectory = null)
@@ -38,7 +38,10 @@ public sealed class CredentialReader
             throw new InvalidOperationException("Missing Claude credentials");
         }
 
-        return new ClaudeCredential(token, ReadPlan(claudeOauth));
+        return new ClaudeCredential(
+            token,
+            ReadPlan(claudeOauth),
+            CredentialExpiry.EpochMilliseconds(claudeOauth, "expiresAt"));
     }
 
     private static string? ReadPlan(JsonElement element)

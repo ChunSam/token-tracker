@@ -20,6 +20,7 @@ macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용�
 - 전용 앱 아이콘 포함
 - 라이트/다크 모드 메뉴 색상 대응
 - Codex / Claude 연결 실패 시 잔량을 `--`로 표시
+- 저장된 액세스 토큰 만료를 미리 감지해 다시 로그인하라고 안내
 - 오류 원인별 상태/복구 안내와 진단 정보 복사
 - 낮은 잔량 및 리셋 임박 macOS/Windows 알림
 - 최근 7일 로컬 히스토리 저장, 24시간 추세 표시, CSV 내보내기
@@ -80,6 +81,22 @@ open "/Applications/Token Tracker.app"
 7일 잔량이 표시되는 경우 해당 퍼센트는 파스텔 레드로 강조됩니다.
 
 사용량 API 연결에 실패한 제공자는 잔량을 `--`로 표시합니다. 오래된 로컬 로그 값이 최신 잔량처럼 보이지 않도록 Codex도 연결 실패 시 `--`로 통일합니다.
+
+## 사용량을 못 불러올 때
+
+Token Tracker는 각 CLI가 저장해 둔 액세스 토큰을 읽기만 하고, 직접 갱신하지 않습니다.
+따라서 CLI를 한동안 쓰지 않아 토큰이 만료되면 두 제공자 모두 잔량이 `--`가 됩니다.
+
+메뉴의 `Status`가 `Sign in again` / `다시 로그인 필요`이면 해당 CLI에 다시 로그인한 뒤 새로고침합니다.
+
+```bash
+codex login
+```
+
+Claude는 `claude`를 실행한 뒤 `/login`을 입력합니다.
+
+- Claude 토큰은 macOS 키체인(`Claude Code-credentials`) 또는 `~/.claude/.credentials.json`에서 읽습니다.
+- Codex 토큰은 `~/.codex/auth.json`에서 읽습니다.
 
 ## 개발
 

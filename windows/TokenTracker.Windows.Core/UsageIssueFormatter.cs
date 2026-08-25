@@ -6,6 +6,7 @@ public enum UsageIssueKind
     Disabled,
     RateLimited,
     MissingCredentials,
+    ExpiredCredentials,
     InvalidResponse,
     TimedOut,
     Network,
@@ -83,6 +84,17 @@ public static class UsageIssueFormatter
             return UsageIssueKind.MissingCredentials;
         }
 
+        // 401/403 from either usage endpoint is, in practice, always a lapsed
+        // access token: Token Tracker reads whatever the provider CLI last stored
+        // and never refreshes it. Reporting it as a generic HTTP error left the
+        // user with "refresh again later", which never fixes it.
+        if (lower.Contains("credentials expired", StringComparison.Ordinal) ||
+            lower.Contains("http 401", StringComparison.Ordinal) ||
+            lower.Contains("http 403", StringComparison.Ordinal))
+        {
+            return UsageIssueKind.ExpiredCredentials;
+        }
+
         if (lower.Contains("invalid response", StringComparison.Ordinal))
         {
             return UsageIssueKind.InvalidResponse;
@@ -112,6 +124,7 @@ public static class UsageIssueFormatter
         UsageIssueKind.Disabled => localizer.Text(L10nKey.StatusDisabledProvider),
         UsageIssueKind.RateLimited => localizer.Text(L10nKey.StatusRateLimited),
         UsageIssueKind.MissingCredentials => localizer.Text(L10nKey.StatusMissingCredentials),
+        UsageIssueKind.ExpiredCredentials => localizer.Text(L10nKey.StatusExpiredCredentials),
         UsageIssueKind.InvalidResponse => localizer.Text(L10nKey.StatusInvalidResponse),
         UsageIssueKind.TimedOut => localizer.Text(L10nKey.StatusTimedOut),
         UsageIssueKind.Network => localizer.Text(L10nKey.StatusNetworkIssue),
@@ -127,6 +140,7 @@ public static class UsageIssueFormatter
         UsageIssueKind.Disabled => localizer.Text(L10nKey.StatusDisabledProviderDetail),
         UsageIssueKind.RateLimited => localizer.Text(L10nKey.StatusRateLimitedDetail),
         UsageIssueKind.MissingCredentials => localizer.Text(L10nKey.StatusMissingCredentialsDetail),
+        UsageIssueKind.ExpiredCredentials => localizer.Text(L10nKey.StatusExpiredCredentialsDetail),
         UsageIssueKind.InvalidResponse => localizer.Text(L10nKey.StatusInvalidResponseDetail),
         UsageIssueKind.TimedOut => localizer.Text(L10nKey.StatusTimedOutDetail),
         UsageIssueKind.Network => localizer.Text(L10nKey.StatusNetworkIssueDetail),
@@ -148,6 +162,7 @@ public static class UsageIssueFormatter
             UsageIssueKind.Disabled => localizer.Text(L10nKey.RecoveryEnableProvider),
             UsageIssueKind.RateLimited => localizer.Text(L10nKey.RecoveryWaitForCooldown),
             UsageIssueKind.MissingCredentials => localizer.Text(L10nKey.RecoveryCheckCredentials),
+            UsageIssueKind.ExpiredCredentials => localizer.Text(L10nKey.RecoverySignInAgain),
             UsageIssueKind.InvalidResponse => localizer.Text(L10nKey.RecoveryUpdateOrTryLater),
             UsageIssueKind.TimedOut or UsageIssueKind.Network => localizer.Text(L10nKey.RecoveryCheckNetwork),
             UsageIssueKind.HttpStatus or UsageIssueKind.Unavailable => localizer.Text(L10nKey.RecoveryRefreshLater),

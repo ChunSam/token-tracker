@@ -42,6 +42,17 @@ public sealed class UsageClient
         try
         {
             var auth = credentialReader.ReadCodexAuth(homeDirectory);
+
+            // `codex login` refreshes this token; Token Tracker only reads it. Once
+            // it lapses the endpoint answers a bare HTTP 401, which tells the user
+            // nothing about needing to sign in again — so name the cause here.
+            if (CredentialExpiry.IsExpired(auth.ExpiresAt))
+            {
+                return ProviderUsage.Unavailable(
+                    Provider.Codex,
+                    ExpiredCredentialsMessage("Codex API", auth.ExpiresAt));
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Get, CodexUsageUrl);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
@@ -63,14 +74,38 @@ public sealed class UsageClient
 
     public async Task<ProviderUsage> FetchClaudeAsync(CancellationToken cancellationToken = default)
     {
-        if (claudeRateLimitState.CurrentError("Claude API") is { } rateLimitError)
+        ClaudeCredential credential;
+        try
+        {
+            credential = credentialReader.ReadClaudeCredential(homeDirectory);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return ProviderUsage.Unavailable(Provider.Claude, ex.Message);
+        }
+
+        // The stored token has lapsed. Spending a request on it would return an
+        // opaque 401 — or a 429 that the backoff below would mistake for a quota
+        // cooldown — so report the real cause and drop any cooldown a previous
+        // expired-token round already recorded.
+        if (CredentialExpiry.IsExpired(credential.ExpiresAt))
+        {
+            claudeRateLimitState.Clear();
+            return ProviderUsage.Unavailable(
+                Provider.Claude,
+                ExpiredCredentialsMessage("Claude API", credential.ExpiresAt));
+        }
+
+        // A cooldown is only binding for the credentials that earned it; signing in
+        // again has to take effect immediately rather than wait it out.
+        var fingerprint = TokenFingerprint.Of(credential.AccessToken);
+        if (claudeRateLimitState.CurrentError("Claude API", fingerprint) is { } rateLimitError)
         {
             return ProviderUsage.Unavailable(Provider.Claude, rateLimitError.Message);
         }
 
         try
         {
-            var credential = credentialReader.ReadClaudeCredential(homeDirectory);
             using var request = new HttpRequestMessage(HttpMethod.Get, ClaudeUsageUrl);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.AccessToken);
@@ -84,10 +119,10 @@ public sealed class UsageClient
         }
         catch (UsageHttpException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            claudeRateLimitState.BackOff(ex.RetryAfter ?? DefaultClaudeRateLimitCooldown);
+            claudeRateLimitState.BackOff(ex.RetryAfter ?? DefaultClaudeRateLimitCooldown, fingerprint);
             return ProviderUsage.Unavailable(
                 Provider.Claude,
-                claudeRateLimitState.CurrentError("Claude API")?.Message ?? ex.Message);
+                claudeRateLimitState.CurrentError("Claude API", fingerprint)?.Message ?? ex.Message);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -97,6 +132,14 @@ public sealed class UsageClient
         {
             return ProviderUsage.Unavailable(Provider.Claude, ex.Message);
         }
+    }
+
+    private static string ExpiredCredentialsMessage(string serviceName, DateTimeOffset? expiredAt)
+    {
+        var prefix = $"Credentials expired for {serviceName}";
+        return expiredAt is { } expiry
+            ? $"{prefix} (expired {expiry.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ})"
+            : prefix;
     }
 
     private async Task<string> SendForJsonAsync(HttpRequestMessage request, string serviceName, CancellationToken cancellationToken)
@@ -178,6 +221,7 @@ internal sealed class ClaudeRateLimitState
     private readonly ClaudeRateLimitStore store;
     private DateTimeOffset? retryAllowedAt;
     private int failureCount;
+    private string? fingerprint;
     private bool loaded;
 
     public ClaudeRateLimitState(ClaudeRateLimitStore store)
@@ -199,16 +243,30 @@ internal sealed class ClaudeRateLimitState
         {
             retryAllowedAt = snapshot.RetryAllowedAt;
             failureCount = snapshot.FailureCount;
+            fingerprint = snapshot.Fingerprint;
         }
     }
 
-    public UsageHttpException? CurrentError(string serviceName)
+    public UsageHttpException? CurrentError(string serviceName, string credentialFingerprint)
     {
         lock (gate)
         {
             EnsureLoaded();
             if (retryAllowedAt is null)
             {
+                return null;
+            }
+
+            // A cooldown only binds the credentials it was recorded against. A
+            // record that names different credentials — or, from a build before
+            // fingerprints were stored, names none at all — cannot be shown to
+            // apply to the token in hand, so the token gets a fresh attempt.
+            // Dropping one costs a single request that re-establishes the cooldown
+            // if the limit is real; honoring one wrongly blocks refreshes for up to
+            // the full escalated cooldown.
+            if (fingerprint != credentialFingerprint)
+            {
+                Reset();
                 return null;
             }
 
@@ -224,11 +282,19 @@ internal sealed class ClaudeRateLimitState
         }
     }
 
-    public void BackOff(TimeSpan retryAfter)
+    public void BackOff(TimeSpan retryAfter, string credentialFingerprint)
     {
         lock (gate)
         {
             EnsureLoaded();
+            if (fingerprint != credentialFingerprint)
+            {
+                // New credentials start their own backoff ladder rather than
+                // inheriting escalation earned by a token no longer in use.
+                failureCount = 0;
+                fingerprint = credentialFingerprint;
+            }
+
             // Escalate the cooldown per consecutive 429 and add jitter so repeated
             // rate limiting backs off further instead of retrying at a fixed cadence.
             var cooldown = RateLimitBackoff.Cooldown(
@@ -237,7 +303,7 @@ internal sealed class ClaudeRateLimitState
                 Random.Shared.NextDouble() * RateLimitBackoff.JitterFraction);
             failureCount++;
             retryAllowedAt = DateTimeOffset.Now.Add(cooldown);
-            store.Save(retryAllowedAt.Value, failureCount);
+            store.Save(retryAllowedAt.Value, failureCount, fingerprint);
         }
     }
 
@@ -246,10 +312,16 @@ internal sealed class ClaudeRateLimitState
         lock (gate)
         {
             EnsureLoaded();
-            failureCount = 0;
-            retryAllowedAt = null;
-            store.Clear();
+            Reset();
         }
+    }
+
+    private void Reset()
+    {
+        failureCount = 0;
+        retryAllowedAt = null;
+        fingerprint = null;
+        store.Clear();
     }
 }
 
@@ -286,7 +358,10 @@ internal sealed class ClaudeRateLimitStore
                 return null;
             }
 
-            return new ClaudeRateLimitSnapshot(record.RetryAllowedAt, Math.Max(0, record.FailureCount));
+            return new ClaudeRateLimitSnapshot(
+                record.RetryAllowedAt,
+                Math.Max(0, record.FailureCount),
+                record.Fingerprint);
         }
         catch
         {
@@ -294,12 +369,12 @@ internal sealed class ClaudeRateLimitStore
         }
     }
 
-    public void Save(DateTimeOffset retryAllowedAt, int failureCount)
+    public void Save(DateTimeOffset retryAllowedAt, int failureCount, string? fingerprint)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new Record(retryAllowedAt, failureCount)));
+            File.WriteAllText(path, JsonSerializer.Serialize(new Record(retryAllowedAt, failureCount, fingerprint)));
         }
         catch
         {
@@ -320,11 +395,16 @@ internal sealed class ClaudeRateLimitStore
         }
     }
 
-    // FailureCount is optional so a legacy record written before backoff was
-    // persisted (retry instant only) still deserializes, defaulting to 0.
-    private sealed record Record(DateTimeOffset RetryAllowedAt, int FailureCount = 0);
+    // FailureCount and Fingerprint are optional so a legacy record written before
+    // those were persisted still deserializes; a record with no fingerprint is
+    // unattributable and is dropped on the next check rather than applied to
+    // whatever credentials happen to be current.
+    private sealed record Record(DateTimeOffset RetryAllowedAt, int FailureCount = 0, string? Fingerprint = null);
 }
 
 /// <summary>A persisted 429 cooldown: when the app may retry, and how many
 /// consecutive failures preceded it so exponential backoff survives a restart.</summary>
-internal readonly record struct ClaudeRateLimitSnapshot(DateTimeOffset RetryAllowedAt, int FailureCount);
+internal readonly record struct ClaudeRateLimitSnapshot(
+    DateTimeOffset RetryAllowedAt,
+    int FailureCount,
+    string? Fingerprint);

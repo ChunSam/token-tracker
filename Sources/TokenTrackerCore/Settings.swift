@@ -14,6 +14,7 @@ public final class Settings {
         static let resetAlertMinutes = "resetAlertMinutes"
         static let historyRetentionDays = "historyRetentionDays"
         static let showForecast = "showForecast"
+        static let showResetCountdown = "showResetCountdown"
         static let depletionAlertEnabled = "depletionAlertEnabled"
         static let pollPausedUntil = "pollPausedUntil"
     }
@@ -95,6 +96,13 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.showForecast) }
     }
 
+    /// Whether the menu bar appends the time left on the window whose percentage
+    /// it is showing. Costs width, so it stays a preference rather than a given.
+    public var showResetCountdown: Bool {
+        get { defaults.bool(forKey: Key.showResetCountdown) }
+        set { defaults.set(newValue, forKey: Key.showResetCountdown) }
+    }
+
     public var depletionAlertEnabled: Bool {
         get { defaults.bool(forKey: Key.depletionAlertEnabled) }
         set { defaults.set(newValue, forKey: Key.depletionAlertEnabled) }
@@ -139,6 +147,7 @@ public final class Settings {
             Key.resetAlertMinutes: 10,
             Key.historyRetentionDays: 7,
             Key.showForecast: true,
+            Key.showResetCountdown: true,
             Key.depletionAlertEnabled: false
         ])
     }

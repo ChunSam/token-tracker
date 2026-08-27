@@ -17,6 +17,7 @@ final class PreferencesWindowController: NSWindowController {
     private lazy var notificationsEnabled = NSButton(checkboxWithTitle: localizer.text(.statusEnabled), target: self, action: #selector(toggleNotifications))
     private lazy var showForecast = NSButton(checkboxWithTitle: localizer.text(.showForecastLabel), target: self, action: #selector(toggleShowForecast))
     private lazy var depletionAlert = NSButton(checkboxWithTitle: localizer.text(.depletionAlertToggle), target: self, action: #selector(toggleDepletionAlert))
+    private lazy var showResetCountdown = NSButton(checkboxWithTitle: localizer.text(.showResetCountdownLabel), target: self, action: #selector(toggleShowResetCountdown))
     private lazy var fiveHourValue = NSTextField(labelWithString: "")
     private lazy var fiveHourStepper = NSStepper()
     private lazy var sevenDayValue = NSTextField(labelWithString: "")
@@ -75,6 +76,7 @@ final class PreferencesWindowController: NSWindowController {
         contentView.subviews.forEach { $0.removeFromSuperview() }
         notificationsEnabled.title = localizer.text(.statusEnabled)
         showForecast.title = localizer.text(.showForecastLabel)
+        showResetCountdown.title = localizer.text(.showResetCountdownLabel)
         depletionAlert.title = localizer.text(.depletionAlertToggle)
 
         let stack = NSStackView()
@@ -103,6 +105,7 @@ final class PreferencesWindowController: NSWindowController {
         stack.addArrangedSubview(row(label: localizer.text(.providerLabelStyle), control: labelStyle))
         stack.addArrangedSubview(row(label: localizer.text(.refreshInterval), control: refreshInterval))
         stack.addArrangedSubview(row(label: localizer.text(.language), control: language))
+        stack.addArrangedSubview(showResetCountdown)
         stack.addArrangedSubview(showForecast)
         stack.addArrangedSubview(section(localizer.text(.notifications), views: [notificationsEnabled]))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.fiveHourAlertThreshold), value: fiveHourValue, stepper: fiveHourStepper))
@@ -125,6 +128,7 @@ final class PreferencesWindowController: NSWindowController {
         codexEnabled.state = settings.codexEnabled ? .on : .off
         notificationsEnabled.state = settings.notificationsEnabled ? .on : .off
         showForecast.state = settings.showForecast ? .on : .off
+        showResetCountdown.state = settings.showResetCountdown ? .on : .off
         depletionAlert.state = settings.depletionAlertEnabled ? .on : .off
 
         reloadPopup(displayMode, values: DisplayMode.allCases.map { ($0.label, $0.rawValue) }, selected: settings.displayMode.rawValue)
@@ -234,6 +238,11 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func changeHistoryRetention() {
         settings.historyRetentionDays = historyStepper.integerValue
         updateStepperLabels()
+        onGeneralChange()
+    }
+
+    @objc private func toggleShowResetCountdown() {
+        settings.showResetCountdown = showResetCountdown.state == .on
         onGeneralChange()
     }
 

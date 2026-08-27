@@ -34,7 +34,7 @@ public static class UsageIssueFormatter
                 UsageIssueKind.UsingCachedData,
                 localizer.Text(L10nKey.StatusUsingCachedData),
                 localizer.Text(L10nKey.StatusUsingCachedDataDetail),
-                Recovery(technicalDetail, localizer) ?? localizer.Text(L10nKey.RecoveryTryAgainLater),
+                Recovery(technicalDetail, usage.Provider, localizer) ?? localizer.Text(L10nKey.RecoveryTryAgainLater),
                 technicalDetail);
         }
 
@@ -60,7 +60,7 @@ public static class UsageIssueFormatter
             kind,
             Title(kind, localizer),
             Detail(kind, localizer),
-            Recovery(usage.Error, localizer),
+            Recovery(usage.Error, usage.Provider, localizer),
             usage.Error);
     }
 
@@ -150,7 +150,7 @@ public static class UsageIssueFormatter
         _ => localizer.Text(L10nKey.StatusUnavailableDetail)
     };
 
-    private static string? Recovery(string? error, Localizer localizer)
+    private static string? Recovery(string? error, Provider provider, Localizer localizer)
     {
         if (string.IsNullOrWhiteSpace(error))
         {
@@ -162,7 +162,11 @@ public static class UsageIssueFormatter
             UsageIssueKind.Disabled => localizer.Text(L10nKey.RecoveryEnableProvider),
             UsageIssueKind.RateLimited => localizer.Text(L10nKey.RecoveryWaitForCooldown),
             UsageIssueKind.MissingCredentials => localizer.Text(L10nKey.RecoveryCheckCredentials),
-            UsageIssueKind.ExpiredCredentials => localizer.Text(L10nKey.RecoverySignInAgain),
+            // Name only the command the user actually has to run. Listing both
+            // providers made them read past the half that did not apply to them.
+            UsageIssueKind.ExpiredCredentials => provider == Provider.Claude
+                ? localizer.Text(L10nKey.RecoverySignInAgainClaude)
+                : localizer.Text(L10nKey.RecoverySignInAgainCodex),
             UsageIssueKind.InvalidResponse => localizer.Text(L10nKey.RecoveryUpdateOrTryLater),
             UsageIssueKind.TimedOut or UsageIssueKind.Network => localizer.Text(L10nKey.RecoveryCheckNetwork),
             UsageIssueKind.HttpStatus or UsageIssueKind.Unavailable => localizer.Text(L10nKey.RecoveryRefreshLater),

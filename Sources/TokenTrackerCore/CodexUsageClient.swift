@@ -2,30 +2,65 @@ import Foundation
 
 struct CodexUsageClient: Sendable {
     private let http: HTTPClient
+    private let rateLimitState = RateLimitState(store: RateLimitStore(url: AppPaths.codexRateLimit))
+    private static let defaultRateLimitCooldown: TimeInterval = 300
 
     init(http: HTTPClient = HTTPClient()) {
         self.http = http
     }
 
     func fetch() async -> ProviderUsage {
+        let auth: CodexAuth
         do {
-            return try await fetchFromAPI()
+            auth = try readAuth()
         } catch {
             return .unavailable(.codex, error: error.localizedDescription)
         }
-    }
-
-    private func fetchFromAPI() async throws -> ProviderUsage {
-        let auth = try readAuth()
 
         // `codex login` refreshes this token; Token Tracker only reads it. Once it
         // lapses the endpoint answers a bare `HTTP 401`, which tells the user
         // nothing about needing to sign in again — so name the cause here instead.
         let expiresAt = CredentialExpiry.jwtExpiry(auth.accessToken)
         if CredentialExpiry.isExpired(expiresAt) {
-            throw UsageError.expiredCredentials(service: "Codex API", expiredAt: expiresAt)
+            // An expired token is not a rate limit; drop any cooldown a previous
+            // expired-token round recorded so signing in again takes effect at once.
+            await rateLimitState.clear()
+            return .unavailable(
+                .codex,
+                error: UsageError.expiredCredentials(service: "Codex API", expiredAt: expiresAt).localizedDescription
+            )
         }
 
+        let fingerprint = TokenFingerprint.of([auth.accessToken])
+        if let error = await rateLimitState.currentError(serviceName: "Codex API", fingerprint: fingerprint) {
+            return .unavailable(.codex, error: error.localizedDescription)
+        }
+
+        do {
+            let usage = try await fetchFromAPI(auth: auth)
+            await rateLimitState.clear()
+            return usage
+        } catch let error as UsageError {
+            // Without this the poll timer walked straight back into the limit every
+            // refresh; Claude has held a cooldown for a while, Codex never did.
+            if let retryAfter = error.rateLimitRetryAfter ?? headerlessRateLimitCooldown(error) {
+                await rateLimitState.backOff(for: retryAfter, fingerprint: fingerprint)
+                let currentError = await rateLimitState.currentError(serviceName: "Codex API", fingerprint: fingerprint)
+                return .unavailable(.codex, error: currentError?.localizedDescription ?? error.localizedDescription)
+            }
+            return .unavailable(.codex, error: error.localizedDescription)
+        } catch {
+            return .unavailable(.codex, error: error.localizedDescription)
+        }
+    }
+
+    /// A 429 that carried no `Retry-After` still needs a cooldown, just a guessed one.
+    private func headerlessRateLimitCooldown(_ error: UsageError) -> TimeInterval? {
+        if case .httpStatus(429, _, nil) = error { return Self.defaultRateLimitCooldown }
+        return nil
+    }
+
+    private func fetchFromAPI(auth: CodexAuth) async throws -> ProviderUsage {
         let raw = try await http.getJSON(
             url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!,
             headers: [
@@ -35,6 +70,7 @@ struct CodexUsageClient: Sendable {
                 "ChatGPT-Account-Id": auth.accountId,
                 "User-Agent": "TokenTrackerMenuBar/1.0"
             ],
+            timeout: 10,
             serviceName: "Codex API"
         )
         guard
@@ -46,7 +82,7 @@ struct CodexUsageClient: Sendable {
         return usage
     }
 
-    private func readAuth() throws -> (accessToken: String, accountId: String) {
+    private func readAuth() throws -> CodexAuth {
         guard
             let data = try? Data(contentsOf: AppPaths.codexAuth),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -56,6 +92,11 @@ struct CodexUsageClient: Sendable {
         else {
             throw UsageError.missingCredentials
         }
-        return (accessToken, accountId)
+        return CodexAuth(accessToken: accessToken, accountId: accountId)
     }
+}
+
+private struct CodexAuth {
+    let accessToken: String
+    let accountId: String
 }

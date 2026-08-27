@@ -8,24 +8,31 @@ public sealed class UsageClient
 {
     private static readonly Uri CodexUsageUrl = new("https://chatgpt.com/backend-api/wham/usage");
     private static readonly Uri ClaudeUsageUrl = new("https://api.anthropic.com/api/oauth/usage");
-    private static readonly TimeSpan DefaultClaudeRateLimitCooldown = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultRateLimitCooldown = TimeSpan.FromMinutes(5);
 
     private readonly HttpClient http;
     private readonly CredentialReader credentialReader;
-    private readonly ClaudeRateLimitState claudeRateLimitState;
+    private readonly ProviderRateLimitState claudeRateLimitState;
+    private readonly ProviderRateLimitState codexRateLimitState;
     private readonly string? homeDirectory;
 
     public UsageClient(
         HttpClient? http = null,
         CredentialReader? credentialReader = null,
         string? homeDirectory = null,
-        string? rateLimitStatePath = null)
+        string? rateLimitStatePath = null,
+        string? codexRateLimitStatePath = null)
     {
-        this.http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        // 10s, matching the per-request budget the Claude call already used. The old
+        // 5s ceiling applied to both, so on a slow link Codex timed out first purely
+        // because it never asked for more.
+        this.http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         this.credentialReader = credentialReader ?? new CredentialReader();
         this.homeDirectory = homeDirectory;
-        this.claudeRateLimitState = new ClaudeRateLimitState(
-            new ClaudeRateLimitStore(rateLimitStatePath ?? AppPaths.ClaudeRateLimitStatePath));
+        this.claudeRateLimitState = new ProviderRateLimitState(
+            new ProviderRateLimitStore(rateLimitStatePath ?? AppPaths.ClaudeRateLimitStatePath));
+        this.codexRateLimitState = new ProviderRateLimitState(
+            new ProviderRateLimitStore(codexRateLimitStatePath ?? AppPaths.CodexRateLimitStatePath));
     }
 
     public async Task<UsageSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
@@ -39,20 +46,39 @@ public sealed class UsageClient
 
     public async Task<ProviderUsage> FetchCodexAsync(CancellationToken cancellationToken = default)
     {
+        CodexAuth auth;
         try
         {
-            var auth = credentialReader.ReadCodexAuth(homeDirectory);
+            auth = credentialReader.ReadCodexAuth(homeDirectory);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return ProviderUsage.Unavailable(Provider.Codex, ex.Message);
+        }
 
-            // `codex login` refreshes this token; Token Tracker only reads it. Once
-            // it lapses the endpoint answers a bare HTTP 401, which tells the user
-            // nothing about needing to sign in again — so name the cause here.
-            if (CredentialExpiry.IsExpired(auth.ExpiresAt))
-            {
-                return ProviderUsage.Unavailable(
-                    Provider.Codex,
-                    ExpiredCredentialsMessage("Codex API", auth.ExpiresAt));
-            }
+        // `codex login` refreshes this token; Token Tracker only reads it. Once
+        // it lapses the endpoint answers a bare HTTP 401, which tells the user
+        // nothing about needing to sign in again — so name the cause here.
+        if (CredentialExpiry.IsExpired(auth.ExpiresAt))
+        {
+            // An expired token is not a rate limit; drop any cooldown a previous
+            // expired-token round recorded so signing in again takes effect at once.
+            codexRateLimitState.Clear();
+            return ProviderUsage.Unavailable(
+                Provider.Codex,
+                ExpiredCredentialsMessage("Codex API", auth.ExpiresAt));
+        }
 
+        // Without this the poll timer walked straight back into the limit every
+        // refresh; Claude has held a cooldown for a while, Codex never did.
+        var fingerprint = TokenFingerprint.Of(auth.AccessToken);
+        if (codexRateLimitState.CurrentError("Codex API", fingerprint) is { } rateLimitError)
+        {
+            return ProviderUsage.Unavailable(Provider.Codex, rateLimitError.Message);
+        }
+
+        try
+        {
             using var request = new HttpRequestMessage(HttpMethod.Get, CodexUsageUrl);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
@@ -60,7 +86,16 @@ public sealed class UsageClient
             request.Headers.UserAgent.ParseAdd("TokenTrackerWindows/1.0");
 
             var json = await SendForJsonAsync(request, "Codex API", cancellationToken);
-            return UsageParser.ParseCodexUsage(json);
+            var usage = UsageParser.ParseCodexUsage(json);
+            codexRateLimitState.Clear();
+            return usage;
+        }
+        catch (UsageHttpException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            codexRateLimitState.BackOff(ex.RetryAfter ?? DefaultRateLimitCooldown, fingerprint);
+            return ProviderUsage.Unavailable(
+                Provider.Codex,
+                codexRateLimitState.CurrentError("Codex API", fingerprint)?.Message ?? ex.Message);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -119,7 +154,7 @@ public sealed class UsageClient
         }
         catch (UsageHttpException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            claudeRateLimitState.BackOff(ex.RetryAfter ?? DefaultClaudeRateLimitCooldown, fingerprint);
+            claudeRateLimitState.BackOff(ex.RetryAfter ?? DefaultRateLimitCooldown, fingerprint);
             return ProviderUsage.Unavailable(
                 Provider.Claude,
                 claudeRateLimitState.CurrentError("Claude API", fingerprint)?.Message ?? ex.Message);
@@ -215,16 +250,16 @@ public sealed class UsageHttpException : Exception
     }
 }
 
-internal sealed class ClaudeRateLimitState
+internal sealed class ProviderRateLimitState
 {
     private readonly object gate = new();
-    private readonly ClaudeRateLimitStore store;
+    private readonly ProviderRateLimitStore store;
     private DateTimeOffset? retryAllowedAt;
     private int failureCount;
     private string? fingerprint;
     private bool loaded;
 
-    public ClaudeRateLimitState(ClaudeRateLimitStore store)
+    public ProviderRateLimitState(ProviderRateLimitStore store)
     {
         this.store = store;
     }
@@ -332,18 +367,18 @@ internal sealed class ClaudeRateLimitState
 /// meant a relaunch during a cooldown immediately re-fired a still-rate-limited
 /// request. Persisting the retry instant lets a restarted app honor it instead.
 /// </summary>
-internal sealed class ClaudeRateLimitStore
+internal sealed class ProviderRateLimitStore
 {
     private readonly string path;
 
-    public ClaudeRateLimitStore(string path)
+    public ProviderRateLimitStore(string path)
     {
         this.path = path;
     }
 
     // Returns the persisted cooldown only while its retry instant is still in the
     // future; an expired or missing record reads as null.
-    public ClaudeRateLimitSnapshot? Load()
+    public ProviderRateLimitSnapshot? Load()
     {
         try
         {
@@ -358,7 +393,7 @@ internal sealed class ClaudeRateLimitStore
                 return null;
             }
 
-            return new ClaudeRateLimitSnapshot(
+            return new ProviderRateLimitSnapshot(
                 record.RetryAllowedAt,
                 Math.Max(0, record.FailureCount),
                 record.Fingerprint);
@@ -404,7 +439,7 @@ internal sealed class ClaudeRateLimitStore
 
 /// <summary>A persisted 429 cooldown: when the app may retry, and how many
 /// consecutive failures preceded it so exponential backoff survives a restart.</summary>
-internal readonly record struct ClaudeRateLimitSnapshot(
+internal readonly record struct ProviderRateLimitSnapshot(
     DateTimeOffset RetryAllowedAt,
     int FailureCount,
     string? Fingerprint);

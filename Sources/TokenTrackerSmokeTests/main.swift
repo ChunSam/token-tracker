@@ -188,8 +188,12 @@ expectEqual(UsageIssueFormatter.kind(forError: "Credentials expired for Codex AP
 expectEqual(UsageIssueFormatter.kind(forError: "HTTP 401 from Claude API"), .expiredCredentials, "401 is reported as an expired sign-in, not a bare HTTP error")
 expectEqual(UsageIssueFormatter.kind(forError: "HTTP 403 from Codex API"), .expiredCredentials, "403 is reported as an expired sign-in")
 expectEqual(UsageIssueFormatter.kind(forError: "HTTP 500 from Claude API"), .httpStatus, "other HTTP codes stay generic HTTP errors")
-let expiredIssue = UsageIssueFormatter.issue(for: .unavailable(.codex, error: "Credentials expired for Codex API"))
-expect(expiredIssue.recovery?.contains("codex login") == true, "expired credentials recovery names the sign-in command")
+let expiredCodexIssue = UsageIssueFormatter.issue(for: .unavailable(.codex, error: "Credentials expired for Codex API"))
+expect(expiredCodexIssue.recovery?.contains("codex login") == true, "Codex recovery names the Codex sign-in command")
+expect(expiredCodexIssue.recovery?.contains("/login") == false, "Codex recovery does not make the user read past Claude's command")
+let expiredClaudeIssue = UsageIssueFormatter.issue(for: .unavailable(.claude, error: "HTTP 401 from Claude API"))
+expect(expiredClaudeIssue.recovery?.contains("/login") == true, "Claude recovery names the Claude sign-in command")
+expect(expiredClaudeIssue.recovery?.contains("codex login") == false, "Claude recovery does not mention Codex")
 expectEqual(UsageIssueFormatter.kind(forError: "Timed out contacting Claude API"), .timedOut, "timeout is classified")
 expectEqual(UsageIssueFormatter.kind(forError: "Network error from Claude API: offline"), .network, "network error is classified")
 
@@ -242,9 +246,11 @@ let csv = UsageHistoryFormatter.csvString(for: [UsageHistoryEntry(recordedAt: no
 expect(csv.contains("recorded_at,provider,remaining_5h"), "history csv includes header")
 expect(csv.contains("claude,63,80"), "history csv includes claude row")
 
+expect(AppPathsProbe.claudeRateLimitPath != AppPathsProbe.codexRateLimitPath, "each provider holds its own cooldown file")
+
 let rateLimitStoreURL = FileManager.default.temporaryDirectory
     .appendingPathComponent("tt-rate-limit-\(UUID().uuidString).json")
-let rateLimitStore = ClaudeRateLimitStore(url: rateLimitStoreURL)
+let rateLimitStore = RateLimitStore(url: rateLimitStoreURL)
 defer { try? FileManager.default.removeItem(at: rateLimitStoreURL) }
 
 expect(rateLimitStore.load() == nil, "rate limit store starts empty")

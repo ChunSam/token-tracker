@@ -38,7 +38,8 @@ public enum UsageIssueFormatter {
                 kind: .usingCachedData,
                 title: localizer.text(.statusUsingCachedData),
                 detail: localizer.text(.statusUsingCachedDataDetail),
-                recovery: recovery(for: technicalDetail, localizer: localizer) ?? localizer.text(.recoveryTryAgainLater),
+                recovery: recovery(for: technicalDetail, provider: usage.provider, localizer: localizer)
+                    ?? localizer.text(.recoveryTryAgainLater),
                 technicalDetail: technicalDetail
             )
         }
@@ -67,7 +68,7 @@ public enum UsageIssueFormatter {
             kind: kind,
             title: title(for: kind, localizer: localizer),
             detail: detail(for: kind, localizer: localizer),
-            recovery: recovery(for: error, localizer: localizer),
+            recovery: recovery(for: error, provider: usage.provider, localizer: localizer),
             technicalDetail: error
         )
     }
@@ -161,7 +162,7 @@ public enum UsageIssueFormatter {
         }
     }
 
-    private static func recovery(for error: String?, localizer: Localizer) -> String? {
+    private static func recovery(for error: String?, provider: Provider, localizer: Localizer) -> String? {
         guard let error else {
             return nil
         }
@@ -173,7 +174,12 @@ public enum UsageIssueFormatter {
         case .missingCredentials:
             return localizer.text(.recoveryCheckCredentials)
         case .expiredCredentials:
-            return localizer.text(.recoverySignInAgain)
+            // Name only the command the user actually has to run. Listing both
+            // providers made them read past the half that did not apply to them.
+            switch provider {
+            case .claude: return localizer.text(.recoverySignInAgainClaude)
+            case .codex: return localizer.text(.recoverySignInAgainCodex)
+            }
         case .invalidResponse:
             return localizer.text(.recoveryUpdateOrTryLater)
         case .timedOut, .network:

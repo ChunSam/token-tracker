@@ -119,7 +119,8 @@ public struct Localizer {
         .recoveryEnableProvider: "Enable the provider if you want Token Tracker to check it again.",
         .recoveryWaitForCooldown: "Wait for the cooldown to pass or use a longer refresh interval.",
         .recoveryCheckCredentials: "Sign in to the provider CLI/app, then refresh Token Tracker.",
-        .recoverySignInAgain: "Sign in again — run `claude` then `/login` for Claude, or `codex login` for Codex — then refresh Token Tracker.",
+        .recoverySignInAgainClaude: "Sign in again: run `claude`, then `/login`. Refresh Token Tracker afterwards.",
+        .recoverySignInAgainCodex: "Sign in again: run `codex login`. Refresh Token Tracker afterwards.",
         .recoveryUpdateOrTryLater: "Try again later. If this keeps happening, update Token Tracker.",
         .recoveryCheckNetwork: "Check your network connection and try again.",
         .recoveryRefreshLater: "Refresh again later.",
@@ -212,7 +213,8 @@ public struct Localizer {
         .recoveryEnableProvider: "다시 확인하려면 제공자를 켜세요.",
         .recoveryWaitForCooldown: "쿨다운이 끝날 때까지 기다리거나 새로고침 간격을 늘리세요.",
         .recoveryCheckCredentials: "제공자 CLI/앱에 로그인한 뒤 Token Tracker를 새로고침하세요.",
-        .recoverySignInAgain: "다시 로그인하세요. Claude는 `claude` 실행 후 `/login`, Codex는 `codex login`을 실행한 뒤 Token Tracker를 새로고침하세요.",
+        .recoverySignInAgainClaude: "다시 로그인하세요. `claude` 실행 후 `/login`을 입력한 뒤 Token Tracker를 새로고침하세요.",
+        .recoverySignInAgainCodex: "다시 로그인하세요. `codex login`을 실행한 뒤 Token Tracker를 새로고침하세요.",
         .recoveryUpdateOrTryLater: "나중에 다시 시도하세요. 계속 발생하면 Token Tracker를 업데이트하세요.",
         .recoveryCheckNetwork: "네트워크 연결을 확인한 뒤 다시 시도하세요.",
         .recoveryRefreshLater: "나중에 다시 새로고침하세요.",
@@ -306,7 +308,8 @@ public enum L10nKey: String {
     case recoveryEnableProvider
     case recoveryWaitForCooldown
     case recoveryCheckCredentials
-    case recoverySignInAgain
+    case recoverySignInAgainClaude
+    case recoverySignInAgainCodex
     case recoveryUpdateOrTryLater
     case recoveryCheckNetwork
     case recoveryRefreshLater

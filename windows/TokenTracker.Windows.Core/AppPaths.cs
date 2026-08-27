@@ -20,6 +20,10 @@ public static class AppPaths
     public static string ClaudeRateLimitStatePath =>
         Path.Combine(AppDataDirectory, "claude-rate-limit.json");
 
+    // Per provider: a cooldown earned by one must not silence the other.
+    public static string CodexRateLimitStatePath =>
+        Path.Combine(AppDataDirectory, "codex-rate-limit.json");
+
     public static string CodexAuthPath(string? homeDirectory = null) =>
         Path.Combine(homeDirectory ?? HomeDirectory, ".codex", "auth.json");
 

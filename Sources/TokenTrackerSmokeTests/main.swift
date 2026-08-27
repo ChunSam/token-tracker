@@ -34,6 +34,87 @@ expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .lowestRemain
 expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .both, labelStyle: .icon), "Codex 91% · Claude 63%", "icon display fallback text")
 expectEqual(DisplayFormatter.formatPercent(nil), "--", "missing percent")
 
+// Menu bar reset countdown. The time shown has to belong to the same window the
+// percentage came from, or the two read as unrelated numbers side by side.
+let countdownNow = Date()
+func countdownUsage(_ provider: Provider, five: Int?, seven: Int?, reset5h: TimeInterval?, reset7d: TimeInterval?) -> ProviderUsage {
+    ProviderUsage(
+        provider: provider,
+        remainingPercent5h: five,
+        remainingPercent7d: seven,
+        resetAt5h: reset5h.map { countdownNow.addingTimeInterval($0) },
+        resetAt7d: reset7d.map { countdownNow.addingTimeInterval($0) },
+        source: .api,
+        error: nil,
+        plan: nil,
+        model: nil,
+        updatedAt: countdownNow
+    )
+}
+
+expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(2550)), "42m", "under an hour shows minutes only")
+expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(8010)), "2h13m", "hours and minutes drop the inner space")
+expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(273_900)), "3d4h", "over a day shows days and hours")
+expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(-60)), "now", "a passed reset reads as now")
+expect(DisplayFormatter.formatResetCompact(nil) == nil, "no reset instant yields no countdown at all")
+
+let fiveHourLead = countdownUsage(.claude, five: 63, seven: 80, reset5h: 8010, reset7d: 273_900)
+expectEqual(DisplayFormatter.displayWindow(fiveHourLead), .fiveHour, "a healthy 7d leaves the 5h window on display")
+expectEqual(DisplayFormatter.displayResetAt(fiveHourLead), fiveHourLead.resetAt5h, "the countdown follows the displayed window")
+
+let sevenDayLead = countdownUsage(.claude, five: 100, seven: 8, reset5h: 8010, reset7d: 273_900)
+expectEqual(DisplayFormatter.displayWindow(sevenDayLead), .sevenDay, "a low 7d takes over the display")
+expectEqual(DisplayFormatter.displayResetAt(sevenDayLead), sevenDayLead.resetAt7d, "taking over the percent takes over the countdown too")
+
+let sevenDayOnly = countdownUsage(.codex, five: nil, seven: 100, reset5h: nil, reset7d: 273_900)
+expectEqual(DisplayFormatter.displayWindow(sevenDayOnly), .sevenDay, "an absent 5h lane falls back to 7d")
+expectEqual(DisplayFormatter.displayResetAt(sevenDayOnly), sevenDayOnly.resetAt7d, "the fallback window supplies the countdown")
+
+let noWindows = countdownUsage(.claude, five: nil, seven: nil, reset5h: 8010, reset7d: 273_900)
+expect(DisplayFormatter.displayWindow(noWindows) == nil, "an unavailable provider displays no window")
+expect(DisplayFormatter.displayResetAt(noWindows) == nil, "an unavailable provider shows no countdown despite having reset instants")
+
+let countdownSnapshot = UsageSnapshot(claude: fiveHourLead, codex: sevenDayOnly, updatedAt: countdownNow)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: countdownSnapshot, mode: .both, showResetCountdown: true),
+    "Cdx 100% 3d4h · Cl 63% 2h13m",
+    "both mode appends each provider's own countdown"
+)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: countdownSnapshot, mode: .both),
+    "Cdx 100% · Cl 63%",
+    "the countdown stays off unless asked for"
+)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: countdownSnapshot, mode: .claudeOnly, showResetCountdown: true),
+    "Cl 63% 2h13m",
+    "single provider mode appends its countdown"
+)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: countdownSnapshot, mode: .lowestRemaining, showResetCountdown: true),
+    "AI 63% 2h13m",
+    "lowest mode pairs the winning percent with that provider's reset"
+)
+expectEqual(DisplayFormatter.lowestUsage(countdownSnapshot)?.provider, .claude, "the lower percent owns the countdown")
+
+// A provider with no reset instant contributes a percent but no time, rather than
+// a dangling "--" in the menu bar.
+let noResetSnapshot = UsageSnapshot(
+    claude: countdownUsage(.claude, five: 63, seven: 80, reset5h: nil, reset7d: nil),
+    codex: sevenDayOnly,
+    updatedAt: countdownNow
+)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: noResetSnapshot, mode: .both, showResetCountdown: true),
+    "Cdx 100% 3d4h · Cl 63%",
+    "a provider without a reset instant simply omits its countdown"
+)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: nil, mode: .both, showResetCountdown: true),
+    "AI --",
+    "no snapshot still renders the placeholder"
+)
+
 let exhaustedSevenDaySnapshot = UsageSnapshot(
     claude: ProviderUsage(provider: .claude, remainingPercent5h: 100, remainingPercent7d: 0, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
     codex: ProviderUsage(provider: .codex, remainingPercent5h: 100, remainingPercent7d: 42, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: "plus", model: nil, updatedAt: now),

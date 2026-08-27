@@ -33,7 +33,13 @@ final class StatusItemRenderer {
         setStatusTitle("AI ...")
     }
 
-    func update(snapshot: UsageSnapshot?, mode: DisplayMode, labelStyle: ProviderLabelStyle) {
+    func update(
+        snapshot: UsageSnapshot?,
+        mode: DisplayMode,
+        labelStyle: ProviderLabelStyle,
+        showResetCountdown: Bool = false,
+        localizer: Localizer = Localizer(language: .english)
+    ) {
         if let snapshot {
             let textColor = statusTextColor
             setStatusSegments(
@@ -42,7 +48,9 @@ final class StatusItemRenderer {
                     mode: mode,
                     labelStyle: labelStyle,
                     baseColor: textColor,
-                    warningColor: statusWarningColor
+                    warningColor: statusWarningColor,
+                    showResetCountdown: showResetCountdown,
+                    localizer: localizer
                 ),
                 iconTint: textColor,
                 mode: mode,
@@ -50,7 +58,13 @@ final class StatusItemRenderer {
             )
         } else {
             setStatusTitle(
-                DisplayFormatter.statusTitle(snapshot: snapshot, mode: mode, labelStyle: labelStyle)
+                DisplayFormatter.statusTitle(
+                    snapshot: snapshot,
+                    mode: mode,
+                    labelStyle: labelStyle,
+                    showResetCountdown: showResetCountdown,
+                    localizer: localizer
+                )
             )
         }
     }
@@ -174,8 +188,22 @@ final class StatusItemRenderer {
         mode: DisplayMode,
         labelStyle: ProviderLabelStyle,
         baseColor: NSColor,
-        warningColor: NSColor
+        warningColor: NSColor,
+        showResetCountdown: Bool,
+        localizer: Localizer
     ) -> [StatusSegment] {
+        // The countdown stays in the base colour even when the percentage beside it
+        // is red: the warning colour marks a low 7d balance, and repeating it on the
+        // time would blur what the red is telling you.
+        func countdownSegments(_ usage: ProviderUsage?) -> [StatusSegment] {
+            let suffix = DisplayFormatter.resetCountdownSuffix(
+                usage,
+                showResetCountdown: showResetCountdown,
+                localizer: localizer
+            )
+            return suffix.isEmpty ? [] : [.text(suffix, baseColor)]
+        }
+
         switch mode {
         case .lowestRemaining:
             let usages = [snapshot.claude, snapshot.codex]
@@ -184,39 +212,43 @@ final class StatusItemRenderer {
                 DisplayFormatter.displayPercent(usage) == lowest && DisplayFormatter.isSevenDayWarning(usage)
             } ? warningColor : baseColor
             return [.text("AI ", baseColor), .text(DisplayFormatter.formatPercent(lowest), color)]
+                + countdownSegments(DisplayFormatter.lowestUsage(snapshot))
         case .both:
             if labelStyle == .icon {
-                return [
-                    .icon(codexIcon),
-                    percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor),
-                    .separator,
-                    .icon(claudeIcon),
-                    percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
-                ]
-            }
-            return [
-                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
-                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor),
-                .separator,
-                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
-                percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
-            ]
-        case .codexOnly:
-            if labelStyle == .icon {
                 return [.icon(codexIcon), percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)]
+                    + countdownSegments(snapshot.codex)
+                    + [.separator, .icon(claudeIcon), percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)]
+                    + countdownSegments(snapshot.claude)
             }
             return [
                 .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
                 percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)
             ]
+                + countdownSegments(snapshot.codex)
+                + [
+                    .separator,
+                    .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
+                    percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
+                ]
+                + countdownSegments(snapshot.claude)
+        case .codexOnly:
+            if labelStyle == .icon {
+                return [.icon(codexIcon), percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)]
+                    + countdownSegments(snapshot.codex)
+            }
+            return [
+                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
+                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)
+            ] + countdownSegments(snapshot.codex)
         case .claudeOnly:
             if labelStyle == .icon {
                 return [.icon(claudeIcon), percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)]
+                    + countdownSegments(snapshot.claude)
             }
             return [
                 .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
                 percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
-            ]
+            ] + countdownSegments(snapshot.claude)
         }
     }
 

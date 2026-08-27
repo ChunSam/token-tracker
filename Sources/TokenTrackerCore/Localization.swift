@@ -79,6 +79,7 @@ public struct Localizer {
         .forecastBeforeReset: "empties before reset",
         .depletionAlertTitle: "May run out before reset",
         .showForecastLabel: "Show depletion forecast",
+        .showResetCountdownLabel: "Show time until reset in the menu bar",
         .depletionAlertToggle: "Depletion alert (before reset)",
         .pausePolling: "Pause updates",
         .pause1h: "For 1 hour",
@@ -171,6 +172,7 @@ public struct Localizer {
         .forecastBeforeReset: "리셋 전 소진",
         .depletionAlertTitle: "리셋 전 소진 예상",
         .showForecastLabel: "소진 예측 표시",
+        .showResetCountdownLabel: "메뉴바에 리셋까지 남은 시간 표시",
         .depletionAlertToggle: "소진 예측 알림 (리셋 전)",
         .pausePolling: "업데이트 일시중지",
         .pause1h: "1시간",
@@ -264,6 +266,7 @@ public enum L10nKey: String {
     case forecastBeforeReset
     case depletionAlertTitle
     case showForecastLabel
+    case showResetCountdownLabel
     case depletionAlertToggle
     case pausePolling
     case pause1h

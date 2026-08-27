@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesWindowController: PreferencesWindowController?
     private var snapshot: UsageSnapshot?
     private var timer: Timer?
+    private var countdownTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var lastSuccessfulRefreshAt: Date?
     private var appearanceObserver: NSObjectProtocol?
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // honored across restarts — only an explicit user "Refresh Now" lifts it.
         startRefresh(showLoadingIndicator: true)
         scheduleTimer()
+        scheduleCountdownTimer()
         observeAppearanceChanges()
         if settings.notificationsEnabled {
             notificationCoordinator.requestAuthorization()
@@ -46,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        countdownTimer?.invalidate()
         if let appearanceObserver {
             DistributedNotificationCenter.default().removeObserver(appearanceObserver)
         }
@@ -56,6 +59,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: max(60, settings.refreshInterval), repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.startRefresh(showLoadingIndicator: false)
+            }
+        }
+    }
+
+    /// The usage poll runs as slowly as every 5 minutes, but the menu bar countdown
+    /// has minute resolution, so it has to re-render from the cached snapshot on its
+    /// own or it reads minutes stale. Purely local: no fetch, so this keeps ticking
+    /// while polling is paused.
+    private func scheduleCountdownTimer() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        guard settings.showResetCountdown else { return }
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatusTitle()
             }
         }
     }
@@ -102,7 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemRenderer.update(
             snapshot: snapshot,
             mode: settings.displayMode,
-            labelStyle: settings.providerLabelStyle
+            labelStyle: settings.providerLabelStyle,
+            showResetCountdown: settings.showResetCountdown,
+            localizer: localizer
         )
     }
 
@@ -327,6 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applySettingsChange() {
         scheduleTimer()
+        scheduleCountdownTimer()
         updateStatusTitle()
         configureMenu()
     }

@@ -261,6 +261,42 @@ finally
     Directory.Delete(home, recursive: true);
 }
 
+Expect(
+    AppPaths.ClaudeRateLimitStatePath != AppPaths.CodexRateLimitStatePath,
+    "Each provider holds its own cooldown file");
+
+var codexHome = Path.Combine(Path.GetTempPath(), "token-tracker-codex-tests-" + Guid.NewGuid().ToString("N"));
+var codexStatePath = Path.Combine(Path.GetTempPath(), $"tt-codex-rate-limit-{Guid.NewGuid():N}.json");
+Directory.CreateDirectory(Path.Combine(codexHome, ".codex"));
+File.WriteAllText(Path.Combine(codexHome, ".codex", "auth.json"), """
+{
+  "tokens": { "access_token": "codex-token", "account_id": "account-id" }
+}
+""");
+try
+{
+    var codexLimited = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+    codexLimited.Headers.TryAddWithoutValidation("Retry-After", "300");
+    var codexHandler = new QueueHttpMessageHandler(codexLimited);
+    var codexClient = new UsageClient(
+        new HttpClient(codexHandler), new CredentialReader(), codexHome, null, codexStatePath);
+
+    var firstCodex = await codexClient.FetchCodexAsync();
+    Expect(firstCodex.Error?.StartsWith("HTTP 429 from Codex API; retrying after") == true, "Codex 429 reports the retry delay");
+    ExpectEqual(codexHandler.CallCount, 1, "Codex 429 first call reaches HTTP");
+
+    // The point of the fix: the next poll must not walk straight back into the limit.
+    var secondCodex = await codexClient.FetchCodexAsync();
+    ExpectEqual(codexHandler.CallCount, 1, "Codex honors its cooldown instead of re-firing every refresh");
+    Expect(secondCodex.Error?.StartsWith("HTTP 429 from Codex API; retrying after") == true, "Codex backoff reports the retry delay");
+    Expect(File.Exists(codexStatePath), "Codex cooldown is persisted to its own file");
+}
+finally
+{
+    if (File.Exists(codexStatePath)) File.Delete(codexStatePath);
+    Directory.Delete(codexHome, recursive: true);
+}
+
 var staleSnapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
     Codex: Usage(Provider.Codex, 91, 99, now),
@@ -284,9 +320,12 @@ ExpectEqual(UsageIssueFormatter.Kind("Credentials expired for Codex API"), Usage
 ExpectEqual(UsageIssueFormatter.Kind("HTTP 401 from Claude API"), UsageIssueKind.ExpiredCredentials, "401 is reported as an expired sign-in, not a bare HTTP error");
 ExpectEqual(UsageIssueFormatter.Kind("HTTP 403 from Codex API"), UsageIssueKind.ExpiredCredentials, "403 is reported as an expired sign-in");
 ExpectEqual(UsageIssueFormatter.Kind("HTTP 500 from Claude API"), UsageIssueKind.HttpStatus, "Other HTTP codes stay generic HTTP errors");
-Expect(
-    UsageIssueFormatter.Issue(ProviderUsage.Unavailable(Provider.Codex, "Credentials expired for Codex API")).Recovery?.Contains("codex login") == true,
-    "Expired credentials recovery names the sign-in command");
+var codexRecovery = UsageIssueFormatter.Issue(ProviderUsage.Unavailable(Provider.Codex, "Credentials expired for Codex API")).Recovery;
+Expect(codexRecovery?.Contains("codex login") == true, "Codex recovery names the Codex sign-in command");
+Expect(codexRecovery?.Contains("/login") == false, "Codex recovery does not make the user read past Claude's command");
+var claudeRecovery = UsageIssueFormatter.Issue(ProviderUsage.Unavailable(Provider.Claude, "HTTP 401 from Claude API")).Recovery;
+Expect(claudeRecovery?.Contains("/login") == true, "Claude recovery names the Claude sign-in command");
+Expect(claudeRecovery?.Contains("codex login") == false, "Claude recovery does not mention Codex");
 
 // Credential expiry: the app reads tokens the provider CLIs refresh, so it has to
 // recognize a lapsed one locally instead of spending a request to be told 401.

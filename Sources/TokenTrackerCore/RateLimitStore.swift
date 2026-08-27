@@ -8,7 +8,7 @@ import Foundation
 /// quitting and relaunching during a cooldown immediately fired a fresh request
 /// that was still rate limited. Persisting the "retry allowed at" instant lets a
 /// restarted app honor the outstanding cooldown instead of re-triggering 429.
-public struct ClaudeRateLimitStore: Sendable {
+public struct RateLimitStore: Sendable {
     /// A persisted 429 cooldown: when the app may retry, and how many consecutive
     /// failures preceded it so exponential backoff survives a restart.
     public struct State: Sendable, Equatable {

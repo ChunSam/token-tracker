@@ -87,7 +87,7 @@ internal sealed class TrayAppContext : ApplicationContext
             var freshSnapshot = new UsageSnapshot(claudeTask.Result, codexTask.Result, DateTimeOffset.Now);
             snapshot = UsageSnapshotCachePolicy.Apply(
                 freshSnapshot,
-                cacheStore.Load(TimeSpan.FromHours(1)),
+                cacheStore.Load(TimeSpan.FromHours(settings.StaleToleranceHours)),
                 settings.ClaudeEnabled,
                 settings.CodexEnabled);
             cacheStore.Save(snapshot);
@@ -96,7 +96,7 @@ internal sealed class TrayAppContext : ApplicationContext
                 lastSuccessfulRefreshAt = snapshot.UpdatedAt;
             }
 
-            historyStore.Append(snapshot, settings.HistoryRetentionDays);
+            historyStore.Append(UsageHistoryPolicy.MeasurementsOnly(snapshot), settings.HistoryRetentionDays);
             HandleNotifications(snapshot);
             SetIcon(snapshot);
             notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));

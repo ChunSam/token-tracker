@@ -297,6 +297,33 @@ finally
     Directory.Delete(codexHome, recursive: true);
 }
 
+// History records measurements, not re-displays of one: a cached reading repeats a
+// value the provider never re-reported, which would flatten the sparkline, zero the
+// trend delta and tell the forecast that usage stopped moving.
+var cachedReading = Usage(Provider.Claude, 63, 80, now) with { Source = UsageSource.StaleCache };
+var recorded = UsageHistoryPolicy.MeasurementsOnly(
+    new UsageSnapshot(cachedReading, Usage(Provider.Codex, 91, 99, now), now));
+Expect(recorded.Claude.RemainingPercent5h is null, "A cached reading contributes no 5h measurement");
+Expect(recorded.Claude.RemainingPercent7d is null, "A cached reading contributes no 7d measurement");
+ExpectEqual(recorded.Codex.RemainingPercent5h, 91, "A live reading is recorded unchanged");
+ExpectEqual(recorded.Claude.Source, UsageSource.StaleCache, "Clearing the value keeps the reason it was cleared");
+
+// The oldest entry in the window recorded no Claude measurement. A shared baseline
+// would land on it and drop Claude's delta; per-provider baselines skip past it.
+var trendGapEntry = new UsageHistoryEntry(
+    now.AddHours(-2),
+    UsageHistoryPolicy.MeasurementsOnly(
+        new UsageSnapshot(cachedReading, Usage(Provider.Codex, 91, 99, now), now.AddHours(-2))));
+var trendBaselineEntry = new UsageHistoryEntry(
+    now.AddHours(-1),
+    new UsageSnapshot(Usage(Provider.Claude, 90, 95, now), Usage(Provider.Codex, 91, 99, now), now.AddHours(-1)));
+var perProviderTrend = UsageHistoryFormatter.TrendSummary(
+    new[] { trendGapEntry, trendBaselineEntry },
+    new UsageSnapshot(Usage(Provider.Claude, 63, 80, now), Usage(Provider.Codex, 91, 99, now), now));
+Expect(
+    perProviderTrend.Contains("Claude 5h -27", StringComparison.Ordinal),
+    "Claude's delta survives an older entry that recorded no Claude measurement");
+
 var staleSnapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
     Codex: Usage(Provider.Codex, 91, 99, now),

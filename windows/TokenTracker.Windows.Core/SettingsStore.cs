@@ -17,6 +17,14 @@ public sealed class AppSettings
     public int SevenDayAlertThreshold { get; set; } = 10;
     public int ResetAlertMinutes { get; set; } = 10;
     public int HistoryRetentionDays { get; set; } = 7;
+
+    /// <summary>
+    /// How long a last-known-good reading keeps standing in for a failing fetch.
+    /// The Claude access token lives ~8h and is only refreshed by running Claude
+    /// Code, so the gap to cover is "until the next Claude Code session", not the
+    /// brief network blip the original one-hour window assumed.
+    /// </summary>
+    public int StaleToleranceHours { get; set; } = 12;
     public bool ShowForecast { get; set; } = true;
     public bool DepletionAlertEnabled { get; set; }
 

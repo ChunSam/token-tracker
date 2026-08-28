@@ -44,7 +44,7 @@ public final class UsageService {
 
         snapshot = UsageSnapshotCachePolicy.apply(
             current: snapshot,
-            stale: cacheStore.load(maxAge: 3600),
+            stale: cacheStore.load(maxAge: TimeInterval(settings.staleToleranceHours) * 3600),
             claudeEnabled: claudeEnabled,
             codexEnabled: codexEnabled
         )

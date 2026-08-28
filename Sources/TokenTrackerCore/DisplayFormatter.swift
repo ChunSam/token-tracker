@@ -134,6 +134,10 @@ public struct DisplayFormatter {
         localizer: Localizer = Localizer(language: .english)
     ) -> String {
         guard showResetCountdown, let usage else { return "" }
+        // A cached reading's reset instant keeps ticking down while the value behind
+        // it stands still, and once it passes the countdown reads "now" for as long
+        // as the fallback lasts. Show no time rather than a wrong one.
+        guard usage.source == .api else { return "" }
         guard let text = formatResetCompact(displayResetAt(usage), localizer: localizer) else { return "" }
         return " \(text)"
     }

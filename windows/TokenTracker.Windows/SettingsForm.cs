@@ -158,6 +158,12 @@ internal sealed class SettingsForm : Form
             onGeneralChange();
         });
 
+        AddNumber(layout, localizer.Text(L10nKey.StaleToleranceHours), settings.StaleToleranceHours, 1, 48, "h", value =>
+        {
+            settings.StaleToleranceHours = value;
+            onGeneralChange();
+        });
+
         AddHeader(layout, localizer.Text(L10nKey.History));
         AddNumber(layout, localizer.Text(L10nKey.HistoryRetentionDays), settings.HistoryRetentionDays, 1, 365, "d", value =>
         {

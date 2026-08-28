@@ -82,6 +82,31 @@ public sealed class UsageHistoryStore
     }
 }
 
+public static class UsageHistoryPolicy
+{
+    /// <summary>
+    /// History records measurements, not re-displays of one. A stale reading is the
+    /// same measurement shown again, so recording it repeats a value the provider
+    /// never re-reported — flattening the sparkline, zeroing the trend delta and
+    /// telling the forecast that usage has stopped moving. Harmless while the
+    /// fallback only covered a network blip; misleading now that it can stand in
+    /// for half a day of a lapsed access token.
+    ///
+    /// The reading still shows in the tray; it just does not enter the record.
+    /// </summary>
+    public static UsageSnapshot MeasurementsOnly(UsageSnapshot snapshot) =>
+        snapshot with
+        {
+            Claude = MeasurementOnly(snapshot.Claude),
+            Codex = MeasurementOnly(snapshot.Codex)
+        };
+
+    private static ProviderUsage MeasurementOnly(ProviderUsage usage) =>
+        usage.Source == UsageSource.Api
+            ? usage
+            : usage with { RemainingPercent5h = null, RemainingPercent7d = null };
+}
+
 public static class UsageHistoryFormatter
 {
     public static string TrendSummary(
@@ -92,8 +117,8 @@ public static class UsageHistoryFormatter
     {
         localizer ??= new Localizer(AppLanguage.English);
         var cutoff = current.UpdatedAt - (window ?? TimeSpan.FromDays(1));
-        var baseline = entries.FirstOrDefault(entry => entry.RecordedAt >= cutoff);
-        if (baseline is null)
+        var inWindow = entries.Where(entry => entry.RecordedAt >= cutoff).ToList();
+        if (inWindow.Count == 0)
         {
             return localizer.Text(L10nKey.NotEnoughHistory);
         }
@@ -101,8 +126,8 @@ public static class UsageHistoryFormatter
         return string.Join(
             " ",
             localizer.Text(L10nKey.HistoryTrend),
-            ProviderTrend(Provider.Claude, baseline.Snapshot, current),
-            ProviderTrend(Provider.Codex, baseline.Snapshot, current));
+            ProviderTrend(Provider.Claude, inWindow, current),
+            ProviderTrend(Provider.Codex, inWindow, current));
     }
 
     public static string CsvString(IReadOnlyList<UsageHistoryEntry> entries)
@@ -139,13 +164,22 @@ public static class UsageHistoryFormatter
         return string.Join(Environment.NewLine, new[] { header }.Concat(rows)) + Environment.NewLine;
     }
 
-    private static string ProviderTrend(Provider provider, UsageSnapshot baseline, UsageSnapshot current)
+    private static string ProviderTrend(
+        Provider provider,
+        IReadOnlyList<UsageHistoryEntry> entries,
+        UsageSnapshot current)
     {
-        var baselineUsage = baseline.Usage(provider);
         var currentUsage = current.Usage(provider);
-        var fiveHour = DeltaText(baselineUsage.RemainingPercent5h, currentUsage.RemainingPercent5h);
-        var sevenDay = DeltaText(baselineUsage.RemainingPercent7d, currentUsage.RemainingPercent7d);
-        return $"{baselineUsage.DisplayName} 5h {fiveHour} 7d {sevenDay}";
+        // Baseline per provider rather than one shared entry: entries recorded while
+        // this provider was unavailable carry no percentages, and a shared baseline
+        // landing on one of those would silently drop the delta for a provider that
+        // does have older readings to compare against.
+        var baselineUsage = entries
+            .Select(entry => entry.Snapshot.Usage(provider))
+            .FirstOrDefault(usage => usage.RemainingPercent5h is not null || usage.RemainingPercent7d is not null);
+        var fiveHour = DeltaText(baselineUsage?.RemainingPercent5h, currentUsage.RemainingPercent5h);
+        var sevenDay = DeltaText(baselineUsage?.RemainingPercent7d, currentUsage.RemainingPercent7d);
+        return $"{currentUsage.DisplayName} 5h {fiveHour} 7d {sevenDay}";
     }
 
     private static string DeltaText(int? previous, int? latest)

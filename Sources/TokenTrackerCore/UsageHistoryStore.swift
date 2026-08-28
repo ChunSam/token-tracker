@@ -72,6 +72,31 @@ public final class UsageHistoryStore {
     }
 }
 
+public enum UsageHistoryPolicy {
+    /// History records measurements, not re-displays of one. A stale reading is the
+    /// same measurement shown again, so recording it repeats a value the provider
+    /// never re-reported — flattening the sparkline, zeroing the trend delta and
+    /// telling the forecast that usage has stopped moving. Harmless while the
+    /// fallback only covered a network blip; misleading now that it can stand in
+    /// for half a day of a lapsed access token.
+    ///
+    /// The reading still shows in the menu bar; it just does not enter the record.
+    public static func measurementsOnly(_ snapshot: UsageSnapshot) -> UsageSnapshot {
+        var copy = snapshot
+        copy.claude = measurementOnly(copy.claude)
+        copy.codex = measurementOnly(copy.codex)
+        return copy
+    }
+
+    private static func measurementOnly(_ usage: ProviderUsage) -> ProviderUsage {
+        guard usage.source != .api else { return usage }
+        var copy = usage
+        copy.remainingPercent5h = nil
+        copy.remainingPercent7d = nil
+        return copy
+    }
+}
+
 public enum UsageHistoryFormatter {
     public static func trendSummary(
         entries: [UsageHistoryEntry],
@@ -80,14 +105,15 @@ public enum UsageHistoryFormatter {
         localizer: Localizer = Localizer(language: .english)
     ) -> String {
         let cutoff = snapshot.updatedAt.addingTimeInterval(-window)
-        guard let baseline = entries.first(where: { $0.recordedAt >= cutoff }) else {
+        let inWindow = entries.filter { $0.recordedAt >= cutoff }
+        guard !inWindow.isEmpty else {
             return localizer.text(.notEnoughHistory)
         }
 
         return [
             localizer.text(.historyTrend),
-            providerTrend(.claude, baseline: baseline.snapshot, current: snapshot),
-            providerTrend(.codex, baseline: baseline.snapshot, current: snapshot)
+            providerTrend(.claude, entries: inWindow, current: snapshot),
+            providerTrend(.codex, entries: inWindow, current: snapshot)
         ].joined(separator: " ")
     }
 
@@ -123,11 +149,17 @@ public enum UsageHistoryFormatter {
         return ([header] + rows).joined(separator: "\n") + "\n"
     }
 
-    private static func providerTrend(_ provider: Provider, baseline: UsageSnapshot, current: UsageSnapshot) -> String {
-        let baselineUsage = baseline.usage(for: provider)
+    private static func providerTrend(_ provider: Provider, entries: [UsageHistoryEntry], current: UsageSnapshot) -> String {
         let currentUsage = current.usage(for: provider)
-        let fiveHour = deltaText(previous: baselineUsage.remainingPercent5h, latest: currentUsage.remainingPercent5h)
-        let sevenDay = deltaText(previous: baselineUsage.remainingPercent7d, latest: currentUsage.remainingPercent7d)
+        // Baseline per provider rather than one shared entry: entries recorded while
+        // this provider was unavailable carry no percentages, and a shared baseline
+        // landing on one of those would silently drop the delta for a provider that
+        // does have older readings to compare against.
+        let baselineUsage = entries.lazy
+            .map { $0.snapshot.usage(for: provider) }
+            .first { $0.remainingPercent5h != nil || $0.remainingPercent7d != nil }
+        let fiveHour = deltaText(previous: baselineUsage?.remainingPercent5h, latest: currentUsage.remainingPercent5h)
+        let sevenDay = deltaText(previous: baselineUsage?.remainingPercent7d, latest: currentUsage.remainingPercent7d)
         return "\(provider.displayName) 5h \(fiveHour) 7d \(sevenDay)"
     }
 

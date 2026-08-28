@@ -26,6 +26,8 @@ final class PreferencesWindowController: NSWindowController {
     private lazy var resetStepper = NSStepper()
     private lazy var historyValue = NSTextField(labelWithString: "")
     private lazy var historyStepper = NSStepper()
+    private lazy var staleValue = NSTextField(labelWithString: "")
+    private lazy var staleStepper = NSStepper()
 
     private var localizer: Localizer {
         Localizer(language: settings.language)
@@ -99,6 +101,7 @@ final class PreferencesWindowController: NSWindowController {
         configureStepper(sevenDayStepper, min: 0, max: 100, action: #selector(changeSevenDayThreshold))
         configureStepper(resetStepper, min: 0, max: 1440, action: #selector(changeResetAlertMinutes))
         configureStepper(historyStepper, min: 1, max: 365, action: #selector(changeHistoryRetention))
+        configureStepper(staleStepper, min: 1, max: 48, action: #selector(changeStaleTolerance))
 
         stack.addArrangedSubview(section(localizer.text(.providers), views: [claudeEnabled, codexEnabled]))
         stack.addArrangedSubview(row(label: localizer.text(.displayMode), control: displayMode))
@@ -112,6 +115,7 @@ final class PreferencesWindowController: NSWindowController {
         stack.addArrangedSubview(stepperRow(label: localizer.text(.sevenDayAlertThreshold), value: sevenDayValue, stepper: sevenDayStepper))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.resetAlertMinutes), value: resetValue, stepper: resetStepper))
         stack.addArrangedSubview(depletionAlert)
+        stack.addArrangedSubview(stepperRow(label: localizer.text(.staleToleranceHours), value: staleValue, stepper: staleStepper))
         stack.addArrangedSubview(stepperRow(label: localizer.text(.historyRetentionDays), value: historyValue, stepper: historyStepper))
 
         contentView.addSubview(stack)
@@ -140,6 +144,7 @@ final class PreferencesWindowController: NSWindowController {
         sevenDayStepper.integerValue = settings.sevenDayAlertThreshold
         resetStepper.integerValue = settings.resetAlertMinutes
         historyStepper.integerValue = settings.historyRetentionDays
+        staleStepper.integerValue = settings.staleToleranceHours
         updateStepperLabels()
     }
 
@@ -159,6 +164,7 @@ final class PreferencesWindowController: NSWindowController {
         sevenDayValue.stringValue = "\(settings.sevenDayAlertThreshold)%"
         resetValue.stringValue = "\(settings.resetAlertMinutes)m"
         historyValue.stringValue = "\(settings.historyRetentionDays)d"
+        staleValue.stringValue = "\(settings.staleToleranceHours)h"
     }
 
     @objc private func toggleProvider(_ sender: NSButton) {
@@ -231,6 +237,12 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func changeResetAlertMinutes() {
         settings.resetAlertMinutes = resetStepper.integerValue
+        updateStepperLabels()
+        onGeneralChange()
+    }
+
+    @objc private func changeStaleTolerance() {
+        settings.staleToleranceHours = staleStepper.integerValue
         updateStepperLabels()
         onGeneralChange()
     }

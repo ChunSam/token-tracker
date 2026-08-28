@@ -105,7 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if result.claude.source == .api || result.codex.source == .api {
                 lastSuccessfulRefreshAt = result.updatedAt
             }
-            historyStore.append(result, retentionDays: settings.historyRetentionDays)
+            historyStore.append(
+                UsageHistoryPolicy.measurementsOnly(result),
+                retentionDays: settings.historyRetentionDays
+            )
             notificationCoordinator.handleNotifications(
                 for: result,
                 extraCandidates: forecastAlertCandidates(for: result),

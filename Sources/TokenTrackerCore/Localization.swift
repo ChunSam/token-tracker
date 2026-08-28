@@ -75,6 +75,7 @@ public struct Localizer {
         .notEnoughHistory: "Not enough history yet",
         .exportHistoryCSV: "Export History CSV...",
         .historyRetentionDays: "History retention",
+        .staleToleranceHours: "Keep last reading for",
         .forecastLabel: "Projected depletion",
         .forecastBeforeReset: "empties before reset",
         .depletionAlertTitle: "May run out before reset",
@@ -169,6 +170,7 @@ public struct Localizer {
         .notEnoughHistory: "아직 히스토리가 부족합니다",
         .exportHistoryCSV: "히스토리 CSV 내보내기...",
         .historyRetentionDays: "히스토리 보관 기간",
+        .staleToleranceHours: "마지막 값 유지 기간",
         .forecastLabel: "예상 소진",
         .forecastBeforeReset: "리셋 전 소진",
         .depletionAlertTitle: "리셋 전 소진 예상",
@@ -264,6 +266,7 @@ public enum L10nKey: String {
     case notEnoughHistory
     case exportHistoryCSV
     case historyRetentionDays
+    case staleToleranceHours
     case forecastLabel
     case forecastBeforeReset
     case depletionAlertTitle

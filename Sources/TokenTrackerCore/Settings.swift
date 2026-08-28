@@ -15,6 +15,7 @@ public final class Settings {
         static let historyRetentionDays = "historyRetentionDays"
         static let showForecast = "showForecast"
         static let showResetCountdown = "showResetCountdown"
+        static let staleToleranceHours = "staleToleranceHours"
         static let depletionAlertEnabled = "depletionAlertEnabled"
         static let pollPausedUntil = "pollPausedUntil"
     }
@@ -103,6 +104,15 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.showResetCountdown) }
     }
 
+    /// How long a last-known-good reading keeps standing in for a failing fetch.
+    /// The Claude access token lives 8h and is only refreshed by running Claude
+    /// Code, so the gap to cover is "until the next Claude Code session", not the
+    /// brief network blip the original one-hour window assumed.
+    public var staleToleranceHours: Int {
+        get { defaults.integer(forKey: Key.staleToleranceHours) }
+        set { defaults.set(max(1, min(48, newValue)), forKey: Key.staleToleranceHours) }
+    }
+
     public var depletionAlertEnabled: Bool {
         get { defaults.bool(forKey: Key.depletionAlertEnabled) }
         set { defaults.set(newValue, forKey: Key.depletionAlertEnabled) }
@@ -148,6 +158,7 @@ public final class Settings {
             Key.historyRetentionDays: 7,
             Key.showForecast: true,
             Key.showResetCountdown: true,
+            Key.staleToleranceHours: 12,
             Key.depletionAlertEnabled: false
         ])
     }

@@ -115,6 +115,62 @@ expectEqual(
     "no snapshot still renders the placeholder"
 )
 
+// A cached reading must not carry a live countdown: its reset instant keeps
+// ticking while the value behind it stands still, so once the reset passes the
+// countdown would read "now" for as long as the fallback lasts.
+var staleCountdownUsage = fiveHourLead
+staleCountdownUsage.source = .staleCache
+let staleCountdownSnapshot = UsageSnapshot(claude: staleCountdownUsage, codex: sevenDayOnly, updatedAt: countdownNow)
+expectEqual(
+    DisplayFormatter.statusTitle(snapshot: staleCountdownSnapshot, mode: .claudeOnly, showResetCountdown: true),
+    "Cl 63%",
+    "a cached reading shows its percentage but no countdown"
+)
+expectEqual(
+    DisplayFormatter.resetCountdownSuffix(fiveHourLead, showResetCountdown: true),
+    " 2h13m",
+    "a live reading still shows its countdown"
+)
+
+// History records measurements, not re-displays of one: a cached reading repeats a
+// value the provider never re-reported, which would flatten the sparkline, zero the
+// trend delta and tell the forecast that usage stopped moving.
+let recordedSnapshot = UsageHistoryPolicy.measurementsOnly(
+    UsageSnapshot(claude: staleCountdownUsage, codex: sevenDayOnly, updatedAt: countdownNow)
+)
+expect(recordedSnapshot.claude.remainingPercent5h == nil, "a cached reading contributes no 5h measurement")
+expect(recordedSnapshot.claude.remainingPercent7d == nil, "a cached reading contributes no 7d measurement")
+expectEqual(recordedSnapshot.codex.remainingPercent7d, 100, "a live reading is recorded unchanged")
+expectEqual(recordedSnapshot.claude.source, UsageSource.staleCache, "clearing the value keeps the reason it was cleared")
+
+// The trend picks its baseline per provider, so an entry recorded while one
+// provider was unavailable no longer drops the other provider's delta.
+// The gap entry is the OLDEST in the window, so a shared baseline would land on it
+// and find no Claude percentages — dropping Claude's delta even though a usable
+// reading sits right behind it. Per-provider baselines skip past it.
+let trendGap = UsageHistoryEntry(
+    recordedAt: countdownNow.addingTimeInterval(-3600),
+    snapshot: UsageHistoryPolicy.measurementsOnly(
+        UsageSnapshot(claude: staleCountdownUsage, codex: sevenDayOnly, updatedAt: countdownNow.addingTimeInterval(-3600))
+    )
+)
+let trendBaseline = UsageHistoryEntry(
+    recordedAt: countdownNow.addingTimeInterval(-1800),
+    snapshot: UsageSnapshot(
+        claude: countdownUsage(.claude, five: 90, seven: 95, reset5h: 8010, reset7d: 273_900),
+        codex: sevenDayOnly,
+        updatedAt: countdownNow.addingTimeInterval(-1800)
+    )
+)
+let perProviderTrend = UsageHistoryFormatter.trendSummary(
+    entries: [trendGap, trendBaseline],
+    current: UsageSnapshot(claude: fiveHourLead, codex: sevenDayOnly, updatedAt: countdownNow)
+)
+expect(
+    perProviderTrend.contains("Claude 5h -27"),
+    "Claude's delta survives an older entry that recorded no Claude measurement"
+)
+
 let exhaustedSevenDaySnapshot = UsageSnapshot(
     claude: ProviderUsage(provider: .claude, remainingPercent5h: 100, remainingPercent7d: 0, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
     codex: ProviderUsage(provider: .codex, remainingPercent5h: 100, remainingPercent7d: 42, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: "plus", model: nil, updatedAt: now),

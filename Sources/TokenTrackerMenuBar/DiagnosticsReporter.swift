@@ -35,6 +35,15 @@ struct DiagnosticsReporter {
         if settings.refreshInterval < 60 {
             lines.append("Refresh warning: \(Localizer(language: .english).text(.refreshIntervalWarning))")
         }
+        // Not just "does the fallback file exist" — on a normal macOS install it does
+        // not, and the answer that matters is which store is live and whether anything
+        // is still writing to it. The Claude access token lives ~8h and only the CLI
+        // refreshes this store, so an age well past that is the whole explanation for
+        // a token that keeps lapsing.
+        let claudeSource = ClaudeCredentialSource.detect(credentialsFileURL: Self.claudeCredentialsURL)
+        lines.append("Claude credential source: \(claudeSource.kind.rawValue)")
+        lines.append("Claude credential last written: \(claudeSource.lastWrittenAt.map(isoString) ?? "unknown")")
+        lines.append("Claude credential age: \(claudeSource.age().map(Self.formatAge) ?? "unknown")")
         lines.append("Claude credentials file exists: \(fileExists(at: Self.claudeCredentialsURL))")
         lines.append("Codex auth file exists: \(fileExists(at: Self.codexAuthURL))")
 
@@ -102,6 +111,14 @@ struct DiagnosticsReporter {
 
     private func fileExists(at url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private static func formatAge(_ age: TimeInterval) -> String {
+        let minutes = max(0, Int(age) / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h \(minutes % 60)m" }
+        return "\(hours / 24)d \(hours % 24)h"
     }
 
     private func isoString(_ date: Date) -> String {

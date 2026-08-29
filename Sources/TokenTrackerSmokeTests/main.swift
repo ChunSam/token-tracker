@@ -484,6 +484,39 @@ expect(collidingWindows.fiveHour == nil, "a colliding window is dropped rather t
 
 expect(CodexUsageParser.parse(object: [:]) == nil, "a payload without rate_limit does not parse")
 
+// Which credential store is live, and how long since anything wrote to it. The old
+// diagnostic only asked whether the fallback file existed, which reads false on a
+// normal macOS install and hid the question that actually matters when usage stops
+// loading: is anything still refreshing this token?
+let credentialFileURL = FileManager.default.temporaryDirectory
+    .appendingPathComponent("tt-credentials-\(UUID().uuidString).json")
+try? Data("{}".utf8).write(to: credentialFileURL)
+defer { try? FileManager.default.removeItem(at: credentialFileURL) }
+
+let keychainWrittenAt = Date().addingTimeInterval(-48 * 3600)
+let fromKeychain = ClaudeCredentialSource.detect(
+    credentialsFileURL: credentialFileURL,
+    keychainModifiedAt: keychainWrittenAt
+)
+expectEqual(fromKeychain.kind, .keychain, "the keychain wins over the fallback file when both are present")
+expectEqual(fromKeychain.lastWrittenAt, keychainWrittenAt, "the keychain's write time is reported")
+
+let fromFile = ClaudeCredentialSource.detect(credentialsFileURL: credentialFileURL, keychainModifiedAt: nil)
+expectEqual(fromFile.kind, .credentialsFile, "without a keychain entry the fallback file is the source")
+expect(fromFile.lastWrittenAt != nil, "the fallback file reports its write time")
+
+let noSource = ClaudeCredentialSource.detect(
+    credentialsFileURL: credentialFileURL.appendingPathExtension("missing"),
+    keychainModifiedAt: nil
+)
+expectEqual(noSource.kind, .none, "no keychain entry and no file means no source")
+expect(noSource.age() == nil, "a source that was never written has no age")
+
+// The age is the signal: past roughly the 8h access-token life, nothing is
+// refreshing the store any more.
+let agedNow = keychainWrittenAt.addingTimeInterval(48 * 3600)
+expectEqual(fromKeychain.age(now: agedNow), 48 * 3600, "age measures from the last write")
+
 // Credential expiry: the app reads tokens the provider CLIs refresh, so it has to
 // recognize a lapsed one locally instead of spending a request to be told 401.
 expect(CredentialExpiry.isExpired(nil) == false, "an unknown expiry is not treated as expired")

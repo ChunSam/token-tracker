@@ -63,8 +63,10 @@ internal sealed class DiagnosticsReporter
         // rather than that the token was merely unlucky. (Windows has no keychain, so
         // the file is always the live store here.)
         lines.Add($"Claude credentials file exists: {File.Exists(ClaudeCredentialsPath)}");
-        lines.Add($"Claude credential last written: {CredentialLastWritten() is { } written ? IsoString(written) : "unknown"}");
-        lines.Add($"Claude credential age: {CredentialAge() is { } age ? FormatAge(age) : "unknown"}");
+        var credentialLastWritten = CredentialLastWritten() is { } written ? IsoString(written) : "unknown";
+        var credentialAge = CredentialAge() is { } age ? FormatAge(age) : "unknown";
+        lines.Add($"Claude credential last written: {credentialLastWritten}");
+        lines.Add($"Claude credential age: {credentialAge}");
         lines.Add($"Codex auth file exists: {File.Exists(CodexAuthPath)}");
 
         if (snapshot is null)

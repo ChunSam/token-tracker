@@ -517,6 +517,86 @@ expect(noSource.age() == nil, "a source that was never written has no age")
 let agedNow = keychainWrittenAt.addingTimeInterval(48 * 3600)
 expectEqual(fromKeychain.age(now: agedNow), 48 * 3600, "age measures from the last write")
 
+// A store nothing has written for longer than a token lives is the whole answer to
+// "I signed in and it still says sign in", so the menu says how stale it is. Only
+// for a lapsed Claude token: any other failure is not explained by the store's age.
+func credentialIssue(_ provider: Provider, error: String, source: UsageSource) -> UsageIssue {
+    UsageIssueFormatter.issue(
+        for: ProviderUsage(
+            provider: provider,
+            remainingPercent5h: source == .staleCache ? 42 : nil,
+            remainingPercent7d: nil,
+            resetAt5h: nil,
+            resetAt7d: nil,
+            source: source,
+            error: error,
+            plan: nil,
+            model: nil,
+            updatedAt: Date()
+        )
+    )
+}
+
+let staleStore = ClaudeCredentialSource(kind: .keychain, lastWrittenAt: Date(timeIntervalSince1970: 0))
+let expiredIssue = credentialIssue(.claude, error: "HTTP 401", source: .unavailable)
+expectEqual(
+    CredentialStoreAdvice.staleLine(
+        provider: .claude,
+        issue: expiredIssue,
+        source: staleStore,
+        now: Date(timeIntervalSince1970: 48 * 3600)
+    ),
+    "Credentials not refreshed in 2d 0h",
+    "a lapsed token over an abandoned store reports how long it has been abandoned"
+)
+expect(
+    CredentialStoreAdvice.staleLine(
+        provider: .claude,
+        issue: expiredIssue,
+        source: staleStore,
+        now: Date(timeIntervalSince1970: CredentialStoreAdvice.staleAfter - 60)
+    ) == nil,
+    "a store younger than the token life explains nothing the recovery does not already say"
+)
+expect(
+    CredentialStoreAdvice.staleLine(
+        provider: .claude,
+        issue: credentialIssue(.claude, error: "HTTP 429", source: .unavailable),
+        source: staleStore,
+        now: Date(timeIntervalSince1970: 48 * 3600)
+    ) == nil,
+    "a rate limit is not a credential problem, however old the store is"
+)
+expect(
+    CredentialStoreAdvice.staleLine(
+        provider: .codex,
+        issue: credentialIssue(.codex, error: "HTTP 401", source: .unavailable),
+        source: staleStore,
+        now: Date(timeIntervalSince1970: 48 * 3600)
+    ) == nil,
+    "the Claude store says nothing about Codex"
+)
+// The state this is actually seen in: the last good reading is being carried, so
+// the visible status is "using cached data" and only the error names the expiry.
+expect(
+    CredentialStoreAdvice.staleLine(
+        provider: .claude,
+        issue: credentialIssue(.claude, error: "credentials expired", source: .staleCache),
+        source: staleStore,
+        now: Date(timeIntervalSince1970: 48 * 3600)
+    ) != nil,
+    "a lapsed token behind a carried reading still reports the stale store"
+)
+expect(
+    CredentialStoreAdvice.staleLine(
+        provider: .claude,
+        issue: expiredIssue,
+        source: ClaudeCredentialSource(kind: .none, lastWrittenAt: nil),
+        now: Date(timeIntervalSince1970: 48 * 3600)
+    ) == nil,
+    "a store that was never written has no age to report"
+)
+
 // Credential expiry: the app reads tokens the provider CLIs refresh, so it has to
 // recognize a lapsed one locally instead of spending a request to be told 401.
 expect(CredentialExpiry.isExpired(nil) == false, "an unknown expiry is not treated as expired")

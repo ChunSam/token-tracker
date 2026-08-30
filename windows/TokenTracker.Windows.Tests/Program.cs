@@ -562,7 +562,68 @@ var reloadedPause = pauseStore.Load().PollPausedUntil;
 Expect(reloadedPause is not null && reloadedPause.Value.ToUnixTimeSeconds() == pauseNow.AddHours(2).ToUnixTimeSeconds(), "PollPausedUntil round-trips through the settings store");
 Directory.Delete(Path.GetDirectoryName(pausePath)!, recursive: true);
 
+// Which credential store is live, and how long since anything wrote to it. The old
+// diagnostic only asked whether the file existed, which says nothing about the
+// question that matters when usage stops loading: is anything still refreshing it?
+var credentialFilePath = Path.Combine(Path.GetTempPath(), "token-tracker-credentials-" + Guid.NewGuid().ToString("N") + ".json");
+File.WriteAllText(credentialFilePath, "{}");
+
+var keychainWrittenAt = now.AddHours(-48);
+var fromKeychain = ClaudeCredentialSource.Detect(credentialFilePath, keychainWrittenAt);
+ExpectEqual(fromKeychain.Kind, ClaudeCredentialStore.Keychain, "The keychain wins over the fallback file when both are present");
+ExpectEqual(fromKeychain.LastWrittenAt, keychainWrittenAt, "The keychain's write time is reported");
+ExpectEqual(fromKeychain.Age(now)!.Value.TotalHours, 48d, "Age measures from the last write");
+
+var fromFile = ClaudeCredentialSource.Detect(credentialFilePath);
+ExpectEqual(fromFile.Kind, ClaudeCredentialStore.CredentialsFile, "Without a keychain entry the fallback file is the source");
+Expect(fromFile.LastWrittenAt is not null, "The fallback file reports its write time");
+
+var noCredentialSource = ClaudeCredentialSource.Detect(credentialFilePath + ".missing");
+ExpectEqual(noCredentialSource.Kind, ClaudeCredentialStore.None, "No keychain entry and no file means no source");
+Expect(noCredentialSource.Age(now) is null, "A source that was never written has no age");
+File.Delete(credentialFilePath);
+
+// A store nothing has written for longer than a token lives is the whole answer to
+// "I signed in and it still says sign in", so the menu says how stale it is. Only for
+// a lapsed Claude token: no other failure is explained by the store's age.
+var abandonedStore = new ClaudeCredentialSource(ClaudeCredentialStore.Keychain, now);
+var expiredCredentialIssue = CredentialIssue(Provider.Claude, "HTTP 401", UsageSource.Unavailable);
+ExpectEqual(
+    CredentialStoreAdvice.StaleLine(Provider.Claude, expiredCredentialIssue, abandonedStore, now.AddHours(48)),
+    "Credentials not refreshed in 2d 0h",
+    "A lapsed token over an abandoned store reports how long it has been abandoned");
+Expect(
+    CredentialStoreAdvice.StaleLine(Provider.Claude, expiredCredentialIssue, abandonedStore, now.Add(CredentialStoreAdvice.StaleAfter).AddMinutes(-1)) is null,
+    "A store younger than the token life explains nothing the recovery does not already say");
+Expect(
+    CredentialStoreAdvice.StaleLine(Provider.Claude, CredentialIssue(Provider.Claude, "HTTP 429", UsageSource.Unavailable), abandonedStore, now.AddHours(48)) is null,
+    "A rate limit is not a credential problem, however old the store is");
+Expect(
+    CredentialStoreAdvice.StaleLine(Provider.Codex, CredentialIssue(Provider.Codex, "HTTP 401", UsageSource.Unavailable), abandonedStore, now.AddHours(48)) is null,
+    "The Claude store says nothing about Codex");
+// The state this is actually seen in: the last good reading is being carried, so the
+// visible status is "using cached data" and only the error names the expiry.
+Expect(
+    CredentialStoreAdvice.StaleLine(Provider.Claude, CredentialIssue(Provider.Claude, "credentials expired", UsageSource.StaleCache), abandonedStore, now.AddHours(48)) is not null,
+    "A lapsed token behind a carried reading still reports the stale store");
+Expect(
+    CredentialStoreAdvice.StaleLine(Provider.Claude, expiredCredentialIssue, new ClaudeCredentialSource(ClaudeCredentialStore.None, null), now.AddHours(48)) is null,
+    "A store that was never written has no age to report");
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
+
+static UsageIssue CredentialIssue(Provider provider, string error, UsageSource source) =>
+    UsageIssueFormatter.Issue(new ProviderUsage(
+        provider,
+        RemainingPercent5h: source == UsageSource.StaleCache ? (int?)42 : null,
+        RemainingPercent7d: null,
+        ResetAt5h: null,
+        ResetAt7d: null,
+        source,
+        error,
+        Plan: null,
+        Model: null,
+        UpdatedAt: DateTimeOffset.Now));
 
 static ProviderUsage Usage(
     Provider provider,

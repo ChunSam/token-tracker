@@ -105,6 +105,7 @@ public struct Localizer {
         .statusMissingCredentialsDetail: "Token Tracker could not find local credentials for this provider.",
         .statusExpiredCredentials: "Sign in again",
         .statusExpiredCredentialsDetail: "The saved access token has expired. Token Tracker reads the token the provider's CLI stores and cannot refresh it itself.",
+        .credentialStale: "Credentials not refreshed in {age}",
         .statusInvalidResponse: "Unexpected response",
         .statusInvalidResponseDetail: "The provider returned data in a format Token Tracker did not expect.",
         .statusTimedOut: "Timed out",
@@ -200,6 +201,7 @@ public struct Localizer {
         .statusMissingCredentialsDetail: "이 제공자의 로컬 인증 정보를 찾지 못했습니다.",
         .statusExpiredCredentials: "다시 로그인 필요",
         .statusExpiredCredentialsDetail: "저장된 액세스 토큰이 만료되었습니다. Token Tracker는 제공자 CLI가 저장한 토큰을 읽기만 하며 직접 갱신하지 않습니다.",
+        .credentialStale: "자격 증명이 {age}째 갱신되지 않음",
         .statusInvalidResponse: "예상과 다른 응답",
         .statusInvalidResponseDetail: "제공자가 Token Tracker가 예상하지 못한 형식의 데이터를 반환했습니다.",
         .statusTimedOut: "시간 초과",
@@ -296,6 +298,7 @@ public enum L10nKey: String {
     case statusMissingCredentialsDetail
     case statusExpiredCredentials
     case statusExpiredCredentialsDetail
+    case credentialStale
     case statusInvalidResponse
     case statusInvalidResponseDetail
     case statusTimedOut

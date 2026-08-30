@@ -170,6 +170,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pausedRemainingText: pauseRemainingText(),
             sparklines: sparklines(),
             historyTrendText: reporter.historyTrendText(),
+            claudeCredentialSource: ClaudeCredentialSource.detect(
+                credentialsFileURL: DiagnosticsReporter.claudeCredentialsURL
+            ),
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
             runningInstanceCount: reporter.runningInstanceCount

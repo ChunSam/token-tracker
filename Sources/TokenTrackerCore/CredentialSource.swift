@@ -80,3 +80,42 @@ public struct ClaudeCredentialSource: Sendable, Equatable {
         #endif
     }
 }
+
+/// The line the menu was missing when Claude usage stops loading: nothing has
+/// written the credential store for longer than a token lives, so the fix is not
+/// to wait but to run the CLI once.
+///
+/// The plain "sign in again" recovery is complete advice for a token that merely
+/// lapsed. It is not the whole story for a store that has been abandoned — a user
+/// who signs in through the desktop app has signed in, and the store still will
+/// not move. Saying how long it has been unwritten is what tells the two apart.
+public enum CredentialStoreAdvice {
+    /// A Claude access token lives ~8h. Past that, an expired token is not bad
+    /// luck: whatever used to refresh the store has stopped.
+    public static let staleAfter: TimeInterval = 8 * 3600
+
+    /// `nil` unless this is Claude, the failure is a lapsed token, and the store
+    /// is old enough that nothing can still be refreshing it.
+    public static func staleLine(
+        provider: Provider,
+        issue: UsageIssue,
+        source: ClaudeCredentialSource,
+        now: Date = Date(),
+        localizer: Localizer = Localizer(language: .english)
+    ) -> String? {
+        guard provider == .claude else { return nil }
+        // Read past the visible kind to the error underneath it: once the last good
+        // reading is being carried across a lapsed token the status reads "using
+        // cached data", and the expiry survives only in the error it carries.
+        guard
+            let error = issue.technicalDetail,
+            UsageIssueFormatter.kind(forError: error) == .expiredCredentials,
+            let age = source.age(now: now),
+            age >= staleAfter
+        else {
+            return nil
+        }
+        return localizer.text(.credentialStale)
+            .replacingOccurrences(of: "{age}", with: UsageForecaster.durationText(age))
+    }
+}

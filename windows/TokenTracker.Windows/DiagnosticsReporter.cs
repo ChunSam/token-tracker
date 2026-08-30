@@ -60,13 +60,18 @@ internal sealed class DiagnosticsReporter
         // Not just whether the file is there: when usage stops loading, the question
         // that matters is whether anything is still writing to it. The Claude access
         // token lives ~8h, so an age well past that says the store has been abandoned
-        // rather than that the token was merely unlucky. (Windows has no keychain, so
-        // the file is always the live store here.)
-        lines.Add($"Claude credentials file exists: {File.Exists(ClaudeCredentialsPath)}");
-        var credentialLastWritten = CredentialLastWritten() is { } written ? IsoString(written) : "unknown";
-        var credentialAge = CredentialAge() is { } age ? FormatAge(age) : "unknown";
+        // rather than that the token was merely unlucky. The source is reported for
+        // parity with macOS, where the keychain usually wins; Windows has no keychain,
+        // so the file is always the live store here.
+        var claudeSource = ClaudeCredentialSource.Detect(ClaudeCredentialsPath);
+        var credentialLastWritten = claudeSource.LastWrittenAt is { } written ? IsoString(written) : "unknown";
+        var credentialAge = claudeSource.Age(DateTimeOffset.Now) is { } age
+            ? UsageForecaster.DurationText(age.TotalSeconds)
+            : "unknown";
+        lines.Add($"Claude credential source: {claudeSource.Kind}");
         lines.Add($"Claude credential last written: {credentialLastWritten}");
         lines.Add($"Claude credential age: {credentialAge}");
+        lines.Add($"Claude credentials file exists: {File.Exists(ClaudeCredentialsPath)}");
         lines.Add($"Codex auth file exists: {File.Exists(CodexAuthPath)}");
 
         if (snapshot is null)
@@ -97,27 +102,6 @@ internal sealed class DiagnosticsReporter
     }
 
     public static string ClaudeCredentialsPath => AppPaths.ClaudeCredentialsPath();
-
-    private static DateTimeOffset? CredentialLastWritten() =>
-        File.Exists(ClaudeCredentialsPath)
-            ? new DateTimeOffset(File.GetLastWriteTimeUtc(ClaudeCredentialsPath), TimeSpan.Zero)
-            : null;
-
-    private static TimeSpan? CredentialAge() =>
-        CredentialLastWritten() is { } written ? DateTimeOffset.UtcNow - written : null;
-
-    private static string FormatAge(TimeSpan age)
-    {
-        var minutes = Math.Max(0, (int)age.TotalMinutes);
-        if (minutes < 60)
-        {
-            return $"{minutes}m";
-        }
-
-        var hours = minutes / 60;
-        return hours < 24 ? $"{hours}h {minutes % 60}m" : $"{hours / 24}d {hours % 24}h";
-    }
-
 
     public static string CodexAuthPath => AppPaths.CodexAuthPath();
 

@@ -131,8 +131,10 @@ internal sealed class TrayAppContext : ApplicationContext
         }
         else
         {
-            AddProvider(menu, snapshot.Claude);
-            AddProvider(menu, snapshot.Codex);
+            // Read the credential store once per rebuild, not once per provider row.
+            var claudeCredentialSource = ClaudeCredentialSource.Detect(AppPaths.ClaudeCredentialsPath());
+            AddProvider(menu, snapshot.Claude, claudeCredentialSource);
+            AddProvider(menu, snapshot.Codex, claudeCredentialSource);
             menu.Items.Add(new ToolStripSeparator());
             AddDisabled(menu.Items, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
             AddDisabled(
@@ -180,7 +182,7 @@ internal sealed class TrayAppContext : ApplicationContext
         return menu;
     }
 
-    private void AddProvider(ContextMenuStrip menu, ProviderUsage usage)
+    private void AddProvider(ContextMenuStrip menu, ProviderUsage usage, ClaudeCredentialSource claudeCredentialSource)
     {
         var header = ProviderHeaderText(usage);
         var provider = new ToolStripMenuItem(CompactMenuText(header), ProviderHeaderImage(usage))
@@ -199,6 +201,19 @@ internal sealed class TrayAppContext : ApplicationContext
         if (!string.IsNullOrWhiteSpace(issue.Recovery))
         {
             AddDisabled(provider.DropDownItems, $"  {Localizer.Text(L10nKey.Recovery)}: {issue.Recovery}");
+        }
+
+        // Why signing in again did not stick: nothing has written the store since long
+        // before this token could have lapsed.
+        var staleCredentials = CredentialStoreAdvice.StaleLine(
+            usage.Provider,
+            issue,
+            claudeCredentialSource,
+            DateTimeOffset.Now,
+            Localizer);
+        if (staleCredentials is not null)
+        {
+            AddDisabled(provider.DropDownItems, $"  {staleCredentials}");
         }
 
         if (settings.ShowForecast)

@@ -27,6 +27,7 @@ struct StatusMenuContext {
     let pausedRemainingText: String?
     let sparklines: [Provider: String]
     let historyTrendText: String
+    let claudeCredentialSource: ClaudeCredentialSource
     let launchAtLoginEnabled: Bool
     let launchAtLoginStatus: String
     let runningInstanceCount: Int
@@ -167,6 +168,16 @@ struct StatusMenuBuilder {
         menu.addItem(infoItem("  \(issue.detail)"))
         if let recovery = issue.recovery {
             menu.addItem(infoItem("  \(context.localizer.text(.recovery)): \(recovery)"))
+        }
+        // Why signing in again did not stick: nothing has written the store since
+        // long before this token could have lapsed.
+        if let staleCredentials = CredentialStoreAdvice.staleLine(
+            provider: usage.provider,
+            issue: issue,
+            source: context.claudeCredentialSource,
+            localizer: context.localizer
+        ) {
+            menu.addItem(infoItem("  \(staleCredentials)"))
         }
         if let forecastLine = context.forecastLines[usage.provider] {
             menu.addItem(infoItem("  \(forecastLine)"))

@@ -44,6 +44,9 @@ jobs:
           APP_ARCHS: arm64 x86_64
         run: bash scripts/build_app.sh
 
+      - name: Verify app bundle
+        run: swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"
+
       - name: Package DMG
         shell: bash
         run: |

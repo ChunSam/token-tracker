@@ -260,13 +260,40 @@ final class StatusItemRenderer {
     }
 
     private func loadIcon(named name: String) -> StatusIcon {
-        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+        if let url = Self.resourceBundle?.url(forResource: name, withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return StatusIcon(image: image, contentRect: visibleContentRect(for: image))
         }
         let image = NSImage(size: NSSize(width: 14, height: 14))
         return StatusIcon(image: image, contentRect: NSRect(origin: .zero, size: image.size))
     }
+
+    /// SwiftPM's resource bundle, found without going through `Bundle.module`.
+    ///
+    /// For an executable target the generated `Bundle.module` looks in exactly two
+    /// places — beside the executable's own bundle, and the build directory baked in
+    /// at compile time — and *traps* when it finds neither. `Contents/Resources`,
+    /// where an app bundle keeps its resources and where `scripts/build_app.sh` puts
+    /// this one, is not one of them. On the machine that built it the baked-in path
+    /// still resolves, so a locally built app looked fine while every release DMG
+    /// carried a CI runner's path and died on the first icon-style render.
+    ///
+    /// Resolving the packaged copy directly keeps the miss recoverable: no bundle
+    /// means a blank icon, not a crash.
+    private static let resourceBundle: Bundle? = {
+        // Named `<package>_<target>` by SwiftPM; build_app.sh copies it by the same name.
+        let bundleName = "TokenTrackerMenuBar_TokenTrackerMenuBar.bundle"
+        let candidates = [
+            Bundle.main.resourceURL,   // packaged .app
+            Bundle.main.bundleURL      // swift run, beside the executable
+        ]
+        for case let candidate? in candidates {
+            if let bundle = Bundle(url: candidate.appendingPathComponent(bundleName)) {
+                return bundle
+            }
+        }
+        return nil
+    }()
 
     private func drawIcon(_ icon: StatusIcon, in rect: NSRect, tint: NSColor) {
         NSGraphicsContext.saveGraphicsState()

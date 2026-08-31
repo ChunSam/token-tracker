@@ -26,6 +26,16 @@ jobs:
       - name: Smoke tests
         run: swift run TokenTrackerSmokeTests
 
+      # Release-path smoke: assemble the same .app the release workflow ships and
+      # check it carries its own resources, so a packaging break is caught on every
+      # PR instead of only when someone installs a DMG (the Windows job has the
+      # equivalent publish smoke below).
+      - name: Build app bundle (release-path smoke)
+        run: bash scripts/build_app.sh
+
+      - name: Verify app bundle
+        run: swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"
+
   windows:
     name: Windows build + tests
     runs-on: windows-latest

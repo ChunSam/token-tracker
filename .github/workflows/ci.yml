@@ -72,3 +72,17 @@ jobs:
           /p:AssemblyVersion=0.0.0.${{ github.run_number }}
           /p:FileVersion=0.0.0.${{ github.run_number }}
           -o ${{ runner.temp }}/publish-smoke
+
+      # The version only matters if it survives into the published exe, which is
+      # what Copy Diagnostics reads back. Assert the stamp landed rather than that
+      # the flags parsed.
+      - name: Verify published version stamp
+        shell: pwsh
+        run: |
+          $exe = Join-Path "${{ runner.temp }}/publish-smoke" "TokenTracker.Windows.exe"
+          $stamped = (Get-Item $exe).VersionInfo.FileVersion
+          $expected = "0.0.0.${{ github.run_number }}"
+          if ($stamped -ne $expected) {
+            throw "published exe reports '$stamped', expected '$expected'"
+          }
+          Write-Host "published exe reports $stamped"

@@ -199,6 +199,8 @@ open ".build/Token Tracker.app"
 
 ## 배포 메모
 
+버전은 태그(`v1.1.6`)에서 나옵니다. 릴리스 빌드는 macOS는 `APP_VERSION`, Windows는 `/p:Version`을 태그에서 받고, 빌드 번호로는 workflow run number를 씁니다. 로컬 빌드가 쓰는 기본값은 두 곳에 있으므로 버전을 올릴 때 함께 고칩니다 — `scripts/build_app.sh`의 `APP_VERSION`/`APP_BUILD`, `windows/TokenTracker.Windows/TokenTracker.Windows.csproj`의 `<Version>`.
+
 호환성 있는 DMG를 만들 때는 HFS+ 형식을 사용합니다.
 
 ```bash

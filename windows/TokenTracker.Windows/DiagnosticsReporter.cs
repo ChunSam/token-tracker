@@ -122,7 +122,7 @@ internal sealed class DiagnosticsReporter
     }
 
     private static string AppVersion =>
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
+        AppVersionText.Format(Assembly.GetExecutingAssembly().GetName().Version);
 
     private static string IsoString(DateTimeOffset date) =>
         date.ToUniversalTime().ToString("O");

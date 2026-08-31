@@ -88,10 +88,15 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            "version=${{ inputs.version }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            $version = "${{ inputs.version }}"
           } else {
-            "version=${env:GITHUB_REF_NAME}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            $version = "${env:GITHUB_REF_NAME}"
           }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # AssemblyVersion takes numbers only, so drop the leading v and any
+          # prerelease suffix rather than failing the publish on a tag like v1.2.0-rc1.
+          $appVersion = ($version -replace '^v', '') -replace '-.*$', ''
+          "app_version=$appVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -109,6 +114,9 @@ jobs:
           --self-contained true
           /p:PublishSingleFile=true
           /p:PublishReadyToRun=false
+          /p:Version=${{ steps.version.outputs.app_version }}
+          /p:AssemblyVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
+          /p:FileVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
           -o artifacts/TokenTracker.Windows-${{ matrix.rid }}
 
       - name: Package Windows zip

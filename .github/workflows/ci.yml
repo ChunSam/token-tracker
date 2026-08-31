@@ -68,4 +68,7 @@ jobs:
           --self-contained true
           /p:PublishSingleFile=true
           /p:PublishReadyToRun=false
+          /p:Version=0.0.0
+          /p:AssemblyVersion=0.0.0.${{ github.run_number }}
+          /p:FileVersion=0.0.0.${{ github.run_number }}
           -o ${{ runner.temp }}/publish-smoke

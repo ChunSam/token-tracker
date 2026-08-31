@@ -28,6 +28,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          # AssemblyVersion takes numbers only: drop the leading v and any prerelease suffix.
+          $appVersion = ("${{ inputs.version }}" -replace '^v', '') -replace '-.*$', ''
+          "app_version=$appVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -44,6 +52,9 @@ jobs:
           --self-contained true
           /p:PublishSingleFile=true
           /p:PublishReadyToRun=false
+          /p:Version=${{ steps.version.outputs.app_version }}
+          /p:AssemblyVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
+          /p:FileVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
           -o artifacts/TokenTracker.Windows-${{ matrix.rid }}
 
       - name: Package exe

@@ -610,6 +610,14 @@ Expect(
     CredentialStoreAdvice.StaleLine(Provider.Claude, expiredCredentialIssue, new ClaudeCredentialSource(ClaudeCredentialStore.None, null), now.AddHours(48)) is null,
     "A store that was never written has no age to report");
 
+// The tray app's own version line. Until the publish started stamping it, every
+// build ever shipped reported 1.0.0 — including the diagnostics report whose job is
+// to say which build the user is on.
+ExpectEqual(AppVersionText.Format(new Version(1, 1, 6, 8)), "1.1.6 (build 8)", "A stamped release publish names its build");
+ExpectEqual(AppVersionText.Format(new Version(1, 1, 6, 0)), "1.1.6", "A local build leaves the revision unstamped and shows just the version");
+ExpectEqual(AppVersionText.Format(new Version(1, 1, 6)), "1.1.6", "A three-part version has no build to show");
+ExpectEqual(AppVersionText.Format(null), "unknown", "An assembly with no version is reported as unknown");
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static UsageIssue CredentialIssue(Provider provider, string error, UsageSource source) =>

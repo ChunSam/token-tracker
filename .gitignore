@@ -5,3 +5,4 @@ dist/
 .DS_Store
 ._*
 *.user
+.claude/proposals/.last-wrap

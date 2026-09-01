@@ -51,15 +51,19 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
+          DMG="TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg"
           hdiutil create \
             -volname "Token Tracker" \
             -srcfolder ".build/Token Tracker.app" \
             -ov \
             -fs HFS+ \
             -format UDZO \
-            "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg"
-          shasum -a 256 "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg" \
-            > "dist/TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg.sha256"
+            "dist/${DMG}"
+          # Record the file's name, not the path it was built under: whoever checks a
+          # downloaded DMG runs shasum -c beside it, not from this repo's layout.
+          cd dist
+          shasum -a 256 "${DMG}" > "${DMG}.sha256"
+          shasum -a 256 -c "${DMG}.sha256"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -128,8 +132,19 @@ jobs:
             -DestinationPath "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" `
             -Force
           $zip = "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip"
-          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
-            Out-File -Encoding ascii "$zip.sha256"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $name = Split-Path $zip -Leaf
+          # LF, not the CRLF Out-File writes: shasum/sha256sum read the filename
+          # literally, so a trailing CR sends them looking for a name that ends in one
+          # and every downloaded checksum fails to verify on macOS and Linux.
+          # .NET file APIs use the process working directory, which is not PowerShell's
+          # location, so resolve the path before handing it over.
+          $shaPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path "$zip.sha256"))
+          [System.IO.File]::WriteAllText($shaPath, "$hash  $name" + [char]10)
+          $bytes = [System.IO.File]::ReadAllBytes($shaPath)
+          if ($bytes -contains 13) {
+            throw "checksum file contains a carriage return"
+          }
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

@@ -70,8 +70,18 @@ jobs:
         shell: pwsh
         run: |
           $zip = "dist/TokenTracker.Windows-${{ inputs.version }}-${{ matrix.rid }}.zip"
-          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
-            Out-File -Encoding ascii "$zip.sha256"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $name = Split-Path $zip -Leaf
+          # LF, not the CRLF Out-File writes — a trailing CR makes shasum -c look for a
+          # filename that ends in one, so the shipped checksum never verifies.
+          # .NET file APIs use the process working directory, which is not PowerShell's
+          # location, so resolve the path before handing it over.
+          $shaPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path "$zip.sha256"))
+          [System.IO.File]::WriteAllText($shaPath, "$hash  $name" + [char]10)
+          $bytes = [System.IO.File]::ReadAllBytes($shaPath)
+          if ($bytes -contains 13) {
+            throw "checksum file contains a carriage return"
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

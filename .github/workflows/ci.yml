@@ -20,6 +20,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The two local version defaults are coupled by hand — build_app.sh stamps the
+      # macOS bundle, the csproj stamps the Windows assembly — and nothing but the
+      # deploy notes said so. Cheap enough to run before the build, and it lives in a
+      # required job so drift blocks the merge rather than surfacing at the next release.
+      - name: Check version defaults agree
+        run: |
+          app=$(grep -m1 '^APP_VERSION=' scripts/build_app.sh | sed 's/.*:-//; s/}.*//')
+          win=$(grep -m1 '<Version>' windows/TokenTracker.Windows/TokenTracker.Windows.csproj \
+            | sed 's/.*<Version>//; s|</Version>.*||')
+          # Empty on both sides would otherwise "agree": a rename or a reformat must
+          # fail loudly instead of silently switching the check off.
+          if [ -z "$app" ] || [ -z "$win" ]; then
+            echo "could not read a version default (build_app.sh='$app', csproj='$win')" >&2
+            exit 1
+          fi
+          if [ "$app" != "$win" ]; then
+            echo "version defaults disagree: build_app.sh=$app, csproj=$win" >&2
+            exit 1
+          fi
+          echo "version defaults agree: $app"
+
       - name: Build
         run: swift build
 

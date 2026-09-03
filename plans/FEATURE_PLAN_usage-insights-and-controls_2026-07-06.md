@@ -1,9 +1,33 @@
 # Feature Plan — Usage Insights & Controls (items 1–4)
 
 **Date:** 2026-07-06
-**Status:** PLAN (not yet implemented)
+**Status:** IMPLEMENTED — all four features merged 2026-07-06; see Outcome below.
 **Scope:** macOS menu-bar (Swift) **and** Windows tray (C#/WinForms) — parity is mandatory.
 **Baseline:** `main` @ `bd72c6c` (429 hardening + CI gate + publish smoke all merged; `main` branch-protected).
+
+## Outcome
+
+Everything below this section is the plan as written on 2026-07-06 and is left unedited. This
+section records how it landed. The suggested sequencing held: the features shipped in the
+planned A→D order, one PR each.
+
+| Feature | Merged as |
+|---|---|
+| 4 — 7d trend | `04f6e36` (PR #6) |
+| 1 — Depletion forecast + predictive alert | `3bf7ffd` (PR #7) |
+| 3 — Snooze / pause polling | `9ebc48a` (PR #8) |
+| 2 — History sparkline | `6634f92` (PR #9) |
+
+Resolutions to the plan's open choices:
+
+- **Sparkline rendering** — Option A (Unicode blocks) shipped; the Option B bitmap was never requested.
+- **"Refresh Now" vs pause** — a manual refresh lifts an active pause, as proposed
+  (`AppDelegate.refreshNow`; the "Refresh Now" handler in `TrayAppContext.BuildMenu`). A persisted
+  pause survives a restart.
+
+Follow-ups after the four PRs: `0bab083` (PR #11) fixed Preferences localization refresh and pause
+persistence; `088748d` (PR #15) falls the forecast and sparkline back to the 7d window when a
+provider's 5h lane is empty.
 
 ## Guiding constraints (apply to every feature)
 

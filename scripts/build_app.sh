@@ -33,15 +33,18 @@ BUILD_RELEASE_DIR=""
 
 if [[ "${#ARCHS[@]}" -eq 1 ]]; then
   swift build -c release --arch "${ARCHS[0]}"
-  ARCH_BUILD_DIR=".build/${ARCHS[0]}-apple-macosx/release"
+  ARCH_BUILD_DIR="$(swift build -c release --arch "${ARCHS[0]}" --show-bin-path)"
   cp "${ARCH_BUILD_DIR}/${EXECUTABLE_NAME}" "${EXECUTABLE_OUTPUT}"
   BUILD_RELEASE_DIR="$(cd "${ARCH_BUILD_DIR}" && pwd -P)"
 else
   LIPO_INPUTS=()
   for arch in "${ARCHS[@]}"; do
     swift build -c release --arch "${arch}"
-    ARCH_BUILD_DIR=".build/${arch}-apple-macosx/release"
-    LIPO_INPUTS+=("${ARCH_BUILD_DIR}/${EXECUTABLE_NAME}")
+    ARCH_BUILD_DIR="$(swift build -c release --arch "${arch}" --show-bin-path)"
+    # Some build backends reuse one output directory across architectures.
+    ARCH_EXECUTABLE="${BUILD_TMP_DIR}/${EXECUTABLE_NAME}-${arch}"
+    cp "${ARCH_BUILD_DIR}/${EXECUTABLE_NAME}" "${ARCH_EXECUTABLE}"
+    LIPO_INPUTS+=("${ARCH_EXECUTABLE}")
     if [[ -z "${BUILD_RELEASE_DIR}" ]]; then
       BUILD_RELEASE_DIR="$(cd "${ARCH_BUILD_DIR}" && pwd -P)"
     fi

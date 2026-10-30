@@ -251,7 +251,10 @@ private func runStatusLineBridgeScriptTests() throws {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [script.path, "--"] + inner
         process.environment = ProcessInfo.processInfo.environment
-            .merging(["TOKEN_TRACKER_STATUSLINE_FILE": output.path]) { _, new in new }
+            .merging([
+                "TOKEN_TRACKER_STATUSLINE_FILE": output.path,
+                "TOKEN_TRACKER_STATUSLINE_DEBUG": "1"
+            ]) { _, new in new }
         let stdin = Pipe()
         let stdout = Pipe()
         process.standardInput = stdin

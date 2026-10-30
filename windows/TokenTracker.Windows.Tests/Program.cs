@@ -970,6 +970,7 @@ static void RunStatusLineBridgeScriptTests()
                 RedirectStandardOutput = true
             };
             startInfo.Environment["TOKEN_TRACKER_STATUSLINE_FILE"] = output;
+            startInfo.Environment["TOKEN_TRACKER_STATUSLINE_DEBUG"] = "1";
 
             using var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Could not start the bridge script");

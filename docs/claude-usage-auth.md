@@ -55,20 +55,30 @@ the documentation lists these subscription windows for Pro/Max after the first
 API response. Either window can be absent. Do not assume the same fields exist
 for every plan or for Claude Desktop.
 
-Proposed implementation, not included in this change:
-
-1. Integrate a small bridge with the user's existing status-line command.
-2. Write only usage percentages, reset times, and measurement metadata to a
-   user-private local file, atomically. Do not store tokens or the full session
-   payload.
-3. Read that file from the macOS and Windows collectors, preserving the
-   observation timestamp and displaying stale/unavailable states when needed.
-4. Preserve existing status-line output and handle missing windows and multiple
-   sessions. Do not replace a user's configured script silently.
-
 The status-line command can run on a timer, but that alone does not establish
 that a new account measurement occurred. Replayed data must not extend cache
 freshness. When the CLI is closed or inactive, or usage occurs only on other
 devices, this bridge cannot promise current account usage. It reduces token
 handling and repeated login demands; it does not provide permanent unattended
 polling of a personal subscription.
+
+## Implemented integration
+
+This integration has shipped. `scripts/claude-statusline-bridge.sh` and its
+Windows counterpart wrap the user's existing status-line command, record only the
+two usage percentages, their reset instants and two timestamps to a user-private
+local file by atomic rename, and relay the wrapped command's output unchanged. No
+token and no part of the session payload is stored. Installing nothing changes
+nothing: with no file present the collectors behave exactly as before.
+
+`ClaudeStatusLineBridge` in both Cores reads that file, and the reading carries
+its own `UsageSource.statusLine` rather than `.api`. The replay hazard above is
+answered by writing two separate instants: `measured_at`, which moves only when
+the reported numbers change, and `written_at`, which moves on every run and is
+never used for freshness. A reading older than 30 minutes is handed to the
+existing stale-cache path instead of being presented as current, and no
+status-line reading enters the history that feeds the trend, sparkline and
+forecast — those still admit `source == .api` only.
+
+[Claude status-line bridge](claude-statusline-bridge.md) documents the file
+format, the installation, and the reasoning behind each of those rules.

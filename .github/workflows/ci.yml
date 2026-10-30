@@ -41,6 +41,24 @@ jobs:
           fi
           echo "version defaults agree: $app"
 
+      # The docs tell the reader to point `statusLine.command` straight at the
+      # bridge script, and the build instructions name build_app.sh the same way.
+      # A dropped exec bit makes both fail with "permission denied", and nothing
+      # else here would notice: CI runs build_app.sh through bash, and this repo
+      # has core.fileMode=false, so a local chmod never reaches a commit.
+      - name: Check documented scripts are executable
+        run: |
+          # Not named `status`: that is read-only in zsh, so the snippet stays
+          # runnable by hand outside the bash this step gets.
+          missing=0
+          for script in scripts/build_app.sh scripts/claude-statusline-bridge.sh; do
+            if [ ! -x "$script" ]; then
+              echo "$script is documented as run directly but is not executable" >&2
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Build
         run: swift build
 

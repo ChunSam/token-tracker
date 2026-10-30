@@ -136,8 +136,10 @@ public struct DisplayFormatter {
         guard showResetCountdown, let usage else { return "" }
         // A cached reading's reset instant keeps ticking down while the value behind
         // it stands still, and once it passes the countdown reads "now" for as long
-        // as the fallback lasts. Show no time rather than a wrong one.
-        guard usage.source == .api else { return "" }
+        // as the fallback lasts. Show no time rather than a wrong one. A status-line
+        // reading is a measurement with a live window: it is only reported while it
+        // is fresh, and a window whose reset has passed is dropped on the way in.
+        guard usage.source == .api || usage.source == .statusLine else { return "" }
         guard let text = formatResetCompact(displayResetAt(usage), localizer: localizer) else { return "" }
         return " \(text)"
     }

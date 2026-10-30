@@ -116,6 +116,8 @@ public struct Localizer {
         .statusHTTPErrorDetail: "The provider returned an HTTP error while checking usage.",
         .statusUsingCachedData: "Using cached data",
         .statusUsingCachedDataDetail: "The latest check failed, so the last successful value is being shown.",
+        .statusFromStatusLine: "From status line",
+        .statusFromStatusLineDetail: "Claude Code's status line reported this usage.",
         .statusUnavailable: "Unavailable",
         .statusUnavailableDetail: "No usage value is currently available.",
         .recoveryEnableProvider: "Enable the provider if you want Token Tracker to check it again.",
@@ -212,6 +214,8 @@ public struct Localizer {
         .statusHTTPErrorDetail: "사용량 확인 중 제공자가 HTTP 오류를 반환했습니다.",
         .statusUsingCachedData: "캐시 데이터 사용 중",
         .statusUsingCachedDataDetail: "최신 확인에 실패해 마지막 성공 값을 표시하고 있습니다.",
+        .statusFromStatusLine: "상태줄 데이터",
+        .statusFromStatusLineDetail: "Claude Code 상태줄이 보고한 사용량입니다.",
         .statusUnavailable: "사용 불가",
         .statusUnavailableDetail: "현재 표시할 사용량 값이 없습니다.",
         .recoveryEnableProvider: "다시 확인하려면 제공자를 켜세요.",
@@ -309,6 +313,8 @@ public enum L10nKey: String {
     case statusHTTPErrorDetail
     case statusUsingCachedData
     case statusUsingCachedDataDetail
+    case statusFromStatusLine
+    case statusFromStatusLineDetail
     case statusUnavailable
     case statusUnavailableDetail
     case recoveryEnableProvider

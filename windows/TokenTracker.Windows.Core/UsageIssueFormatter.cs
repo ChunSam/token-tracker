@@ -12,6 +12,7 @@ public enum UsageIssueKind
     Network,
     HttpStatus,
     UsingCachedData,
+    StatusLine,
     Unavailable
 }
 
@@ -27,6 +28,20 @@ public static class UsageIssueFormatter
     public static UsageIssue Issue(ProviderUsage usage, Localizer? localizer = null)
     {
         localizer ??= new Localizer(AppLanguage.English);
+        // Real account numbers, measured by Claude Code rather than by this app.
+        // Any error the API path reported is carried through so the menu can still
+        // name the fix (sign in again) beside the numbers it is showing.
+        if (usage.Source == UsageSource.StatusLine)
+        {
+            var apiError = usage.Error;
+            return new UsageIssue(
+                UsageIssueKind.StatusLine,
+                localizer.Text(L10nKey.StatusFromStatusLine),
+                localizer.Text(L10nKey.StatusFromStatusLineDetail),
+                Recovery(apiError, usage.Provider, localizer),
+                apiError);
+        }
+
         if (usage.Source == UsageSource.StaleCache)
         {
             var technicalDetail = usage.Error;
@@ -130,6 +145,7 @@ public static class UsageIssueFormatter
         UsageIssueKind.Network => localizer.Text(L10nKey.StatusNetworkIssue),
         UsageIssueKind.HttpStatus => localizer.Text(L10nKey.StatusHttpError),
         UsageIssueKind.UsingCachedData => localizer.Text(L10nKey.StatusUsingCachedData),
+        UsageIssueKind.StatusLine => localizer.Text(L10nKey.StatusFromStatusLine),
         UsageIssueKind.Unavailable => localizer.Text(L10nKey.StatusUnavailable),
         _ => localizer.Text(L10nKey.StatusUnavailable)
     };
@@ -146,6 +162,7 @@ public static class UsageIssueFormatter
         UsageIssueKind.Network => localizer.Text(L10nKey.StatusNetworkIssueDetail),
         UsageIssueKind.HttpStatus => localizer.Text(L10nKey.StatusHttpErrorDetail),
         UsageIssueKind.UsingCachedData => localizer.Text(L10nKey.StatusUsingCachedDataDetail),
+        UsageIssueKind.StatusLine => localizer.Text(L10nKey.StatusFromStatusLineDetail),
         UsageIssueKind.Unavailable => localizer.Text(L10nKey.StatusUnavailableDetail),
         _ => localizer.Text(L10nKey.StatusUnavailableDetail)
     };
@@ -170,7 +187,7 @@ public static class UsageIssueFormatter
             UsageIssueKind.InvalidResponse => localizer.Text(L10nKey.RecoveryUpdateOrTryLater),
             UsageIssueKind.TimedOut or UsageIssueKind.Network => localizer.Text(L10nKey.RecoveryCheckNetwork),
             UsageIssueKind.HttpStatus or UsageIssueKind.Unavailable => localizer.Text(L10nKey.RecoveryRefreshLater),
-            UsageIssueKind.Ok or UsageIssueKind.UsingCachedData => null,
+            UsageIssueKind.Ok or UsageIssueKind.UsingCachedData or UsageIssueKind.StatusLine => null,
             _ => null
         };
     }

@@ -45,6 +45,19 @@ struct DiagnosticsReporter {
         lines.append("Claude credential last written: \(claudeSource.lastWrittenAt.map(isoString) ?? "unknown")")
         lines.append("Claude credential age: \(claudeSource.age().map(UsageForecaster.durationText) ?? "unknown")")
         lines.append("Claude credentials file exists: \(fileExists(at: Self.claudeCredentialsURL))")
+        // Whether the bridge is installed at all, and how old its measurement is.
+        // "File present but measured 9h ago" is the whole diagnosis for a user who
+        // set it up and then stopped running the CLI.
+        let statusLineStore = ClaudeStatusLineStore()
+        lines.append("Claude status line bridge: \(statusLineStore.url.path)")
+        lines.append("Claude status line file exists: \(statusLineStore.fileExists)")
+        if let record = statusLineStore.read() {
+            lines.append("Claude status line measured: \(isoString(record.measuredAt))")
+            lines.append("Claude status line measurement age: \(UsageForecaster.durationText(record.age()))")
+            lines.append("Claude status line last written: \(isoString(record.writtenAt))")
+        } else {
+            lines.append("Claude status line record: none")
+        }
         lines.append("Codex auth file exists: \(fileExists(at: Self.codexAuthURL))")
 
         if let snapshot {

@@ -8,7 +8,15 @@ public enum Provider
 
 public enum UsageSource
 {
+    /// A measurement this app took itself, from the provider's usage endpoint.
     Api,
+
+    /// <summary>
+    /// A measurement Claude Code's status line took, relayed by the bridge. Real
+    /// account data, but observed at a time this app did not choose, so it is not
+    /// interchangeable with <see cref="Api"/> — see <see cref="ClaudeStatusLineBridge"/>.
+    /// </summary>
+    StatusLine,
     StaleCache,
     Unavailable
 }

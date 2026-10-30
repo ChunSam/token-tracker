@@ -102,8 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { refreshTask = nil }
             let result = await usageService.refresh()
             snapshot = result
-            if result.claude.source == .api || result.codex.source == .api {
-                lastSuccessfulRefreshAt = result.updatedAt
+            // The newest real measurement in this snapshot, by its own timestamp.
+            // A status-line reading counts — it is account data — but it was taken
+            // before this poll, so reporting the poll time would overstate it.
+            if let measuredAt = [result.claude, result.codex]
+                .filter({ $0.source == .api || $0.source == .statusLine })
+                .map(\.updatedAt)
+                .max() {
+                lastSuccessfulRefreshAt = measuredAt
             }
             historyStore.append(
                 UsageHistoryPolicy.measurementsOnly(result),

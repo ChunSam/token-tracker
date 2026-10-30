@@ -102,8 +102,6 @@ Claude 토큰의 만료 여부는 저장된 `expiresAt`을 기준으로 판단�
 
 토큰이 만료되고 인증 저장소도 오랫동안 갱신되지 않았다면, 메뉴의 Claude 항목에 `자격 증명이 2d 3h째 갱신되지 않음`처럼 경과 시간이 함께 표시됩니다. 이 경우 터미널의 Claude Code에서 로그인 상태를 확인합니다.
 
-장기 인증과 대체 수집 방법은 [Claude 사용량 수집 조사](docs/claude-usage-auth.md)에 정리했습니다. 공식 상태줄의 사용률 데이터를 로컬 파일로 전달받는 연동이 후보이며, 현재 앱에는 아직 구현하지 않았습니다.
-
 `진단 정보 복사`에는 `Claude credential source`(keychain/file)와 `Claude credential age`가 상태와 무관하게 항상 포함됩니다.
 
 그 사이 공백은 마지막으로 성공한 값을 표시합니다. 유지 기간은 설정 창의 `마지막 값 유지 기간`에서 조절합니다(기본 12시간). Claude와 Codex 각각의 실제 측정 시각부터 계산하며, 실패한 재조회나 앱 재실행으로 연장되지 않습니다. 이전 버전 캐시는 측정 시각을 신뢰할 수 없어 한 번 폐기하며, 다음 조회 성공 시 다시 저장합니다. 캐시된 값은 리셋까지 남은 시간을 표시하지 않고, 히스토리에는 새 측정값으로 추가하지 않습니다.
@@ -118,6 +116,46 @@ Claude는 `claude`를 실행한 뒤 `/login`을 입력합니다.
 
 - Claude 토큰은 macOS 키체인(`Claude Code-credentials`) 또는 `~/.claude/.credentials.json`에서 읽습니다.
 - Codex 토큰은 `~/.codex/auth.json`에서 읽습니다.
+
+### 상태줄 브리지 — 토큰이 만료돼도 Claude 잔량 보기
+
+Claude Code 상태줄은 세션에 5시간/7일 사용률을 그대로 넘겨줍니다. 그 숫자만 로컬 파일로 받아오면
+저장된 토큰이 만료돼 있어도 Claude 잔량을 표시할 수 있습니다. 설정은 기존 상태줄 명령을 `--` 뒤에
+적어 감싸는 것뿐이고, 상태줄 출력은 그대로 유지됩니다. Claude Code 2.1.251 이상이 필요합니다.
+
+`~/.claude/settings.json` (macOS):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/path/to/Token tracker/scripts/claude-statusline-bridge.sh -- node /your/statusline.js"
+  }
+}
+```
+
+`%USERPROFILE%\.claude\settings.json` (Windows):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\path\\claude-statusline-bridge.ps1 -- node C:\\your\\statusline.js"
+  }
+}
+```
+
+파일에는 사용률 두 개, 각 창의 리셋 시각, 측정·기록 시각만 들어갑니다. 토큰이나 세션 페이로드는
+저장하지 않습니다. 설정하지 않으면 동작은 전혀 바뀌지 않습니다.
+
+상태줄 명령이 타이머로 다시 실행되는 것은 새 측정이 아니므로, 숫자가 바뀌지 않은 재실행은 측정
+시각을 밀지 않습니다. 측정 후 30분이 지난 값은 `캐시 데이터 사용 중`으로 내려가고, 유지 기간이
+지나면 `--`가 됩니다. 상태줄 값은 히스토리·추세·예측에는 들어가지 않습니다 — 그쪽은 앱이 직접
+측정한 값만 받습니다. 형식과 설계 근거는 [상태줄 브리지](docs/claude-statusline-bridge.md),
+장기 인증 조사는 [Claude 사용량 수집 조사](docs/claude-usage-auth.md)에 있습니다.
+
+CLI를 띄워 두지 않거나 다른 기기에서만 사용하면 브리지도 현재 사용량을 알 수 없습니다. 상시
+백그라운드 수집을 대신하지는 못합니다.
 
 ## 개발
 
@@ -216,7 +254,9 @@ hdiutil create \
 │   ├── TokenTrackerMenuBar
 │   └── TokenTrackerSmokeTests
 ├── scripts
-│   └── build_app.sh
+│   ├── build_app.sh
+│   ├── claude-statusline-bridge.ps1
+│   └── claude-statusline-bridge.sh
 ├── windows
 │   ├── TokenTracker.Windows
 │   ├── TokenTracker.Windows.Core

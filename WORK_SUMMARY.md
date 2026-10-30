@@ -108,6 +108,8 @@ Token tracker/
 5. 429면 쿨다운을 기록한다: `max(120초, Retry-After)`에서 시작해 연속 실패마다 2배(상한 1800초),
    지터 가산. 서버가 더 긴 `Retry-After`를 주면 그쪽을 따른다.
 
+6. API가 아무것도 못 주면 상태줄 브리지 파일을 읽는다 — 아래 참고.
+
 공통 정책 — 새 값을 못 얻은 제공자는 마지막 성공 값을 `staleCache`로 계속 보여준다. 유지 기간은
 설정의 `마지막 값 유지 기간`(기본 12시간). 캐시 값은 히스토리·추세·예측에 들어가지 않고 남은 시간도
 붙지 않는다.
@@ -115,6 +117,28 @@ Token tracker/
 토큰 갱신은 각 CLI(`claude`, `codex`)만 한다. Token Tracker는 읽기만 한다. 특히 Claude는 데스크톱
 앱이 이 저장소를 갱신하지 않으므로 터미널에서 `claude`를 가끔 실행해야 한다 — README
 "사용량을 못 불러올 때" 참고.
+
+### Claude 상태줄 브리지
+
+토큰이 만료되면 위 경로는 아무것도 가져올 수 없으므로, 자격 증명을 건드리지 않는 두 번째 입력을
+둔다. `scripts/claude-statusline-bridge.sh`(macOS/Linux, python3로 JSON 파싱)와 `.ps1`(Windows)이
+사용자가 이미 설정해 둔 상태줄 명령을 감싸, stdin을 한 번 읽어 사용률만 기록하고 같은 stdin으로 그
+명령을 실행해 출력을 그대로 넘긴다. 설치하지 않으면 동작은 전혀 바뀌지 않는다.
+
+파일(`claude-statusline.json`, 0600, atomic rename)에는 두 창의 `used_percentage`·`resets_at`와
+`measured_at`·`written_at`만 들어간다. 토큰·세션 페이로드·`spend_limit`은 저장하지 않는다.
+
+설계의 핵심은 **다시 쓰였다는 것이 다시 측정됐다는 뜻이 아니라는 것**이다. 상태줄 명령은 CLI가
+알아서 다시 실행하므로, 값이 바뀌지 않은 재실행에서는 `measured_at`을 그대로 두고 `written_at`만
+움직인다. 수집기는 `measured_at`으로만 나이를 재고 `written_at`은 진단에만 쓴다. 같은 창 인스턴스
+(`resets_at` 동일)에서 더 낮은 사용률은 더 오래된 읽기이므로 덮어쓰지 않고, 페이로드에서 빠진 창은
+이미 기록된 값을 지우지 않는다(리셋이 지난 창은 읽을 때 버린다).
+
+`ClaudeStatusLineBridge`(양쪽 Core 1:1)가 그 파일을 읽는다. 읽은 값은 `.api`가 아니라
+`.statusLine`이고, 30분 안이면 현재 값으로(카운트다운 포함) 보여주고, 그 뒤로는 읽기를 포기해 기존
+`staleCache` 층이 `캐시 데이터 사용 중`으로 넘겨받고, 유지 기간이 지나면 `--`가 된다. 히스토리에는
+들어가지 않는다 — 폴링마다 같은 측정을 새 시각으로 기록하면 예측이 "사용이 멈췄다"고 읽는다.
+형식·설치·근거는 `docs/claude-statusline-bridge.md`.
 
 ### 알림
 
@@ -158,6 +182,7 @@ macOS UI (`Sources/TokenTrackerMenuBar/`)
 Core (`Sources/TokenTrackerCore/`)
 
 - `ClaudeUsageClient.swift` / `CodexUsageClient.swift` — 조회, 만료 감지, 쿨다운
+- `ClaudeStatusLineBridge.swift` — 상태줄 브리지 파일 파싱과 신선도 판정(재생 데이터 차단)
 - `CodexWindowMapper.swift` — 창 길이 기준 5h/7d 배정
 - `UsageService.swift` — 두 제공자 통합, stale cache 정책
 - `CredentialExpiry.swift` / `CredentialSource.swift` — 만료 판정, 저장소 종류·신선도, 메뉴 안내 줄
@@ -181,6 +206,8 @@ Windows (`windows/`)
 - `scripts/build_app.sh` — release 빌드 후 `.app` 조립, `AppIcon.png` → `AppIcon.icns`.
   `APP_VERSION`/`APP_BUILD` 로컬 기본값을 가진다(릴리스는 태그·run number로 덮어씀)
 - `scripts/verify_app_bundle.swift` — 조립된 `.app`의 실행 파일·Info.plist·리소스 번들 검사
+- `scripts/claude-statusline-bridge.sh` / `.ps1` — 상태줄 브리지. 사용자 설정이며 빌드에는 포함되지
+  않는다. 양쪽 스모크 테스트가 스크립트를 실제로 실행해 재생 규칙을 검증한다
 - `windows/TokenTracker.Windows/TokenTracker.Windows.csproj` — `<Version>` 로컬 기본값.
   `build_app.sh`의 `APP_VERSION`과 같아야 하며 CI가 드리프트를 막는다
 
@@ -234,7 +261,9 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
 
 ## 현재 제약
 
-- Claude 한도 퍼센트는 API 또는 최근 성공 캐시에 의존한다.
+- Claude 한도 퍼센트는 API, 상태줄 브리지, 또는 최근 성공 캐시에 의존한다.
+- 상태줄 브리지는 상시 수집을 대신하지 못한다. CLI를 띄워 두지 않거나 다른 기기에서만 쓰면 새
+  측정이 생기지 않고, 값은 정직하게 `캐시 데이터 사용 중`을 거쳐 `--`가 된다.
 - Claude 로컬 JSONL 로그는 토큰 사용량은 제공하지만 한도 대비 퍼센트는 제공하지 않으므로 fallback으로
   쓰지 않는다.
 - Claude 액세스 토큰(약 8시간)은 터미널 CLI만 갱신한다. 데스크톱 앱 위주로 쓰면 토큰이 만료돼

@@ -42,11 +42,17 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
    그래서 요청 전에 만료를 먼저 판정하고(`CredentialExpiry`), 429는 지문에 묶인 쿨다운으로
    흡수한다(`RateLimitBackoff`/`RateLimitState`, 파일에 영속). 만료 토큰으로 요청하면 429가
    돌아와 백오프가 그것을 진짜 한도로 오해하므로, 만료면 요청 자체를 하지 않는다.
+1-b. **`ClaudeStatusLineBridge`** — API가 아무것도 못 주면 Claude만, 상태줄 브리지가 쓴 로컬
+   파일(`scripts/claude-statusline-bridge.{sh,ps1}`)을 읽는다. 상태줄 명령은 CLI가 알아서 다시
+   실행하므로 **다시 쓰였다는 것이 다시 측정됐다는 뜻이 아니다** — 파일의 `measured_at`은 값이
+   실제로 바뀔 때만 움직이고 `written_at`은 매번 움직이며, 신선도는 `measured_at`만 쓴다. 30분이
+   지난 값은 읽기를 포기해 아래 2번 캐시 층으로 넘긴다. `.statusLine`은 `.api`가 아니다.
 2. **`UsageSnapshotCachePolicy`** — 새 값을 못 얻은 제공자는 마지막 성공 값을 `staleCache`로
    유지한다(`staleToleranceHours`, 기본 12시간). 실패가 앱 종료나 빈 메뉴로 번지지 않게 하는 층이다.
-3. **히스토리·알림·렌더** — 히스토리에는 `source == .api`인 실측값만 들어간다. 캐시 값은 추세·예측·
-   스파크라인에 반영되지 않고 메뉴바 카운트다운도 붙지 않는다(값은 멈췄는데 시간만 흘러 틀린 시간이
-   되기 때문). 이 불변식을 깨는 변경은 하지 않는다.
+3. **히스토리·알림·렌더** — 히스토리에는 `source == .api`인 실측값만 들어간다. 캐시 값과 상태줄
+   값은 추세·예측·스파크라인에 반영되지 않는다(폴링마다 같은 측정을 새 시각으로 다시 기록해 "사용이
+   멈췄다"고 예측에 거짓말을 하게 된다). 카운트다운은 캐시 값에는 붙지 않지만 상태줄 값에는 붙는다
+   — 리셋이 지난 창은 읽을 때 버리므로 그 시간은 실제 창을 가리킨다. 이 불변식을 깨지 않는다.
 
 표시 규칙: 기본은 5시간 잔량, **7일 잔량이 10% 이하면 7일 값**을 대신 보여주고 강조색을 쓴다
 (`DisplayFormatter.displayWindow` / `isSevenDayWarning`). 카운트다운은 그 값이 나온 창의 리셋을

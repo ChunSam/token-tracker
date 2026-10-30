@@ -4,13 +4,25 @@ struct ClaudeUsageClient: Sendable {
     private let http: HTTPClient
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let rateLimitState = RateLimitState(store: RateLimitStore(url: AppPaths.claudeRateLimit))
+    private let statusLineStore: ClaudeStatusLineStore
     fileprivate static let defaultRateLimitCooldown: TimeInterval = 300
 
-    init(http: HTTPClient = HTTPClient()) {
+    init(http: HTTPClient = HTTPClient(), statusLineStore: ClaudeStatusLineStore = ClaudeStatusLineStore()) {
         self.http = http
+        self.statusLineStore = statusLineStore
     }
 
+    /// The API endpoint first, because only that is a measurement taken now. The
+    /// status-line bridge is the fallback for the state this app cannot fix on its
+    /// own: the stored token has lapsed and only running the CLI refreshes it, so
+    /// without the bridge Claude usage simply stops until the user signs in again.
     func fetch() async -> ProviderUsage {
+        let api = await fetchFromProviderAPI()
+        guard !api.isAvailable else { return api }
+        return ClaudeStatusLineBridge.usage(statusLineStore.read(), apiError: api.error) ?? api
+    }
+
+    private func fetchFromProviderAPI() async -> ProviderUsage {
         let candidates: [TokenCandidate]
         do {
             candidates = try readTokenCandidates()

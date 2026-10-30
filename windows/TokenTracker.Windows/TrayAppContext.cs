@@ -92,9 +92,16 @@ internal sealed class TrayAppContext : ApplicationContext
                 settings.CodexEnabled,
                 maxAge: TimeSpan.FromHours(settings.StaleToleranceHours));
             cacheStore.Save(snapshot);
-            if (snapshot.Claude.Source == UsageSource.Api || snapshot.Codex.Source == UsageSource.Api)
+            // The newest real measurement in this snapshot, by its own timestamp.
+            // A status-line reading counts — it is account data — but it was taken
+            // before this poll, so reporting the poll time would overstate it.
+            var measurements = new[] { snapshot.Claude, snapshot.Codex }
+                .Where(usage => usage.Source == UsageSource.Api || usage.Source == UsageSource.StatusLine)
+                .Select(usage => usage.UpdatedAt)
+                .ToList();
+            if (measurements.Count > 0)
             {
-                lastSuccessfulRefreshAt = snapshot.UpdatedAt;
+                lastSuccessfulRefreshAt = measurements.Max();
             }
 
             historyStore.Append(UsageHistoryPolicy.MeasurementsOnly(snapshot), settings.HistoryRetentionDays);

@@ -21,6 +21,7 @@ expectEqual(remainingPercent(fromUsed: 100), 0, "100 used leaves 0 remaining")
 expectEqual(remainingPercent(fromUsed: 120), 0, "remaining is clamped at 0")
 
 try runClaudeUsageRegressionTests()
+try runClaudeStatusLineTests()
 
 let now = Date()
 let snapshot = UsageSnapshot(

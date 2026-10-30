@@ -13,7 +13,12 @@ public enum Provider: String, Codable, CaseIterable, Sendable {
 }
 
 public enum UsageSource: String, Codable, Sendable {
+    /// A measurement this app took itself, from the provider's usage endpoint.
     case api
+    /// A measurement Claude Code's status line took, relayed by the bridge. Real
+    /// account data, but observed at a time this app did not choose, so it is not
+    /// interchangeable with `.api` — see `ClaudeStatusLineBridge`.
+    case statusLine
     case staleCache
     case unavailable
 }

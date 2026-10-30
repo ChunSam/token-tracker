@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using TokenTracker.Windows.Core;
 
@@ -178,6 +180,11 @@ File.WriteAllText(Path.Combine(home, ".claude", ".credentials.json"), """
 }
 """);
 
+// The Claude fetch falls back to the status-line bridge file when the API path
+// yields nothing. Point these tests at a path that does not exist, so a machine
+// with the bridge installed answers them the same way a bare one does.
+var noStatusLine = Path.Combine(home, "absent-statusline.json");
+
 var credentials = new CredentialReader();
 var codexAuth = credentials.ReadCodexAuth(home);
 ExpectEqual(codexAuth.AccessToken, "codex-token", "Codex access token read");
@@ -191,7 +198,8 @@ using (var malformedHandler = new QueueHttpMessageHandler(
 using (var malformedHttp = new HttpClient(malformedHandler))
 {
     var client = new UsageClient(malformedHttp, homeDirectory: home,
-        rateLimitStatePath: Path.Combine(home, "malformed-cooldown.json"));
+        rateLimitStatePath: Path.Combine(home, "malformed-cooldown.json"),
+        claudeStatusLinePath: noStatusLine);
     var malformed = await client.FetchClaudeAsync();
     ExpectEqual(malformed.Source, UsageSource.Unavailable, "Malformed HTTP 200 is not marked as an API success");
     ExpectEqual(malformed.Error, "Invalid response", "Malformed HTTP 200 reports its cause");
@@ -206,7 +214,7 @@ try
     var rateLimitedResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
     rateLimitedResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
     var rateLimitedHandler = new QueueHttpMessageHandler(rateLimitedResponse);
-    var rateLimitedClient = new UsageClient(new HttpClient(rateLimitedHandler), new CredentialReader(), home, rateLimitStatePath);
+    var rateLimitedClient = new UsageClient(new HttpClient(rateLimitedHandler), new CredentialReader(), home, rateLimitStatePath, claudeStatusLinePath: noStatusLine);
     var firstRateLimit = await rateLimitedClient.FetchClaudeAsync();
     ExpectEqual(firstRateLimit.Source, UsageSource.Unavailable, "Claude 429 is unavailable");
     Expect(firstRateLimit.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Claude 429 error includes retry delay");
@@ -223,7 +231,7 @@ try
         File.ReadAllText(rateLimitStatePath).Contains("\"FailureCount\":1", StringComparison.Ordinal),
         "Claude 429 persists the failure count for exponential backoff");
     var restartHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
-    var restartedClient = new UsageClient(new HttpClient(restartHandler), new CredentialReader(), home, rateLimitStatePath);
+    var restartedClient = new UsageClient(new HttpClient(restartHandler), new CredentialReader(), home, rateLimitStatePath, claudeStatusLinePath: noStatusLine);
     var afterRestart = await restartedClient.FetchClaudeAsync();
     ExpectEqual(afterRestart.Source, UsageSource.Unavailable, "Claude cooldown survives restart");
     Expect(afterRestart.Error?.StartsWith("HTTP 429 from Claude API; retrying after") == true, "Restarted client reports persisted cooldown");
@@ -240,7 +248,7 @@ try
         { "five_hour": { "utilization": 5.0 }, "seven_day": { "utilization": 5.0 } }
         """)
     });
-    var legacyClient = new UsageClient(new HttpClient(legacyHandler), new CredentialReader(), home, rateLimitStatePath);
+    var legacyClient = new UsageClient(new HttpClient(legacyHandler), new CredentialReader(), home, rateLimitStatePath, claudeStatusLinePath: noStatusLine);
     var afterLegacy = await legacyClient.FetchClaudeAsync();
     ExpectEqual(legacyHandler.CallCount, 1, "A fingerprint-less cooldown is dropped instead of blocking the current token");
     ExpectEqual(afterLegacy.RemainingPercent5h, 95, "Dropping an unattributable cooldown loads usage again");
@@ -249,7 +257,8 @@ try
     var reBackoffResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
     reBackoffResponse.Headers.TryAddWithoutValidation("Retry-After", "300");
     var reBackoffClient = new UsageClient(
-        new HttpClient(new QueueHttpMessageHandler(reBackoffResponse)), new CredentialReader(), home, rateLimitStatePath);
+        new HttpClient(new QueueHttpMessageHandler(reBackoffResponse)), new CredentialReader(), home, rateLimitStatePath,
+        claudeStatusLinePath: noStatusLine);
     await reBackoffClient.FetchClaudeAsync();
 
     // Signing in again has to take effect immediately: a cooldown earned by the
@@ -268,7 +277,7 @@ try
         { "five_hour": { "utilization": 10.0 }, "seven_day": { "utilization": 20.0 } }
         """)
     });
-    var reloginClient = new UsageClient(new HttpClient(reloginHandler), new CredentialReader(), home, rateLimitStatePath);
+    var reloginClient = new UsageClient(new HttpClient(reloginHandler), new CredentialReader(), home, rateLimitStatePath, claudeStatusLinePath: noStatusLine);
     var afterRelogin = await reloginClient.FetchClaudeAsync();
     ExpectEqual(reloginHandler.CallCount, 1, "New credentials retry immediately instead of waiting out the old cooldown");
     ExpectEqual(afterRelogin.RemainingPercent5h, 90, "New credentials load usage again");
@@ -280,7 +289,7 @@ try
         "{\"claudeAiOauth\":{\"accessToken\":\"claude-token-expired\",\"subscriptionType\":\"max\"," +
         "\"expiresAt\":" + expiredAtMilliseconds + "}}");
     var expiredHandler = new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.Unauthorized));
-    var expiredClient = new UsageClient(new HttpClient(expiredHandler), new CredentialReader(), home, rateLimitStatePath);
+    var expiredClient = new UsageClient(new HttpClient(expiredHandler), new CredentialReader(), home, rateLimitStatePath, claudeStatusLinePath: noStatusLine);
     var expiredResult = await expiredClient.FetchClaudeAsync();
     ExpectEqual(expiredHandler.CallCount, 0, "An expired token is not spent on a request");
     Expect(
@@ -693,7 +702,409 @@ ExpectEqual(AppVersionText.Format(new Version(1, 1, 6, 0)), "1.1.6", "A local bu
 ExpectEqual(AppVersionText.Format(new Version(1, 1, 6)), "1.1.6", "A three-part version has no build to show");
 ExpectEqual(AppVersionText.Format(null), "unknown", "An assembly with no version is reported as unknown");
 
+// The status-line bridge. Same truth table as the macOS smoke tests: a reading
+// relayed from Claude Code's status line is account data, but it was measured at
+// a time this app did not choose, so it is aged by its own measurement time and
+// never by the moment the bridge last ran.
+var statusLineNow = new DateTimeOffset(2026, 5, 27, 12, 0, 0, TimeSpan.Zero);
+var statusLineReset5h = statusLineNow.AddHours(1);
+var statusLineReset7d = statusLineNow.AddDays(1);
+
+var statusLineRecord = ClaudeStatusLineBridge.Parse(
+    StatusLinePayload(statusLineNow, statusLineNow, 23.5, statusLineReset5h, 41.2, statusLineReset7d),
+    statusLineNow);
+ExpectEqual(statusLineRecord?.MeasuredAt, statusLineNow, "The measurement time is read from the record");
+var statusLineUsage = ClaudeStatusLineBridge.Usage(statusLineRecord, null, statusLineNow);
+ExpectEqual(statusLineUsage?.Source, UsageSource.StatusLine, "A status-line reading is not labelled as an API measurement");
+ExpectEqual(statusLineUsage?.RemainingPercent5h, 77, "23.5% used leaves 77% of the 5h window");
+ExpectEqual(statusLineUsage?.RemainingPercent7d, 59, "41.2% used leaves 59% of the 7d window");
+ExpectEqual(statusLineUsage?.ResetAt5h, statusLineReset5h, "The 5h reset instant carries through");
+ExpectEqual(statusLineUsage?.ResetAt7d, statusLineReset7d, "The 7d reset instant carries through");
+ExpectEqual(statusLineUsage?.UpdatedAt, statusLineNow, "The reading is stamped with the measurement time, not the poll time");
+
+// Either window can be absent, and one window is enough.
+var fiveHourOnly = ClaudeStatusLineBridge.Usage(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(statusLineNow, statusLineNow, 23.5, statusLineReset5h, null, null),
+        statusLineNow),
+    null,
+    statusLineNow);
+ExpectEqual(fiveHourOnly?.RemainingPercent5h, 77, "A record with only the 5h window still reports it");
+ExpectEqual(fiveHourOnly?.RemainingPercent7d, (int?)null, "An absent 7d window reports nothing rather than zero");
+var sevenDayOnly = ClaudeStatusLineBridge.Usage(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(statusLineNow, statusLineNow, null, null, 41.2, statusLineReset7d),
+        statusLineNow),
+    null,
+    statusLineNow);
+ExpectEqual(sevenDayOnly?.RemainingPercent7d, 59, "A record with only the 7d window still reports it");
+Expect(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(statusLineNow, statusLineNow, null, null, null, null),
+        statusLineNow) is null,
+    "A record with neither window is not a reading");
+
+// Claude Code drops a window once its reset passes, so one still sitting in the
+// file describes a window instance that no longer exists.
+var expiredWindow = ClaudeStatusLineBridge.Parse(
+    StatusLinePayload(statusLineNow, statusLineNow, 99, statusLineNow.AddSeconds(-1), 41.2, statusLineReset7d),
+    statusLineNow);
+ExpectEqual(expiredWindow?.UsedPercent5h, (double?)null, "A window whose reset has passed is dropped");
+ExpectEqual(expiredWindow?.UsedPercent7d, 41.2, "Dropping one expired window keeps the other");
+
+// A malformed or future record is not a reading. Ageing a measurement stamped in
+// the future would make it look permanently fresh.
+Expect(ClaudeStatusLineBridge.Parse("{", statusLineNow) is null, "Truncated JSON is not a reading");
+Expect(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(statusLineNow, statusLineNow, 23.5, statusLineReset5h, 41.2, statusLineReset7d, version: 2),
+        statusLineNow) is null,
+    "An unknown format version is not read");
+Expect(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(null, statusLineNow, 23.5, statusLineReset5h, 41.2, statusLineReset7d),
+        statusLineNow) is null,
+    "A record without a measurement time is not read");
+Expect(
+    ClaudeStatusLineBridge.Parse(
+        StatusLinePayload(
+            statusLineNow + ClaudeStatusLineBridge.ClockSkew + TimeSpan.FromMinutes(1),
+            statusLineNow,
+            23.5,
+            statusLineReset5h,
+            41.2,
+            statusLineReset7d),
+        statusLineNow) is null,
+    "A measurement stamped in the future is not read");
+
+// The trap this whole design exists to avoid: the status-line command re-runs on
+// a timer, and a re-run is not a new measurement. written_at moves, so a reading
+// aged by it would never expire; measured_at does not, so it does.
+var replayed = ClaudeStatusLineBridge.Parse(
+    StatusLinePayload(statusLineNow.AddHours(-2), statusLineNow, 23.5, statusLineReset5h, 41.2, statusLineReset7d),
+    statusLineNow);
+ExpectEqual(replayed?.WrittenAt, statusLineNow, "The replay time is recorded");
+Expect(
+    ClaudeStatusLineBridge.Usage(replayed, null, statusLineNow) is null,
+    "Replaying an old measurement does not make it current");
+var atFreshnessEdge = ClaudeStatusLineBridge.Parse(
+    StatusLinePayload(
+        statusLineNow - ClaudeStatusLineBridge.FreshnessWindow + TimeSpan.FromSeconds(1),
+        statusLineNow,
+        23.5,
+        statusLineReset5h,
+        41.2,
+        statusLineReset7d),
+    statusLineNow);
+Expect(
+    ClaudeStatusLineBridge.Usage(atFreshnessEdge, null, statusLineNow) is not null,
+    "A measurement inside the freshness window is still current");
+
+// A stale status-line reading hands over to the ordinary cache path rather than
+// presenting itself as live: the last good value keeps showing, but labelled as
+// cached, and it expires on the measurement's own clock.
+var agedStatusLineReading = new ProviderUsage(
+    Provider.Claude,
+    77,
+    59,
+    statusLineReset5h,
+    statusLineReset7d,
+    UsageSource.StatusLine,
+    Error: null,
+    Plan: null,
+    Model: null,
+    UpdatedAt: statusLineNow.AddHours(-1));
+var statusLineFailure = new UsageSnapshot(
+    ProviderUsage.Unavailable(Provider.Claude, "Credentials expired for Claude API"),
+    ProviderUsage.Unavailable(Provider.Codex, "Timed out"),
+    statusLineNow);
+var statusLineCache = new UsageSnapshot(
+    agedStatusLineReading,
+    ProviderUsage.Unavailable(Provider.Codex, "Timed out"),
+    statusLineNow);
+var carriedStatusLine = UsageSnapshotCachePolicy.Apply(
+    statusLineFailure, statusLineCache, updatedAt: statusLineNow, maxAge: TimeSpan.FromHours(12));
+ExpectEqual(carriedStatusLine.Claude.Source, UsageSource.StaleCache, "An aged-out status-line reading is carried as cached data");
+ExpectEqual(carriedStatusLine.Claude.RemainingPercent5h, 77, "The last status-line value keeps showing while it is in tolerance");
+ExpectEqual(carriedStatusLine.Claude.UpdatedAt, agedStatusLineReading.UpdatedAt, "Carrying it forward does not refresh its measurement time");
+var droppedStatusLine = UsageSnapshotCachePolicy.Apply(
+    statusLineFailure, statusLineCache, updatedAt: statusLineNow, maxAge: TimeSpan.FromMinutes(30));
+ExpectEqual(droppedStatusLine.Claude.Source, UsageSource.Unavailable, "Past tolerance the status-line reading is gone, not frozen");
+
+// History records measurements this app took and timestamps them with the poll it
+// took them on. A status-line reading is re-read on every poll, so admitting it
+// would append one measurement under a run of fresh timestamps and tell the
+// forecast that usage had stopped moving.
+var liveStatusLineReading = agedStatusLineReading with { UpdatedAt = statusLineNow };
+var statusLineForHistory = UsageHistoryPolicy.MeasurementsOnly(new UsageSnapshot(
+    liveStatusLineReading,
+    ProviderUsage.Unavailable(Provider.Codex, "Timed out"),
+    statusLineNow));
+ExpectEqual(statusLineForHistory.Claude.RemainingPercent5h, (int?)null, "A status-line reading does not enter history");
+ExpectEqual(statusLineForHistory.Claude.RemainingPercent7d, (int?)null, "A status-line reading does not enter the trend or forecast");
+
+// The menu says where the number came from, and still names the fix for whatever
+// stopped the API path.
+var statusLineIssue = UsageIssueFormatter.Issue(
+    liveStatusLineReading with { Error = "Credentials expired for Claude API" },
+    new Localizer(AppLanguage.English));
+ExpectEqual(statusLineIssue.Kind, UsageIssueKind.StatusLine, "A status-line reading reads as its own status, not as OK");
+ExpectEqual(statusLineIssue.TechnicalDetail, "Credentials expired for Claude API", "The reason the API path failed is kept");
+ExpectEqual(
+    statusLineIssue.Recovery,
+    new Localizer(AppLanguage.English).Text(L10nKey.RecoverySignInAgainClaude),
+    "Showing status-line numbers still tells the user to sign in again");
+
+// Windows has no key-to-English fallback: a missing Korean string shows the enum
+// name to the user.
+foreach (var statusLineLanguage in new[] { AppLanguage.English, AppLanguage.Korean })
+{
+    var statusLineLocalizer = new Localizer(statusLineLanguage);
+    foreach (var key in new[] { L10nKey.StatusFromStatusLine, L10nKey.StatusFromStatusLineDetail })
+    {
+        Expect(
+            statusLineLocalizer.Text(key) != key.ToString(),
+            $"{statusLineLanguage} has a string for {key}");
+    }
+}
+
+RunStatusLineBridgeScriptTests();
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
+
+static string StatusLinePayload(
+    DateTimeOffset? measuredAt,
+    DateTimeOffset? writtenAt,
+    double? usedPercent5h,
+    DateTimeOffset? resetAt5h,
+    double? usedPercent7d,
+    DateTimeOffset? resetAt7d,
+    int version = ClaudeStatusLineBridge.Version)
+{
+    var windows = new List<string>();
+    if (usedPercent5h is not null && resetAt5h is not null)
+    {
+        windows.Add(StatusLineWindow("five_hour", usedPercent5h.Value, resetAt5h.Value));
+    }
+
+    if (usedPercent7d is not null && resetAt7d is not null)
+    {
+        windows.Add(StatusLineWindow("seven_day", usedPercent7d.Value, resetAt7d.Value));
+    }
+
+    var fields = new List<string>
+    {
+        "\"version\":" + version.ToString(CultureInfo.InvariantCulture),
+        "\"provider\":\"claude\""
+    };
+    if (measuredAt is not null)
+    {
+        fields.Add("\"measured_at\":" + Seconds(measuredAt.Value));
+    }
+
+    if (writtenAt is not null)
+    {
+        fields.Add("\"written_at\":" + Seconds(writtenAt.Value));
+    }
+
+    fields.Add("\"rate_limits\":{" + string.Join(",", windows) + "}");
+    return "{" + string.Join(",", fields) + "}";
+}
+
+static string StatusLineWindow(string name, double usedPercent, DateTimeOffset resetAt) =>
+    "\"" + name + "\":{\"used_percentage\":"
+    + usedPercent.ToString(CultureInfo.InvariantCulture)
+    + ",\"resets_at\":" + Seconds(resetAt) + "}";
+
+static string Seconds(DateTimeOffset date) =>
+    date.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+
+/// <summary>
+/// Drives scripts/claude-statusline-bridge.ps1 the way Claude Code does. The
+/// script is where "a re-run is not a new measurement" is actually decided on
+/// this platform, and it is the one piece of this feature that no compiler looks
+/// at. Skipped when the checkout or PowerShell is not reachable; the truth table
+/// above does not depend on it.
+/// </summary>
+static void RunStatusLineBridgeScriptTests()
+{
+    var script = FindRepoFile(Path.Combine("scripts", "claude-statusline-bridge.ps1"));
+    var shell = ResolvePowerShell();
+    if (script is null || shell is null)
+    {
+        return;
+    }
+
+    var directory = Path.Combine(Path.GetTempPath(), "token-tracker-statusline-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var output = Path.Combine(directory, "claude-statusline.json");
+        var reset5h = DateTimeOffset.UtcNow.AddHours(1);
+        var reset7d = DateTimeOffset.UtcNow.AddDays(1);
+
+        // Stands in for whatever status-line command the user already had. It
+        // drains stdin and prints its own line, which is exactly the contract the
+        // bridge must not break.
+        var inner = Path.Combine(directory, "inner.cmd");
+        File.WriteAllText(inner, "@echo off\r\nmore > nul\r\necho MY STATUS LINE\r\n");
+
+        string Run(double? usedPercent5h)
+        {
+            var limits = new List<string>();
+            if (usedPercent5h is not null)
+            {
+                limits.Add(StatusLineWindow("five_hour", usedPercent5h.Value, reset5h));
+            }
+
+            limits.Add(StatusLineWindow("seven_day", 41.2, reset7d));
+            var payload = "{\"session_id\":\"s-123\",\"transcript_path\":\"C:\\\\t\\\\t.jsonl\","
+                + "\"model\":{\"id\":\"claude-opus-5\"},"
+                + "\"rate_limits\":{" + string.Join(",", limits) + "}}";
+
+            var startInfo = new ProcessStartInfo(shell)
+            {
+                ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "--", inner },
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true
+            };
+            startInfo.Environment["TOKEN_TRACKER_STATUSLINE_FILE"] = output;
+
+            using var process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start the bridge script");
+            process.StandardInput.Write(payload);
+            process.StandardInput.Close();
+            // stderr is left attached to this test's own, so anything the script
+            // complains about lands in the build log instead of a swallowed pipe.
+            var printed = process.StandardOutput.ReadToEnd();
+            Expect(process.WaitForExit(60_000), "The bridge script finishes");
+            ExpectEqual(process.ExitCode, 0, "The bridge script exits cleanly");
+            return printed;
+        }
+
+        ClaudeStatusLineRecord ReadRecord() =>
+            ClaudeStatusLineBridge.Parse(File.ReadAllText(output))
+            ?? throw new InvalidOperationException("The bridge wrote a record Core cannot read");
+
+        // The user's own status line keeps printing. This is the requirement that
+        // outranks everything else here: a bridge that eats the status line is
+        // worse than no bridge.
+        Expect(
+            Run(23.5).Contains("MY STATUS LINE", StringComparison.Ordinal),
+            "The wrapped status-line command still prints its own output");
+
+        var firstScriptRecord = ReadRecord();
+        ExpectEqual(firstScriptRecord.UsedPercent5h, 23.5, "The 5h percentage is recorded");
+        ExpectEqual(firstScriptRecord.UsedPercent7d, 41.2, "The 7d percentage is recorded");
+        ExpectEqual(firstScriptRecord.MeasuredAt, firstScriptRecord.WrittenAt, "A first reading was measured when it was written");
+
+        // Only usage. Everything else the status line is handed — the session id,
+        // the transcript path, the model — is read and dropped.
+        var onDisk = File.ReadAllText(output);
+        foreach (var leaked in new[] { "s-123", "transcript", "claude-opus-5", "session_id" })
+        {
+            Expect(!onDisk.Contains(leaked, StringComparison.Ordinal), "The bridge file does not carry " + leaked);
+        }
+
+        // Age the record on disk, so "preserved" and "recomputed" are two
+        // different numbers rather than two runs landing in the same second.
+        var aged = DateTimeOffset.UtcNow.AddHours(-2);
+        void Backdate() => File.WriteAllText(
+            output,
+            StatusLinePayload(aged, aged, 23.5, reset5h, 41.2, reset7d));
+
+        // Same numbers again: a re-run, not a measurement. This is the rule the
+        // whole format exists for — the status-line command re-runs on the CLI's
+        // own schedule.
+        Backdate();
+        Run(23.5);
+        ExpectEqual(
+            ReadRecord().MeasuredAt.ToUnixTimeSeconds(),
+            aged.ToUnixTimeSeconds(),
+            "An unchanged payload does not advance the measurement time");
+        Expect(
+            ReadRecord().WrittenAt > aged,
+            "An unchanged payload still records that the bridge ran");
+
+        // Numbers moved: a measurement.
+        Backdate();
+        Run(44.0);
+        var advancedScriptRecord = ReadRecord();
+        ExpectEqual(advancedScriptRecord.UsedPercent5h, 44.0, "A changed payload is recorded");
+        Expect(
+            advancedScriptRecord.MeasuredAt > aged,
+            "A changed payload advances the measurement time");
+
+        // A second session rendering a staler copy of the same window must not
+        // drag the record backwards: within one window instance, usage only climbs.
+        Run(30.0);
+        ExpectEqual(ReadRecord().UsedPercent5h, 44.0, "A lower percentage for the same window does not overwrite a newer one");
+        ExpectEqual(ReadRecord().MeasuredAt, advancedScriptRecord.MeasuredAt, "An older concurrent reading does not advance the measurement time");
+
+        // Early in a session, or on a plan without them, rate_limits is absent.
+        // That must not erase what is already known.
+        Run(null);
+        ExpectEqual(ReadRecord().UsedPercent5h, 44.0, "A payload missing one window keeps the window already recorded");
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+/// Walks up from the test binary to the checkout, so the script can be found
+/// whatever the build output layout is.
+static string? FindRepoFile(string relativePath)
+{
+    var directory = new DirectoryInfo(AppContext.BaseDirectory);
+    while (directory is not null)
+    {
+        var candidate = Path.Combine(directory.FullName, relativePath);
+        if (File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        directory = directory.Parent;
+    }
+
+    return null;
+}
+
+static string? ResolvePowerShell()
+{
+    foreach (var candidate in new[] { "pwsh", "powershell" })
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo(candidate)
+            {
+                ArgumentList = { "-NoProfile", "-Command", "exit 0" },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var probe = Process.Start(startInfo);
+            if (probe is null)
+            {
+                continue;
+            }
+
+            probe.StandardOutput.ReadToEnd();
+            probe.StandardError.ReadToEnd();
+            if (probe.WaitForExit(60_000) && probe.ExitCode == 0)
+            {
+                return candidate;
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    return null;
+}
 
 static UsageIssue CredentialIssue(Provider provider, string error, UsageSource source) =>
     UsageIssueFormatter.Issue(new ProviderUsage(

@@ -27,6 +27,12 @@ enum AppPaths {
         cacheDirectory.appendingPathComponent("codex-rate-limit.json")
     }
 
+    /// Written by `scripts/claude-statusline-bridge.sh`, read here. Lives beside
+    /// the app's own caches so it inherits the owner-only directory.
+    static var claudeStatusLine: URL {
+        cacheDirectory.appendingPathComponent("claude-statusline.json")
+    }
+
     static var codexAuth: URL {
         home.appendingPathComponent(".codex/auth.json")
     }
@@ -41,4 +47,5 @@ enum AppPaths {
 public enum AppPathsProbe {
     public static var claudeRateLimitPath: String { AppPaths.claudeRateLimit.path }
     public static var codexRateLimitPath: String { AppPaths.codexRateLimit.path }
+    public static var claudeStatusLinePath: String { AppPaths.claudeStatusLine.path }
 }

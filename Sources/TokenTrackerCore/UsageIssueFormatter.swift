@@ -11,6 +11,7 @@ public enum UsageIssueKind: String, Equatable, Sendable {
     case network
     case httpStatus
     case usingCachedData
+    case statusLine
     case unavailable
 }
 
@@ -32,6 +33,20 @@ public struct UsageIssue: Equatable, Sendable {
 
 public enum UsageIssueFormatter {
     public static func issue(for usage: ProviderUsage, localizer: Localizer = Localizer(language: .english)) -> UsageIssue {
+        // Real account numbers, measured by Claude Code rather than by this app.
+        // Any error the API path reported is carried through so the menu can still
+        // name the fix (sign in again) beside the numbers it is showing.
+        if usage.source == .statusLine {
+            let technicalDetail = usage.error
+            return UsageIssue(
+                kind: .statusLine,
+                title: localizer.text(.statusFromStatusLine),
+                detail: localizer.text(.statusFromStatusLineDetail),
+                recovery: recovery(for: technicalDetail, provider: usage.provider, localizer: localizer),
+                technicalDetail: technicalDetail
+            )
+        }
+
         if usage.source == .staleCache {
             let technicalDetail = usage.error
             return UsageIssue(
@@ -130,6 +145,8 @@ public enum UsageIssueFormatter {
             return localizer.text(.statusHTTPError)
         case .usingCachedData:
             return localizer.text(.statusUsingCachedData)
+        case .statusLine:
+            return localizer.text(.statusFromStatusLine)
         case .unavailable:
             return localizer.text(.statusUnavailable)
         }
@@ -157,6 +174,8 @@ public enum UsageIssueFormatter {
             return localizer.text(.statusHTTPErrorDetail)
         case .usingCachedData:
             return localizer.text(.statusUsingCachedDataDetail)
+        case .statusLine:
+            return localizer.text(.statusFromStatusLineDetail)
         case .unavailable:
             return localizer.text(.statusUnavailableDetail)
         }
@@ -186,7 +205,7 @@ public enum UsageIssueFormatter {
             return localizer.text(.recoveryCheckNetwork)
         case .httpStatus, .unavailable:
             return localizer.text(.recoveryRefreshLater)
-        case .ok, .usingCachedData:
+        case .ok, .usingCachedData, .statusLine:
             return nil
         }
     }

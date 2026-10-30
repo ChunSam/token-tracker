@@ -74,6 +74,26 @@ internal sealed class DiagnosticsReporter
         lines.Add($"Claude credentials file exists: {File.Exists(ClaudeCredentialsPath)}");
         lines.Add($"Codex auth file exists: {File.Exists(CodexAuthPath)}");
 
+        // Whether the bridge is installed at all, and how old its measurement is.
+        // "File present but measured 9h ago" is the whole diagnosis for a user who
+        // set it up and then stopped running the CLI.
+        var statusLineStore = new ClaudeStatusLineStore();
+        lines.Add($"Claude status line bridge: {statusLineStore.Path}");
+        lines.Add($"Claude status line file exists: {statusLineStore.FileExists}");
+        var statusLineRecord = statusLineStore.Read();
+        if (statusLineRecord is null)
+        {
+            lines.Add("Claude status line record: none");
+        }
+        else
+        {
+            var measurementAge = UsageForecaster.DurationText(
+                statusLineRecord.Age(DateTimeOffset.Now).TotalSeconds);
+            lines.Add($"Claude status line measured: {IsoString(statusLineRecord.MeasuredAt)}");
+            lines.Add($"Claude status line measurement age: {measurementAge}");
+            lines.Add($"Claude status line last written: {IsoString(statusLineRecord.WrittenAt)}");
+        }
+
         if (snapshot is null)
         {
             lines.Add("Snapshot: none");

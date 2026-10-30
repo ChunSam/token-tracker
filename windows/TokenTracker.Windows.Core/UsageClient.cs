@@ -14,6 +14,7 @@ public sealed class UsageClient
     private readonly CredentialReader credentialReader;
     private readonly ProviderRateLimitState claudeRateLimitState;
     private readonly ProviderRateLimitState codexRateLimitState;
+    private readonly ClaudeStatusLineStore claudeStatusLineStore;
     private readonly string? homeDirectory;
 
     public UsageClient(
@@ -21,7 +22,8 @@ public sealed class UsageClient
         CredentialReader? credentialReader = null,
         string? homeDirectory = null,
         string? rateLimitStatePath = null,
-        string? codexRateLimitStatePath = null)
+        string? codexRateLimitStatePath = null,
+        string? claudeStatusLinePath = null)
     {
         // 10s, matching the per-request budget the Claude call already used. The old
         // 5s ceiling applied to both, so on a slow link Codex timed out first purely
@@ -33,6 +35,7 @@ public sealed class UsageClient
             new ProviderRateLimitStore(rateLimitStatePath ?? AppPaths.ClaudeRateLimitStatePath));
         this.codexRateLimitState = new ProviderRateLimitState(
             new ProviderRateLimitStore(codexRateLimitStatePath ?? AppPaths.CodexRateLimitStatePath));
+        this.claudeStatusLineStore = new ClaudeStatusLineStore(claudeStatusLinePath);
     }
 
     public async Task<UsageSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
@@ -107,7 +110,25 @@ public sealed class UsageClient
         }
     }
 
+    /// <summary>
+    /// The API endpoint first, because only that is a measurement taken now. The
+    /// status-line bridge is the fallback for the state this app cannot fix on
+    /// its own: the stored token has lapsed and only running the CLI refreshes
+    /// it, so without the bridge Claude usage simply stops until the user signs
+    /// in again.
+    /// </summary>
     public async Task<ProviderUsage> FetchClaudeAsync(CancellationToken cancellationToken = default)
+    {
+        var api = await FetchClaudeFromApiAsync(cancellationToken);
+        if (api.IsAvailable)
+        {
+            return api;
+        }
+
+        return ClaudeStatusLineBridge.Usage(claudeStatusLineStore.Read(), api.Error) ?? api;
+    }
+
+    private async Task<ProviderUsage> FetchClaudeFromApiAsync(CancellationToken cancellationToken)
     {
         ClaudeCredential credential;
         try

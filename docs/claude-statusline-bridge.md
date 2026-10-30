@@ -41,7 +41,7 @@ macOS and Linux, in `~/.claude/settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "/path/to/Token tracker/scripts/claude-statusline-bridge.sh -- node /your/statusline.js"
+    "command": "\"/path/to/Token tracker/scripts/claude-statusline-bridge.sh\" -- node /your/statusline.js"
   }
 }
 ```
@@ -52,10 +52,17 @@ Windows, in `%USERPROFILE%\.claude\settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\path\\claude-statusline-bridge.ps1 -- node C:\\your\\statusline.js"
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\claude-statusline-bridge.ps1\" -- node C:\\your\\statusline.js"
   }
 }
 ```
+
+Both examples quote the script's path. The command is parsed by a shell, so an
+unquoted path containing a space — this repository's own `Token tracker` among
+them — splits into two arguments and the status line fails with `No such file or
+directory`. The script is committed executable; CI keeps it that way, because
+the mode is the difference between the line above working and failing with
+`permission denied`.
 
 With nothing after `--` the bridge prints nothing, which is a status line showing
 only Claude Code's own footer badges. The Unix script needs `python3` (or

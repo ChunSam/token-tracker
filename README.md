@@ -129,7 +129,7 @@ Claude Code 상태줄은 세션에 5시간/7일 사용률을 그대로 넘겨줍
 {
   "statusLine": {
     "type": "command",
-    "command": "/path/to/Token tracker/scripts/claude-statusline-bridge.sh -- node /your/statusline.js"
+    "command": "\"/path/to/Token tracker/scripts/claude-statusline-bridge.sh\" -- node /your/statusline.js"
   }
 }
 ```
@@ -140,7 +140,7 @@ Claude Code 상태줄은 세션에 5시간/7일 사용률을 그대로 넘겨줍
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\path\\claude-statusline-bridge.ps1 -- node C:\\your\\statusline.js"
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\path\\claude-statusline-bridge.ps1\" -- node C:\\your\\statusline.js"
   }
 }
 ```

@@ -25,6 +25,9 @@
 # caller's own, mode 0600.
 #
 # Override the destination with TOKEN_TRACKER_STATUSLINE_FILE (used by the tests).
+# Set TOKEN_TRACKER_STATUSLINE_DEBUG=1 to have recording failures explain
+# themselves on stderr instead of staying silent. The status line reads stdout,
+# so this never changes what it shows.
 #
 # Requires python3 (or python) for JSON parsing. Without one the bridge records
 # nothing and still runs your command, so the status line never breaks.
@@ -42,6 +45,14 @@ PAYLOAD=$(cat)
 OUT=${TOKEN_TRACKER_STATUSLINE_FILE:-"$HOME/Library/Application Support/Token Tracker/claude-statusline.json"}
 
 PYTHON=$(command -v python3 || command -v python || true)
+# Silence is right for a status line, but a bridge that quietly does nothing
+# leaves whoever installed it with no signal at all. Opt in to the reason.
+if [ -n "${TOKEN_TRACKER_STATUSLINE_DEBUG:-}" ]; then
+    RECORDER_STDERR=/dev/stderr
+else
+    RECORDER_STDERR=/dev/null
+fi
+
 if [ -n "$PYTHON" ]; then
     # Recording must never break the status line: no stdout, and no failure
     # escapes. Worst case the file is left as it was.
@@ -174,7 +185,7 @@ def main():
 
 
 main()
-' "$OUT" >/dev/null 2>&1 || true
+' "$OUT" >/dev/null 2>"$RECORDER_STDERR" || true
 fi
 
 # Your status line, unchanged: same stdin, its stdout, its exit status.

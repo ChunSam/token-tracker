@@ -21,6 +21,9 @@
 # no prompt text — the rest of the payload is read and dropped.
 #
 # Override the destination with TOKEN_TRACKER_STATUSLINE_FILE (used by the tests).
+# Set TOKEN_TRACKER_STATUSLINE_DEBUG=1 to have recording failures explain
+# themselves on stderr instead of staying silent. The status line reads stdout,
+# so this never changes what it shows.
 
 $ErrorActionPreference = 'Continue'
 
@@ -74,12 +77,13 @@ function Read-Window($raw, [long]$now) {
 # Recording must never break the status line: no output, and no failure escapes.
 # Worst case the file is left as it was.
 try {
-    $limits = Get-Field ($payload | ConvertFrom-Json) 'rate_limits'
+    $limits = Get-Field ($payload | ConvertFrom-Json -ErrorAction Stop) 'rate_limits'
 
     $stored = $null
     try {
         if (Test-Path -LiteralPath $outPath) {
-            $record = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
+            $record = Get-Content -LiteralPath $outPath -Raw -ErrorAction Stop |
+                ConvertFrom-Json -ErrorAction Stop
             if ((Get-Field $record 'version') -eq $bridgeVersion) { $stored = $record }
         }
     } catch {
@@ -145,7 +149,7 @@ try {
         if (-not $skip) {
             $directory = Split-Path -Parent $outPath
             if (-not (Test-Path -LiteralPath $directory)) {
-                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+                New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
             }
             $temp = Join-Path $directory ('.claude-statusline-' + [System.Guid]::NewGuid().ToString('N') + '.tmp')
             [System.IO.File]::WriteAllText(
@@ -155,14 +159,13 @@ try {
             # Replace in one step, so a reader never sees a half-written file and
             # two sessions finishing at once cannot interleave. The loser loses
             # its update.
-            if (Test-Path -LiteralPath $outPath) {
-                [System.IO.File]::Replace($temp, $outPath, $null)
-            } else {
-                [System.IO.File]::Move($temp, $outPath)
-            }
+            Move-Item -LiteralPath $temp -Destination $outPath -Force -ErrorAction Stop
         }
     }
 } catch {
+    if ($env:TOKEN_TRACKER_STATUSLINE_DEBUG) {
+        [Console]::Error.WriteLine("claude-statusline-bridge: " + $_.Exception.Message)
+    }
 }
 
 # Your status line, unchanged: same stdin, its stdout, its exit status.

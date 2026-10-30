@@ -46,7 +46,8 @@ public final class UsageService {
             current: snapshot,
             stale: cacheStore.load(maxAge: TimeInterval(settings.staleToleranceHours) * 3600),
             claudeEnabled: claudeEnabled,
-            codexEnabled: codexEnabled
+            codexEnabled: codexEnabled,
+            maxAge: TimeInterval(settings.staleToleranceHours) * 3600
         )
 
         cacheStore.save(snapshot)
@@ -60,7 +61,8 @@ public enum UsageSnapshotCachePolicy {
         stale: UsageSnapshot?,
         claudeEnabled: Bool = true,
         codexEnabled: Bool = true,
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        maxAge: TimeInterval = 12 * 3600
     ) -> UsageSnapshot {
         guard let stale else {
             return current
@@ -68,22 +70,27 @@ public enum UsageSnapshotCachePolicy {
 
         var snapshot = current
 
-        if claudeEnabled, !snapshot.claude.isAvailable, stale.claude.isAvailable {
-            snapshot.claude = markStale(stale.claude, error: snapshot.claude.error, updatedAt: updatedAt)
+        if claudeEnabled, !snapshot.claude.isAvailable, canReuse(stale.claude, at: updatedAt, maxAge: maxAge) {
+            snapshot.claude = markStale(stale.claude, error: snapshot.claude.error)
         }
 
-        if codexEnabled, !snapshot.codex.isAvailable, stale.codex.isAvailable {
-            snapshot.codex = markStale(stale.codex, error: snapshot.codex.error, updatedAt: updatedAt)
+        if codexEnabled, !snapshot.codex.isAvailable, canReuse(stale.codex, at: updatedAt, maxAge: maxAge) {
+            snapshot.codex = markStale(stale.codex, error: snapshot.codex.error)
         }
 
         return snapshot
     }
 
-    private static func markStale(_ usage: ProviderUsage, error: String?, updatedAt: Date) -> ProviderUsage {
+    private static func canReuse(_ usage: ProviderUsage, at now: Date, maxAge: TimeInterval) -> Bool {
+        let age = now.timeIntervalSince(usage.updatedAt)
+        return usage.isAvailable && usage.source != .unavailable && age >= 0 && age <= maxAge
+    }
+
+    private static func markStale(_ usage: ProviderUsage, error: String?) -> ProviderUsage {
         var copy = usage
         copy.source = .staleCache
         copy.error = error
-        copy.updatedAt = updatedAt
+        // Keep the measurement time; redisplaying a value does not refresh it.
         return copy
     }
 }

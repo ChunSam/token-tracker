@@ -49,10 +49,17 @@ public static class UsageParser
         TryGetObject(root, "five_hour", out var fiveHour);
         TryGetObject(root, "seven_day", out var sevenDay);
 
+        var remaining5h = ClaudeRemainingPercent(fiveHour);
+        var remaining7d = ClaudeRemainingPercent(sevenDay);
+        if (remaining5h is null && remaining7d is null)
+        {
+            throw new InvalidOperationException("Invalid response");
+        }
+
         return new ProviderUsage(
             Provider.Claude,
-            PercentMath.RemainingPercent(TryGetDouble(fiveHour, "utilization")),
-            PercentMath.RemainingPercent(TryGetDouble(sevenDay, "utilization")),
+            remaining5h,
+            remaining7d,
             TryGetIsoDate(fiveHour, "resets_at"),
             TryGetIsoDate(sevenDay, "resets_at"),
             UsageSource.Api,
@@ -60,6 +67,14 @@ public static class UsageParser
             ReadPlan(root) ?? fallbackPlan,
             null,
             updatedAt ?? DateTimeOffset.Now);
+    }
+
+    private static int? ClaudeRemainingPercent(JsonElement window)
+    {
+        var used = TryGetDouble(window, "utilization");
+        return used is { } value && double.IsFinite(value)
+            ? PercentMath.RemainingPercent(Math.Clamp(value, 0, 100))
+            : null;
     }
 
     private static bool TryGetObject(JsonElement element, string name, out JsonElement value)

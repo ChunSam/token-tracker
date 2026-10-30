@@ -134,6 +134,30 @@ var claudeFallbackPlanUsage = UsageParser.ParseClaudeUsage("""
 """, now, "team");
 ExpectEqual(claudeFallbackPlanUsage.Plan, "team", "Claude fallback plan");
 
+foreach (var invalidJson in new[]
+{
+    "{}", "[]", "null", """{"five_hour":{},"seven_day":null}""",
+    """{"five_hour":{"utilization":true}}""",
+    """{"five_hour":{"utilization":"unknown"}}""",
+    """{"five_hour":{"utilization":"NaN"}}""",
+    """{"seven_day":{"utilization":"Infinity"}}"""
+})
+{
+    var rejected = false;
+    try { UsageParser.ParseClaudeUsage(invalidJson); }
+    catch (InvalidOperationException ex) when (ex.Message == "Invalid response") { rejected = true; }
+    Expect(rejected, $"Claude rejects a response without usable measurements: {invalidJson}");
+}
+var weeklyClaude = UsageParser.ParseClaudeUsage("""{"seven_day":{"utilization":"25.4"}}""", now, "team");
+ExpectEqual(weeklyClaude.RemainingPercent5h, (int?)null, "Claude allows a missing five-hour window");
+ExpectEqual(weeklyClaude.RemainingPercent7d, 75, "Claude accepts numeric strings");
+ExpectEqual(weeklyClaude.Plan, "team", "Partial Claude usage preserves the fallback plan");
+var zeroClaude = UsageParser.ParseClaudeUsage("""{"five_hour":{"utilization":0},"seven_day":null}""");
+ExpectEqual(zeroClaude.RemainingPercent5h, 100, "Zero usage is a valid Claude measurement");
+var boundedClaude = UsageParser.ParseClaudeUsage("""{"five_hour":{"utilization":1e100},"seven_day":{"utilization":-1e100}}""");
+ExpectEqual(boundedClaude.RemainingPercent5h, 0, "Large finite utilization is clamped before conversion");
+ExpectEqual(boundedClaude.RemainingPercent7d, 100, "Negative utilization is clamped before conversion");
+
 var home = Path.Combine(Path.GetTempPath(), "token-tracker-windows-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(Path.Combine(home, ".codex"));
 Directory.CreateDirectory(Path.Combine(home, ".claude"));
@@ -160,6 +184,21 @@ ExpectEqual(codexAuth.AccessToken, "codex-token", "Codex access token read");
 ExpectEqual(codexAuth.AccountId, "account-id", "Codex account id read");
 ExpectEqual(credentials.ReadClaudeAccessToken(home), "claude-token", "Claude access token read");
 ExpectEqual(credentials.ReadClaudeCredential(home).Plan, "max", "Claude credential plan read");
+
+using (var malformedHandler = new QueueHttpMessageHandler(
+    new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") },
+    new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(claudeJson) }))
+using (var malformedHttp = new HttpClient(malformedHandler))
+{
+    var client = new UsageClient(malformedHttp, homeDirectory: home,
+        rateLimitStatePath: Path.Combine(home, "malformed-cooldown.json"));
+    var malformed = await client.FetchClaudeAsync();
+    ExpectEqual(malformed.Source, UsageSource.Unavailable, "Malformed HTTP 200 is not marked as an API success");
+    ExpectEqual(malformed.Error, "Invalid response", "Malformed HTTP 200 reports its cause");
+    var recovered = await client.FetchClaudeAsync();
+    ExpectEqual(recovered.Source, UsageSource.Api, "A valid response recovers after a malformed response");
+    ExpectEqual(malformedHandler.CallCount, 2, "Malformed data does not create a rate-limit cooldown");
+}
 
 var rateLimitStatePath = Path.Combine(Path.GetTempPath(), $"tt-rate-limit-{Guid.NewGuid():N}.json");
 try
@@ -337,6 +376,28 @@ ExpectEqual(staleApplied.Claude.Source, UsageSource.StaleCache, "Claude stale ca
 ExpectEqual(staleApplied.Claude.RemainingPercent5h, 63, "Claude stale cache percent");
 ExpectEqual(staleApplied.Claude.Error, "HTTP 429 from Claude API", "Claude stale cache preserves fresh error");
 ExpectEqual(staleApplied.Codex.Source, UsageSource.Api, "Fresh Codex remains API source");
+ExpectEqual(staleApplied.Claude.UpdatedAt, staleSnapshot.Claude.UpdatedAt, "Cached data retains its measurement time");
+var repeatedlyCached = staleSnapshot;
+for (var hour = 1; hour <= 13; hour++)
+{
+    var pollAt = now.AddHours(hour);
+    var failedPoll = freshFailure with { Codex = Usage(Provider.Codex, 88, 97, pollAt), UpdatedAt = pollAt };
+    repeatedlyCached = UsageSnapshotCachePolicy.Apply(failedPoll, repeatedlyCached, updatedAt: pollAt);
+    ExpectEqual(repeatedlyCached.Claude.Source, hour <= 12 ? UsageSource.StaleCache : UsageSource.Unavailable,
+        "Repeated failures cannot extend the twelve-hour lifetime");
+    if (hour <= 12)
+        ExpectEqual(repeatedlyCached.Claude.UpdatedAt, now, "Repeated failures preserve the original measurement time");
+    ExpectEqual(repeatedlyCached.Codex, failedPoll.Codex, "Fresh Codex data does not extend Claude's lifetime");
+}
+var staggered = new UsageSnapshot(
+    Usage(Provider.Claude, 63, 80, now.AddHours(-2)),
+    Usage(Provider.Codex, 91, 99, now.AddMinutes(-30)), now);
+var bothFailed = freshFailure with { Codex = ProviderUsage.Unavailable(Provider.Codex, "offline") };
+var shortTolerance = UsageSnapshotCachePolicy.Apply(bothFailed, staggered, updatedAt: now, maxAge: TimeSpan.FromHours(1));
+ExpectEqual(shortTolerance.Claude.Source, UsageSource.Unavailable, "Custom tolerance expires Claude independently");
+ExpectEqual(shortTolerance.Codex.Source, UsageSource.StaleCache, "Custom tolerance keeps recent Codex data");
+var longTolerance = UsageSnapshotCachePolicy.Apply(bothFailed, staggered, updatedAt: now, maxAge: TimeSpan.FromHours(48));
+ExpectEqual(longTolerance.Claude.Source, UsageSource.StaleCache, "Longer configured tolerance is honored");
 var cachedIssue = UsageIssueFormatter.Issue(staleApplied.Claude);
 ExpectEqual(cachedIssue.Kind, UsageIssueKind.UsingCachedData, "Stale cache issue is classified");
 ExpectEqual(cachedIssue.TechnicalDetail, "HTTP 429 from Claude API", "Stale cache keeps technical detail");
@@ -411,6 +472,20 @@ cacheStore.Save(staleSnapshot with { UpdatedAt = DateTimeOffset.Now });
 var loadedSnapshot = cacheStore.Load(TimeSpan.FromHours(1));
 Expect(loadedSnapshot is not null, "Cache loads saved snapshot");
 ExpectEqual(loadedSnapshot!.Claude.RemainingPercent5h, 63, "Cache preserves Claude percent");
+var cacheNow = DateTimeOffset.Now;
+var oldReading = new UsageSnapshot(
+    Usage(Provider.Claude, 63, 80, cacheNow.AddHours(-13)),
+    Usage(Provider.Codex, 91, 99, cacheNow.AddHours(-13)), cacheNow.AddHours(-13));
+var firstFailedPoll = bothFailed with { UpdatedAt = cacheNow.AddHours(-3) };
+cacheStore.Save(UsageSnapshotCachePolicy.Apply(firstFailedPoll, oldReading, updatedAt: firstFailedPoll.UpdatedAt));
+var persistedStale = cacheStore.Load(TimeSpan.FromHours(12));
+Expect(persistedStale is not null, "Recent poll snapshot survives a restart");
+ExpectEqual(persistedStale!.Claude.UpdatedAt, oldReading.Claude.UpdatedAt, "Disk cache preserves the original measurement time");
+var afterRestartFailure = UsageSnapshotCachePolicy.Apply(bothFailed, persistedStale, updatedAt: cacheNow);
+ExpectEqual(afterRestartFailure.Claude.Source, UsageSource.Unavailable, "Restart does not revive an expired Claude measurement");
+ExpectEqual(afterRestartFailure.Codex.Source, UsageSource.Unavailable, "Restart does not revive an expired Codex measurement");
+File.WriteAllText(cachePath, System.Text.Json.JsonSerializer.Serialize(staleSnapshot with { UpdatedAt = cacheNow }));
+Expect(cacheStore.Load(TimeSpan.FromHours(12)) is null, "Legacy caches have untrustworthy timestamps and are discarded");
 Directory.Delete(Path.GetDirectoryName(cachePath)!, recursive: true);
 
 var historyPath = Path.Combine(Path.GetTempPath(), "token-tracker-history-" + Guid.NewGuid().ToString("N"), "usage-history.json");

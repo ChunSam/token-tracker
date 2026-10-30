@@ -91,24 +91,7 @@ struct ClaudeUsageClient: Sendable {
             timeout: 10,
             serviceName: "Claude API"
         )
-        guard let object = raw as? [String: Any] else {
-            throw UsageError.invalidResponse
-        }
-
-        let fiveHour = object["five_hour"] as? [String: Any]
-        let sevenDay = object["seven_day"] as? [String: Any]
-        return ProviderUsage(
-            provider: .claude,
-            remainingPercent5h: remainingPercent(fromUsed: fiveHour?["utilization"] as? Double),
-            remainingPercent7d: remainingPercent(fromUsed: sevenDay?["utilization"] as? Double),
-            resetAt5h: isoDate(fiveHour?["resets_at"] as? String),
-            resetAt7d: isoDate(sevenDay?["resets_at"] as? String),
-            source: .api,
-            error: nil,
-            plan: readPlan(from: object) ?? fallbackPlan,
-            model: nil,
-            updatedAt: Date()
-        )
+        return try ClaudeUsageParser.parse(raw, fallbackPlan: fallbackPlan)
     }
 
     private func readTokenCandidates() throws -> [TokenCandidate] {
@@ -152,7 +135,7 @@ struct ClaudeUsageClient: Sendable {
             }
             return ClaudeCredential(
                 accessToken: token,
-                plan: readPlan(from: claudeOauth),
+                plan: ClaudeUsageParser.plan(from: claudeOauth),
                 expiresAt: CredentialExpiry.epochMillisecondsDate(claudeOauth["expiresAt"])
             )
         } catch {
@@ -171,26 +154,9 @@ struct ClaudeUsageClient: Sendable {
         }
         return ClaudeCredential(
             accessToken: token,
-            plan: readPlan(from: claudeOauth),
+            plan: ClaudeUsageParser.plan(from: claudeOauth),
             expiresAt: CredentialExpiry.epochMillisecondsDate(claudeOauth["expiresAt"])
         )
-    }
-
-    private func readPlan(from object: [String: Any]) -> String? {
-        for key in ["plan_type", "planType", "subscription_type", "subscriptionType", "tier", "rate_limit_tier", "rateLimitTier"] {
-            if let plan = normalizedString(object[key]) {
-                return plan
-            }
-        }
-        return nil
-    }
-
-    private func normalizedString(_ value: Any?) -> String? {
-        guard let text = value as? String else {
-            return nil
-        }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

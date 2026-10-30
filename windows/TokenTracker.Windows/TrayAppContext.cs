@@ -89,7 +89,8 @@ internal sealed class TrayAppContext : ApplicationContext
                 freshSnapshot,
                 cacheStore.Load(TimeSpan.FromHours(settings.StaleToleranceHours)),
                 settings.ClaudeEnabled,
-                settings.CodexEnabled);
+                settings.CodexEnabled,
+                maxAge: TimeSpan.FromHours(settings.StaleToleranceHours));
             cacheStore.Save(snapshot);
             if (snapshot.Claude.Source == UsageSource.Api || snapshot.Codex.Source == UsageSource.Api)
             {

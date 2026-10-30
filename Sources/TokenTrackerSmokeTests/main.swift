@@ -20,6 +20,8 @@ expectEqual(remainingPercent(fromUsed: 25.4), 75, "25.4 used rounds to 75 remain
 expectEqual(remainingPercent(fromUsed: 100), 0, "100 used leaves 0 remaining")
 expectEqual(remainingPercent(fromUsed: 120), 0, "remaining is clamped at 0")
 
+try runClaudeUsageRegressionTests()
+
 let now = Date()
 let snapshot = UsageSnapshot(
     claude: ProviderUsage(provider: .claude, remainingPercent5h: 63, remainingPercent7d: 80, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),

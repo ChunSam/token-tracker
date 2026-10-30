@@ -1,28 +1,39 @@
 import Foundation
 
-final class CacheStore {
+package final class CacheStore {
+    // Older caches overwrote measurement timestamps, so their age is unknowable.
+    private struct Record: Codable {
+        let version: Int
+        let snapshot: UsageSnapshot
+    }
+
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(url: URL = AppPaths.snapshotCache) {
+    package init(url: URL) {
         self.url = url
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
     }
 
-    func load(maxAge: TimeInterval) -> UsageSnapshot? {
+    convenience init() {
+        self.init(url: AppPaths.snapshotCache)
+    }
+
+    package func load(maxAge: TimeInterval) -> UsageSnapshot? {
         guard
             let data = try? Data(contentsOf: url),
-            let snapshot = try? decoder.decode(UsageSnapshot.self, from: data),
-            Date().timeIntervalSince(snapshot.updatedAt) <= maxAge
+            let record = try? decoder.decode(Record.self, from: data),
+            record.version == 1,
+            Date().timeIntervalSince(record.snapshot.updatedAt) <= maxAge
         else {
             return nil
         }
-        return snapshot
+        return record.snapshot
     }
 
-    func save(_ snapshot: UsageSnapshot) {
+    package func save(_ snapshot: UsageSnapshot) {
         do {
             let directory = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(
@@ -30,7 +41,7 @@ final class CacheStore {
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
-            let data = try encoder.encode(snapshot)
+            let data = try encoder.encode(Record(version: 1, snapshot: snapshot))
             try data.write(to: url, options: .atomic)
             // Atomic writes replace the file via a temp file, so re-apply owner-only
             // permissions after each write rather than relying on the umask default.

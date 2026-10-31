@@ -3,9 +3,11 @@
 The bridge gives Token Tracker a Claude usage reading that does not depend on the
 stored access token. It exists because of a failure mode this app cannot fix on
 its own: Token Tracker only *reads* the token Claude Code saves, and only the CLI
-refreshes it, so once that token lapses Claude collection stops until the user
-runs `/login` again. On the machine this was investigated on, that was seven
-weeks of nothing. See [Claude usage collection and
+refreshes it, so once that token lapses Claude collection stops until the CLI is
+next run. Starting `claude` is normally enough — the refresh token outlives the
+access token by weeks — and `/login` is the fix only once that refresh token has
+lapsed too. On the machine this was investigated on, the gap was seven weeks of
+nothing. See [Claude usage collection and
 authentication](claude-usage-auth.md) for why the status line is the only
 documented input that avoids it.
 
@@ -30,6 +32,18 @@ It does not provide unattended polling. The status line only runs while a Claude
 Code session is running, so when the CLI is closed, or usage happens on another
 device, the bridge has nothing new to report — and says so, rather than showing
 an old number as the current one.
+
+It also fills only from a session that runs a status line, which is narrower than
+"a Claude Code session". Claude Code in the desktop app does not fill it: with
+the bridge installed, `written_at` stood still through 180 seconds of an active
+desktop-app session's traffic, and through the nine hours before that. Whether
+the desktop app runs no `statusLine` command at all or runs one whose payload
+carries no `rate_limits` was not determined — the recorder writes nothing in
+either case, so the file stays absent and the two look identical from here. The
+terminal CLI is what fills it, and only after that session's first API response,
+which is when Claude Code starts sending `rate_limits` at all. A user who works
+mainly in the desktop app therefore has an empty bridge and no fallback;
+`Claude status line record: none` in the diagnostics text is that state.
 
 ## Installation
 

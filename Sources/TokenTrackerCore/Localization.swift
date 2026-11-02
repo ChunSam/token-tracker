@@ -134,7 +134,12 @@ public struct Localizer {
         .fiveHourWindow: "5-hour",
         .sevenDayWindow: "7-day",
         .resetsIn: "resets in {time}",
-        .more: "More"
+        .more: "More",
+        .lowestRemaining: "Lowest remaining",
+        .both: "Claude + Codex",
+        .codexOnly: "Codex only",
+        .claudeOnly: "Claude only",
+        .officialLogos: "Official logos"
     ]
 
     private let korean: [L10nKey: String] = [
@@ -236,7 +241,12 @@ public struct Localizer {
         .fiveHourWindow: "5시간",
         .sevenDayWindow: "7일",
         .resetsIn: "{time} 후 리셋",
-        .more: "더 보기"
+        .more: "더 보기",
+        .lowestRemaining: "가장 낮은 잔량",
+        .both: "Claude + Codex",
+        .codexOnly: "Codex만",
+        .claudeOnly: "Claude만",
+        .officialLogos: "공식 로고"
     ]
 }
 
@@ -340,4 +350,9 @@ public enum L10nKey: String {
     case sevenDayWindow
     case resetsIn
     case more
+    case lowestRemaining
+    case both
+    case codexOnly
+    case claudeOnly
+    case officialLogos
 }

@@ -171,10 +171,10 @@ private struct PreferencesView: View {
 
             Section(localizer.text(.display)) {
                 Picker(localizer.text(.displayMode), selection: $model.displayMode) {
-                    ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(DisplayMode.allCases, id: \.self) { Text(displayModeLabel($0)).tag($0) }
                 }
                 Picker(localizer.text(.providerLabelStyle), selection: $model.providerLabelStyle) {
-                    ForEach(ProviderLabelStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(ProviderLabelStyle.allCases, id: \.self) { Text(providerLabelStyleLabel($0)).tag($0) }
                 }
                 Toggle(localizer.text(.showResetCountdownLabel), isOn: $model.showResetCountdown)
                 Toggle(localizer.text(.showForecastLabel), isOn: $model.showForecast)
@@ -224,6 +224,22 @@ private struct PreferencesView: View {
         .formStyle(.grouped)
         .toggleStyle(.switch)
         .frame(width: 460, height: height)
+    }
+
+    private func displayModeLabel(_ mode: DisplayMode) -> String {
+        switch mode {
+        case .lowestRemaining: model.localizer.text(.lowestRemaining)
+        case .both: model.localizer.text(.both)
+        case .codexOnly: model.localizer.text(.codexOnly)
+        case .claudeOnly: model.localizer.text(.claudeOnly)
+        }
+    }
+
+    private func providerLabelStyleLabel(_ style: ProviderLabelStyle) -> String {
+        switch style {
+        case .abbreviation: "Cdx / Cl"
+        case .icon: model.localizer.text(.officialLogos)
+        }
     }
 }
 

@@ -491,6 +491,41 @@ ExpectEqual(
     0,
     "Disabled notifications emit no alerts");
 
+string StalledIds(TimeSpan age, UsageSource source, TimeSpan stalledAfter)
+{
+    var snapshot = new UsageSnapshot(
+        Claude: new ProviderUsage(Provider.Claude, 55, 70, null, null, source, null, null, null, now - age),
+        Codex: new ProviderUsage(Provider.Codex, 80, 90, null, null, UsageSource.Api, null, null, null, now),
+        UpdatedAt: now);
+    var settings = new UsageAlertSettings(true, 0, 0, 0, stalledAfter);
+    return string.Join(",", UsageAlertEvaluator.Candidates(snapshot, settings, now).Select(candidate => candidate.Id));
+}
+
+ExpectEqual(
+    StalledIds(TimeSpan.FromMinutes(90), UsageSource.StaleCache, TimeSpan.FromMinutes(30)),
+    "claude-stalled",
+    "A cached reading past the threshold is reported as stalled");
+ExpectEqual(
+    StalledIds(TimeSpan.FromMinutes(10), UsageSource.StaleCache, TimeSpan.FromMinutes(30)),
+    "",
+    "A cached reading younger than the threshold is not news");
+ExpectEqual(
+    StalledIds(TimeSpan.FromMinutes(90), UsageSource.Api, TimeSpan.FromMinutes(30)),
+    "",
+    "An old measurement is still a measurement");
+ExpectEqual(
+    StalledIds(TimeSpan.FromMinutes(90), UsageSource.StaleCache, TimeSpan.Zero),
+    "",
+    "A zero threshold disables the stalled alert");
+ExpectEqual(
+    UsageAlertEvaluator.StalledThreshold(300),
+    TimeSpan.FromMinutes(30),
+    "A short poll interval keeps the 30 minute floor");
+ExpectEqual(
+    UsageAlertEvaluator.StalledThreshold(1800),
+    TimeSpan.FromMinutes(90),
+    "A long poll interval waits three polls");
+
 var cachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cache-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
 var cacheStore = new CacheStore(cachePath);
 // CacheStore.Load compares UpdatedAt against the real wall clock, so save a

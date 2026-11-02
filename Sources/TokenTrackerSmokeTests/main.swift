@@ -300,6 +300,35 @@ let disabledAlertCandidates = UsageAlertEvaluator.candidates(
 )
 expectEqual(disabledAlertCandidates.count, 0, "disabled notifications emit no alerts")
 
+func stalledSnapshot(ageSeconds: TimeInterval, source: UsageSource) -> UsageSnapshot {
+    UsageSnapshot(
+        claude: ProviderUsage(provider: .claude, remainingPercent5h: 55, remainingPercent7d: 70, resetAt5h: nil, resetAt7d: nil, source: source, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-ageSeconds)),
+        codex: ProviderUsage(provider: .codex, remainingPercent5h: 80, remainingPercent7d: 90, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+        updatedAt: now
+    )
+}
+
+func stalledIDs(ageSeconds: TimeInterval, source: UsageSource, stalledAfter: TimeInterval) -> [String] {
+    UsageAlertEvaluator.candidates(
+        snapshot: stalledSnapshot(ageSeconds: ageSeconds, source: source),
+        settings: UsageAlertSettings(
+            notificationsEnabled: true,
+            fiveHourThreshold: 0,
+            sevenDayThreshold: 0,
+            resetWarningMinutes: 0,
+            stalledAfter: stalledAfter
+        ),
+        now: now
+    ).map(\.id)
+}
+
+expectEqual(stalledIDs(ageSeconds: 5400, source: .staleCache, stalledAfter: 1800), ["claude-stalled"], "a cached reading past the threshold is reported as stalled")
+expectEqual(stalledIDs(ageSeconds: 600, source: .staleCache, stalledAfter: 1800), [], "a cached reading younger than the threshold is not news")
+expectEqual(stalledIDs(ageSeconds: 5400, source: .api, stalledAfter: 1800), [], "an old measurement is still a measurement")
+expectEqual(stalledIDs(ageSeconds: 5400, source: .staleCache, stalledAfter: 0), [], "a zero threshold disables the stalled alert")
+expectEqual(UsageAlertEvaluator.stalledThreshold(refreshInterval: 300), 1800, "a short poll interval keeps the 30 minute floor")
+expectEqual(UsageAlertEvaluator.stalledThreshold(refreshInterval: 1800), 5400, "a long poll interval waits three polls")
+
 let earlierSnapshot = UsageSnapshot(
     claude: ProviderUsage(provider: .claude, remainingPercent5h: 40, remainingPercent7d: 70, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),
     codex: ProviderUsage(provider: .codex, remainingPercent5h: 90, remainingPercent7d: 99, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),

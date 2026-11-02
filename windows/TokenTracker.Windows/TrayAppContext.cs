@@ -420,7 +420,8 @@ internal sealed class TrayAppContext : ApplicationContext
                 settings.NotificationsEnabled,
                 settings.FiveHourAlertThreshold,
                 settings.SevenDayAlertThreshold,
-                settings.ResetAlertMinutes),
+                settings.ResetAlertMinutes,
+                UsageAlertEvaluator.StalledThreshold(settings.RefreshIntervalSeconds)),
             localizer: Localizer).ToList();
         candidates.AddRange(ForecastCandidates(usage));
         var activeIds = candidates.Select(candidate => candidate.Id).ToHashSet(StringComparer.Ordinal);

@@ -5,12 +5,22 @@ public struct UsageAlertSettings: Equatable, Sendable {
     public let fiveHourThreshold: Int
     public let sevenDayThreshold: Int
     public let resetWarningMinutes: Int
+    /// How long a cached reading may stand before it is reported as stalled.
+    /// Zero disables the alert, matching the other thresholds here.
+    public let stalledAfter: TimeInterval
 
-    public init(notificationsEnabled: Bool, fiveHourThreshold: Int, sevenDayThreshold: Int, resetWarningMinutes: Int) {
+    public init(
+        notificationsEnabled: Bool,
+        fiveHourThreshold: Int,
+        sevenDayThreshold: Int,
+        resetWarningMinutes: Int,
+        stalledAfter: TimeInterval = 0
+    ) {
         self.notificationsEnabled = notificationsEnabled
         self.fiveHourThreshold = max(0, min(100, fiveHourThreshold))
         self.sevenDayThreshold = max(0, min(100, sevenDayThreshold))
         self.resetWarningMinutes = max(0, resetWarningMinutes)
+        self.stalledAfter = max(0, stalledAfter)
     }
 }
 
@@ -59,6 +69,11 @@ public enum UsageAlertEvaluator {
         }
 
         var alerts: [UsageAlertCandidate] = []
+        // First, because it says how much the numbers below it are still worth.
+        if let stalled = stalledAlert(for: usage, settings: settings, now: now, localizer: localizer) {
+            alerts.append(stalled)
+        }
+
         if let remaining = usage.remainingPercent5h,
            settings.fiveHourThreshold > 0,
            remaining <= settings.fiveHourThreshold {
@@ -85,6 +100,43 @@ public enum UsageAlertEvaluator {
 
         alerts.append(contentsOf: resetAlerts(for: usage, settings: settings, now: now, localizer: localizer))
         return alerts
+    }
+
+    /// How long a cached reading may stand before the menu bar is quietly out of
+    /// date: three missed polls, so one failed fetch is not news, with a floor of
+    /// 30 minutes — the same freshness bound the status line bridge uses, and
+    /// short enough to catch a lapsed token within the hour.
+    public static func stalledThreshold(refreshInterval: TimeInterval) -> TimeInterval {
+        max(30 * 60, refreshInterval * 3)
+    }
+
+    /// Collection has stalled: what is on screen is a cached measurement that has
+    /// aged past `stalledAfter`. Nothing else alerts on this, so a lapsed token
+    /// went unnoticed for as long as nobody looked — a cached percentage stays
+    /// plausible while it quietly stops being current.
+    ///
+    /// A provider with nothing to show at all is deliberately left alone. It
+    /// already reads as `--`, which cannot be mistaken for a live number, and
+    /// alerting there would fire on the first failed fetch for a provider that
+    /// was never signed in to.
+    private static func stalledAlert(
+        for usage: ProviderUsage,
+        settings: UsageAlertSettings,
+        now: Date,
+        localizer: Localizer
+    ) -> UsageAlertCandidate? {
+        guard settings.stalledAfter > 0, usage.source == .staleCache else { return nil }
+        let age = now.timeIntervalSince(usage.updatedAt)
+        guard age > settings.stalledAfter else { return nil }
+        let minutes = max(0, Int(age / 60))
+        let ago = minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h\(minutes % 60)m"
+        // A stable id: one alert per outage, and the coordinator drops the id once
+        // the provider measures again, so the next outage is reported afresh.
+        return UsageAlertCandidate(
+            id: "\(usage.provider.rawValue)-stalled",
+            title: localizer.text(.stalledAlertTitle),
+            body: "\(usage.provider.displayName) last measured \(ago) ago"
+        )
     }
 
     private static func resetAlerts(

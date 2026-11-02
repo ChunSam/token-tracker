@@ -68,6 +68,7 @@ public struct Localizer {
         .fiveHourAlertTitle: "5h usage is low",
         .sevenDayAlertTitle: "7d usage is low",
         .resetAlertTitle: "Usage window reset soon",
+        .stalledAlertTitle: "Usage stopped updating",
         .fiveHourAlertThreshold: "5h alert threshold",
         .sevenDayAlertThreshold: "7d alert threshold",
         .resetAlertMinutes: "Reset alert window",
@@ -167,6 +168,7 @@ public struct Localizer {
         .fiveHourAlertTitle: "5시간 사용량 부족",
         .sevenDayAlertTitle: "7일 사용량 부족",
         .resetAlertTitle: "사용량 창 리셋 임박",
+        .stalledAlertTitle: "사용량 갱신 멈춤",
         .fiveHourAlertThreshold: "5시간 알림 기준",
         .sevenDayAlertThreshold: "7일 알림 기준",
         .resetAlertMinutes: "리셋 알림 시간",
@@ -267,6 +269,7 @@ public enum L10nKey: String {
     case fiveHourAlertTitle
     case sevenDayAlertTitle
     case resetAlertTitle
+    case stalledAlertTitle
     case fiveHourAlertThreshold
     case sevenDayAlertThreshold
     case resetAlertMinutes

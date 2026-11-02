@@ -14,6 +14,7 @@ struct StatusPanelActions {
     let pause3h: @MainActor () -> Void
     let pauseUntilResumed: @MainActor () -> Void
     let resumePolling: @MainActor () -> Void
+    let openReleasePage: @MainActor () -> Void
     let quit: @MainActor () -> Void
 }
 
@@ -30,6 +31,8 @@ struct StatusPanelContext {
     let launchAtLoginEnabled: Bool
     let launchAtLoginStatus: String
     let runningInstanceCount: Int
+    /// A newer release than this build, when the daily check found one.
+    let availableUpdateVersion: String?
 }
 
 @MainActor
@@ -150,6 +153,7 @@ final class StatusPanelController: NSObject, NSPopoverDelegate {
             pause3h: actions.pause3h,
             pauseUntilResumed: actions.pauseUntilResumed,
             resumePolling: actions.resumePolling,
+            openReleasePage: closing(actions.openReleasePage),
             quit: actions.quit
         )
     }

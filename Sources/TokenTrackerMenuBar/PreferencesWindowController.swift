@@ -103,6 +103,9 @@ final class PreferencesModel: ObservableObject {
     @Published var historyRetentionDays: Int {
         didSet { settings.historyRetentionDays = historyRetentionDays; onGeneralChange() }
     }
+    @Published var checkForUpdates: Bool {
+        didSet { settings.checkForUpdates = checkForUpdates; onGeneralChange() }
+    }
 
     var localizer: Localizer {
         Localizer(language: language)
@@ -133,11 +136,12 @@ final class PreferencesModel: ObservableObject {
         depletionAlertEnabled = settings.depletionAlertEnabled
         staleToleranceHours = settings.staleToleranceHours
         historyRetentionDays = settings.historyRetentionDays
+        checkForUpdates = settings.checkForUpdates
     }
 }
 
 private struct PreferencesView: View {
-    static let fullHeight: CGFloat = 845
+    static let fullHeight: CGFloat = 885
 
     @ObservedObject var model: PreferencesModel
     let height: CGFloat
@@ -159,6 +163,7 @@ private struct PreferencesView: View {
                     Text("5m").tag(TimeInterval(300))
                     Text("15m").tag(TimeInterval(900))
                 }
+                Toggle(localizer.text(.checkForUpdates), isOn: $model.checkForUpdates)
             } header: {
                 Text(localizer.text(.general))
             } footer: {

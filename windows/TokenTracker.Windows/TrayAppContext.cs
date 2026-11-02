@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Diagnostics;
+using System.Reflection;
 using System.Windows.Forms;
 using TokenTracker.Windows.Core;
 
@@ -9,6 +10,7 @@ internal sealed class TrayAppContext : ApplicationContext
 {
     private const int MaxMenuTextLength = 58;
     private const int MaxMenuWidth = 420;
+    private static readonly System.Net.Http.HttpClient UpdateHttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     private readonly NotifyIcon notifyIcon = new();
     private readonly System.Windows.Forms.Timer timer = new();
@@ -30,6 +32,9 @@ internal sealed class TrayAppContext : ApplicationContext
     private SettingsForm? settingsForm;
     private Icon? currentIcon;
     private bool refreshing;
+    private bool checkingForUpdates;
+    private DateTimeOffset? nextUpdateCheckAt;
+    private string? availableUpdateVersion;
     private Localizer Localizer => new(settings.Language);
 
     public TrayAppContext()
@@ -141,6 +146,46 @@ internal sealed class TrayAppContext : ApplicationContext
             refreshing = false;
             notifyIcon.ContextMenuStrip = BuildMenu();
         }
+
+        await CheckForUpdatesIfDueAsync();
+    }
+
+    /// Rides the refresh timer; UpdateCheck.IsDue keeps it to once a day, or once an
+    /// hour after a failed attempt. Turning the setting off drops a version already
+    /// found, so the menu item goes with it.
+    private async Task CheckForUpdatesIfDueAsync()
+    {
+        if (!settings.CheckForUpdates)
+        {
+            availableUpdateVersion = null;
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var current = UpdateCheck.CurrentVersion(Assembly.GetExecutingAssembly().GetName().Version);
+        if (checkingForUpdates || current is null || !UpdateCheck.IsDue(nextUpdateCheckAt, now))
+        {
+            return;
+        }
+
+        checkingForUpdates = true;
+        try
+        {
+            var latest = await UpdateCheck.FetchLatestVersionAsync(UpdateHttpClient);
+            nextUpdateCheckAt = UpdateCheck.NextCheck(now, latest is not null);
+            // A failed check keeps whatever the last good one found.
+            if (latest is null || !settings.CheckForUpdates)
+            {
+                return;
+            }
+
+            availableUpdateVersion = UpdateCheck.IsNewer(latest, current) ? latest : null;
+            notifyIcon.ContextMenuStrip = BuildMenu();
+        }
+        finally
+        {
+            checkingForUpdates = false;
+        }
     }
 
     private void SetIcon(UsageSnapshot? usage)
@@ -155,6 +200,16 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         var menu = new ContextMenuStrip();
         ConfigureCompactMenu(menu);
+
+        if (availableUpdateVersion is not null)
+        {
+            // Opens the release page rather than installing: the app is not signed
+            // for an automatic update, so the download and unzip stay manual.
+            var updateText = Localizer.Text(L10nKey.UpdateAvailable).Replace("{version}", "v" + availableUpdateVersion, StringComparison.Ordinal)
+                + " — " + Localizer.Text(L10nKey.DownloadUpdate);
+            menu.Items.Add(updateText, null, (_, _) => OpenReleasePage());
+            menu.Items.Add(new ToolStripSeparator());
+        }
 
         if (snapshot is null)
         {
@@ -397,6 +452,7 @@ internal sealed class TrayAppContext : ApplicationContext
                     SetIcon(snapshot);
                     UpdateTooltip();
                     SyncCountdownTimer();
+                    _ = CheckForUpdatesIfDueAsync();
                     notifyIcon.ContextMenuStrip = BuildMenu();
                 },
                 () =>
@@ -568,6 +624,21 @@ internal sealed class TrayAppContext : ApplicationContext
                 "Token Tracker",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+        }
+    }
+
+    private static void OpenReleasePage()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(UpdateCheck.ReleasesPage.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Token Tracker", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

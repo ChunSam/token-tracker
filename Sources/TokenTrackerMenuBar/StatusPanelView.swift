@@ -15,6 +15,9 @@ struct StatusPanelView: View {
                     if let paused = context.pausedRemainingText {
                         PausedBanner(text: paused, localizer: context.localizer, resume: actions.resumePolling)
                     }
+                    if let version = context.availableUpdateVersion {
+                        UpdateBanner(version: version, localizer: context.localizer, download: actions.openReleasePage)
+                    }
                     usage(context)
                     Divider()
                     StatusPanelFooter(context: context, isRefreshing: model.isRefreshing, actions: actions)
@@ -72,6 +75,31 @@ private struct PausedBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(Color.orange.opacity(0.12))
+    }
+}
+
+/// Opens the release page rather than installing: the app is not signed for an
+/// automatic update, so the download and the copy into /Applications stay manual.
+private struct UpdateBanner: View {
+    let version: String
+    let localizer: Localizer
+    let download: @MainActor () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(Color.accentColor)
+            Text(localizer.text(.updateAvailable).replacingOccurrences(of: "{version}", with: "v\(version)"))
+                .font(.system(size: 11))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Button(localizer.text(.downloadUpdate), action: download)
+                .buttonStyle(.link)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.accentColor.opacity(0.10))
     }
 }
 

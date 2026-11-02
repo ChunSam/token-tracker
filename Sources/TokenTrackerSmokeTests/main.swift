@@ -863,4 +863,23 @@ let keptThroughOutage = UsageAlertEvaluator.lastReadings([.claude: lowBeforeRese
 expectEqual(keptThroughOutage[.claude], lowBeforeReset, "a cached reading does not replace a measurement")
 expectEqual(UsageAlertEvaluator.lastReadings([.claude: lowBeforeReset], updatedWith: claudeOnlySnapshot(refilled))[.claude], refilled, "a measurement replaces the last reading")
 
+// Update check: what GitHub names as the latest release, and whether it is newer.
+expectEqual(UpdateCheck.latestVersion(fromReleaseJSON: ["tag_name": "v1.1.17", "draft": false, "prerelease": false]), "1.1.17", "a release tag reads without its v")
+expect(UpdateCheck.latestVersion(fromReleaseJSON: ["tag_name": "v1.2.0", "prerelease": true]) == nil, "a prerelease is not offered")
+expect(UpdateCheck.latestVersion(fromReleaseJSON: ["tag_name": "v1.2.0", "draft": true]) == nil, "a draft is not offered")
+expect(UpdateCheck.latestVersion(fromReleaseJSON: ["tag_name": "v1.2.0-beta"]) == nil, "a tag that is not plain numbers is not offered")
+expect(UpdateCheck.latestVersion(fromReleaseJSON: ["message": "Not Found"]) == nil, "an error body has no version")
+expect(UpdateCheck.isNewer("1.1.17", than: "1.1.16"), "a later patch is newer")
+expect(UpdateCheck.isNewer("1.2", than: "1.1.16"), "a later minor is newer whatever the patch")
+expect(UpdateCheck.isNewer("1.1.10", than: "1.1.9"), "versions compare as numbers, not text")
+expect(!UpdateCheck.isNewer("1.1.16", than: "1.1.16"), "the same version is not newer")
+expect(!UpdateCheck.isNewer("1.1.15", than: "1.1.16"), "an older version is not newer")
+expect(!UpdateCheck.isNewer("1.1.17", than: "unknown"), "a build that cannot name its version is never prompted")
+let updateAttempt = Date(timeIntervalSince1970: 1_800_000_000)
+expectEqual(UpdateCheck.nextCheck(after: updateAttempt, succeeded: true), updateAttempt.addingTimeInterval(86_400), "a good check waits a day")
+expectEqual(UpdateCheck.nextCheck(after: updateAttempt, succeeded: false), updateAttempt.addingTimeInterval(3600), "a failed check is retried within the hour")
+expect(UpdateCheck.isDue(nextCheckAt: nil, now: updateAttempt), "the first check is due at once")
+expect(!UpdateCheck.isDue(nextCheckAt: updateAttempt.addingTimeInterval(60), now: updateAttempt), "a check is not due before its time")
+expect(UpdateCheck.isDue(nextCheckAt: updateAttempt, now: updateAttempt), "a check is due at its time")
+
 print("TokenTrackerSmokeTests passed")

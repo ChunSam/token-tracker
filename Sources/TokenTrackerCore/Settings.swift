@@ -18,6 +18,7 @@ public final class Settings {
         static let staleToleranceHours = "staleToleranceHours"
         static let depletionAlertEnabled = "depletionAlertEnabled"
         static let pollPausedUntil = "pollPausedUntil"
+        static let checkForUpdates = "checkForUpdates"
     }
 
     private let defaults: UserDefaults
@@ -118,6 +119,14 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.depletionAlertEnabled) }
     }
 
+    /// Whether to ask GitHub once a day if a newer release is out. On by default;
+    /// it is the only request the app makes that is not to a usage provider, so
+    /// it can be switched off.
+    public var checkForUpdates: Bool {
+        get { defaults.bool(forKey: Key.checkForUpdates) }
+        set { defaults.set(newValue, forKey: Key.checkForUpdates) }
+    }
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). `nil`/absent means not paused.
     public var pollPausedUntil: Date? {
@@ -159,7 +168,8 @@ public final class Settings {
             Key.showForecast: true,
             Key.showResetCountdown: true,
             Key.staleToleranceHours: 12,
-            Key.depletionAlertEnabled: false
+            Key.depletionAlertEnabled: false,
+            Key.checkForUpdates: true
         ])
     }
 

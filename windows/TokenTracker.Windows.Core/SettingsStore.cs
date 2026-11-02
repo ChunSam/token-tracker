@@ -33,6 +33,12 @@ public sealed class AppSettings
     public bool ShowResetCountdown { get; set; } = true;
     public bool DepletionAlertEnabled { get; set; }
 
+    /// Whether to ask GitHub once a day if a newer release is out. On by default;
+    /// it is the only request the app makes that is not to a usage provider, so
+    /// it can be switched off. A settings file written before this existed has no
+    /// key, so it lands on the default.
+    public bool CheckForUpdates { get; set; } = true;
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). <c>null</c> means not paused.
     public DateTimeOffset? PollPausedUntil { get; set; }

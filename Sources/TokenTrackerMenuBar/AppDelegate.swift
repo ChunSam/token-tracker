@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTask: Task<Void, Never>?
     private var lastSuccessfulRefreshAt: Date?
     private var appearanceObserver: NSObjectProtocol?
+    private var nextUpdateCheckAt: Date?
+    private var updateCheckTask: Task<Void, Never>?
+    private var availableUpdateVersion: String?
     private var localizer: Localizer {
         Localizer(language: settings.language)
     }
@@ -137,6 +140,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             updateStatusTitle()
             configurePanel()
+            checkForUpdatesIfDue()
+        }
+    }
+
+    /// Rides the refresh timer; `UpdateCheck.isDue` keeps it to once a day, or once
+    /// an hour after a failed attempt. Turning the setting off drops a version
+    /// already found, so the banner goes with it.
+    private func checkForUpdatesIfDue() {
+        guard settings.checkForUpdates else {
+            availableUpdateVersion = nil
+            return
+        }
+        let now = Date()
+        guard updateCheckTask == nil,
+              UpdateCheck.isDue(nextCheckAt: nextUpdateCheckAt, now: now),
+              let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+            return
+        }
+        updateCheckTask = Task { @MainActor [weak self] in
+            let latest = await UpdateCheck.fetchLatestVersion()
+            guard let self else { return }
+            updateCheckTask = nil
+            nextUpdateCheckAt = UpdateCheck.nextCheck(after: now, succeeded: latest != nil)
+            // A failed check keeps whatever the last good one found.
+            guard let latest, settings.checkForUpdates else { return }
+            availableUpdateVersion = UpdateCheck.isNewer(latest, than: current) ? latest : nil
+            configurePanel()
         }
     }
 
@@ -175,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pause3h: { [weak self] in self?.pausePolling(for: 3 * 3600) },
             pauseUntilResumed: { [weak self] in self?.pausePollingUntilResumed() },
             resumePolling: { [weak self] in self?.resumePolling() },
+            openReleasePage: { NSWorkspace.shared.open(UpdateCheck.releasesPage) },
             quit: { NSApp.terminate(nil) }
         )
     }
@@ -195,7 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ),
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
-            runningInstanceCount: reporter.runningInstanceCount
+            runningInstanceCount: reporter.runningInstanceCount,
+            availableUpdateVersion: availableUpdateVersion
         )
     }
 
@@ -364,6 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applySettingsChange() {
         scheduleTimer()
         scheduleCountdownTimer()
+        checkForUpdatesIfDue()
         updateStatusTitle()
         configurePanel()
     }

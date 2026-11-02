@@ -83,6 +83,8 @@ public struct Localizer {
         .paceAhead: "ahead",
         .paceOnTrack: "on track",
         .paceBehind: "under",
+        .freedUpAlertTitle: "Usage available again",
+        .freedUpAlertBody: "{provider} {window} has reset: {percent}% left",
         .showForecastLabel: "Show depletion forecast",
         .showResetCountdownLabel: "Show time until reset in the menu bar",
         .depletionAlertToggle: "Depletion alert (before reset)",
@@ -197,6 +199,8 @@ public struct Localizer {
         .paceAhead: "빠름",
         .paceOnTrack: "적정",
         .paceBehind: "여유",
+        .freedUpAlertTitle: "다시 사용 가능",
+        .freedUpAlertBody: "{provider} {window} 리셋됨 — 잔량 {percent}%",
         .showForecastLabel: "소진 예측 표시",
         .showResetCountdownLabel: "메뉴바에 리셋까지 남은 시간 표시",
         .depletionAlertToggle: "소진 예측 알림 (리셋 전)",
@@ -312,6 +316,8 @@ public enum L10nKey: String {
     case paceAhead
     case paceOnTrack
     case paceBehind
+    case freedUpAlertTitle
+    case freedUpAlertBody
     case showForecastLabel
     case showResetCountdownLabel
     case depletionAlertToggle

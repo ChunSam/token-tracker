@@ -158,6 +158,73 @@ public enum UsageAlertEvaluator {
         )
     }
 
+    /// A window that had run low has reset and can be used again. The low-balance
+    /// alert said to hold off; this says when that is over, which otherwise only
+    /// shows to someone who opens the menu.
+    ///
+    /// `previous` holds each provider's last reading with numbers, whatever its
+    /// source, so a reset that passes during an outage is still reported once the
+    /// provider is measured again. Only a measurement can say the window refilled.
+    /// The alert fires on the one poll that sees the change: by the next, the
+    /// refilled reading has become `previous` and the condition no longer holds.
+    public static func freedUpCandidates(
+        previous: [Provider: ProviderUsage],
+        current: UsageSnapshot,
+        settings: UsageAlertSettings,
+        localizer: Localizer = Localizer(language: .english)
+    ) -> [UsageAlertCandidate] {
+        guard settings.notificationsEnabled else {
+            return []
+        }
+
+        return Provider.allCases.flatMap { provider -> [UsageAlertCandidate] in
+            let after = current.usage(for: provider)
+            guard let before = previous[provider], after.source == .api || after.source == .statusLine else {
+                return []
+            }
+            let windows: [(label: String, threshold: Int, was: Int?, resetAt: Date?, now: Int?)] = [
+                ("5h", settings.fiveHourThreshold, before.remainingPercent5h, before.resetAt5h, after.remainingPercent5h),
+                ("7d", settings.sevenDayThreshold, before.remainingPercent7d, before.resetAt7d, after.remainingPercent7d)
+            ]
+            return windows.compactMap { window in
+                guard window.threshold > 0,
+                      let was = window.was, was <= window.threshold,
+                      let resetAt = window.resetAt, resetAt <= after.updatedAt,
+                      let now = window.now, now > window.threshold, now > was else {
+                    return nil
+                }
+                return UsageAlertCandidate(
+                    id: "\(provider.rawValue)-\(window.label)-freed-\(Int(resetAt.timeIntervalSince1970))",
+                    title: localizer.text(.freedUpAlertTitle),
+                    body: localizer.text(.freedUpAlertBody)
+                        .replacingOccurrences(of: "{provider}", with: provider.displayName)
+                        .replacingOccurrences(of: "{window}", with: window.label)
+                        .replacingOccurrences(of: "{percent}", with: "\(now)")
+                )
+            }
+        }
+    }
+
+    /// What `freedUpCandidates` compares against on the next poll. A measurement
+    /// replaces the provider's entry; a cached or missing reading leaves it alone,
+    /// so an outage does not erase the low balance a reset will be measured
+    /// against. A cached reading still fills an empty entry, which is how a cached
+    /// snapshot seeds the map at launch.
+    public static func lastReadings(
+        _ previous: [Provider: ProviderUsage],
+        updatedWith snapshot: UsageSnapshot
+    ) -> [Provider: ProviderUsage] {
+        var readings = previous
+        for provider in Provider.allCases {
+            let usage = snapshot.usage(for: provider)
+            guard usage.isAvailable else { continue }
+            if usage.source == .api || usage.source == .statusLine || readings[provider] == nil {
+                readings[provider] = usage
+            }
+        }
+        return readings
+    }
+
     private static func resetAlerts(
         for usage: ProviderUsage,
         settings: UsageAlertSettings,

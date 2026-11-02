@@ -53,6 +53,12 @@ public final class UsageService {
         cacheStore.save(snapshot)
         return snapshot
     }
+
+    /// The snapshot saved by the last refresh, within the stale tolerance — what
+    /// was on screen before the app last quit.
+    public func cachedSnapshot() -> UsageSnapshot? {
+        cacheStore.load(maxAge: TimeInterval(settings.staleToleranceHours) * 3600)
+    }
 }
 
 public enum UsageSnapshotCachePolicy {

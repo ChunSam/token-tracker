@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemRenderer.setPlaceholder(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         statusItemRenderer.setClickAction(target: self, action: #selector(toggleStatusPanel(_:)))
         configurePanel()
+        notificationCoordinator.seedReadings(from: usageService.cachedSnapshot())
         // Use startRefresh (not refreshNow) on launch so a persisted pause is
         // honored across restarts — only an explicit user "Refresh Now" lifts it.
         startRefresh(showLoadingIndicator: true)

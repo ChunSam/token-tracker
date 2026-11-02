@@ -822,4 +822,45 @@ var bridgedPacedUsage = pacedUsage
 bridgedPacedUsage.source = .statusLine
 expectEqual(UsagePaceEvaluator.reading(for: bridgedPacedUsage, window: .fiveHour)?.pace, UsagePace.ahead, "a status-line measurement is paced at its own time")
 
+// Freed up: a window that had run low, measured again after its reset.
+let freedNow = Date(timeIntervalSince1970: 1_800_000_000)
+let freedSettings = UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 0)
+func claudeReading(_ remaining5h: Int?, reset5h: Date?, source: UsageSource = .api, at time: Date) -> ProviderUsage {
+    ProviderUsage(provider: .claude, remainingPercent5h: remaining5h, remainingPercent7d: 80, resetAt5h: reset5h, resetAt7d: nil, source: source, error: nil, plan: nil, model: nil, updatedAt: time)
+}
+func claudeOnlySnapshot(_ claude: ProviderUsage) -> UsageSnapshot {
+    UsageSnapshot(claude: claude, codex: .unavailable(.codex, error: "Disabled"), updatedAt: claude.updatedAt)
+}
+func freedIDs(before: ProviderUsage?, after: ProviderUsage, settings: UsageAlertSettings = freedSettings) -> String {
+    let previous: [Provider: ProviderUsage] = before.map { [.claude: $0] } ?? [:]
+    return UsageAlertEvaluator.freedUpCandidates(previous: previous, current: claudeOnlySnapshot(after), settings: settings)
+        .map(\.id).joined(separator: ",")
+}
+let passedReset = freedNow.addingTimeInterval(-60)
+let lowBeforeReset = claudeReading(8, reset5h: passedReset, at: freedNow.addingTimeInterval(-600))
+let refilled = claudeReading(100, reset5h: nil, at: freedNow)
+expectEqual(freedIDs(before: lowBeforeReset, after: refilled), "claude-5h-freed-\(Int(passedReset.timeIntervalSince1970))", "a low window measured again after its reset is reported freed")
+expectEqual(freedIDs(before: claudeReading(50, reset5h: passedReset, at: freedNow.addingTimeInterval(-600)), after: refilled), "", "a window that never ran low is no news when it resets")
+expectEqual(freedIDs(before: claudeReading(8, reset5h: freedNow.addingTimeInterval(600), at: freedNow.addingTimeInterval(-600)), after: claudeReading(30, reset5h: freedNow.addingTimeInterval(600), at: freedNow)), "", "a balance cannot refill before its reset has passed")
+expectEqual(freedIDs(before: lowBeforeReset, after: claudeReading(100, reset5h: nil, source: .staleCache, at: freedNow)), "", "only a measurement can say the window refilled")
+expectEqual(freedIDs(before: lowBeforeReset, after: claudeReading(15, reset5h: nil, at: freedNow)), "", "still under the threshold after the reset is not freed")
+expectEqual(freedIDs(before: nil, after: refilled), "", "with no earlier reading there is nothing to compare")
+expectEqual(
+    freedIDs(before: lowBeforeReset, after: refilled, settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 0, sevenDayThreshold: 10, resetWarningMinutes: 0)),
+    "",
+    "a zero threshold turns the freed alert off with the low alert"
+)
+expectEqual(
+    UsageAlertEvaluator.freedUpCandidates(previous: [.claude: lowBeforeReset], current: claudeOnlySnapshot(refilled), settings: freedSettings, localizer: Localizer(language: .korean)).first?.body,
+    "Claude 5h 리셋됨 — 잔량 100%",
+    "the freed alert reads in Korean"
+)
+
+let seededReadings = UsageAlertEvaluator.lastReadings([:], updatedWith: claudeOnlySnapshot(claudeReading(8, reset5h: passedReset, source: .staleCache, at: freedNow)))
+expectEqual(seededReadings[.claude]?.remainingPercent5h, 8, "a cached reading seeds an empty map")
+expect(seededReadings[.codex] == nil, "a provider with no numbers is not recorded")
+let keptThroughOutage = UsageAlertEvaluator.lastReadings([.claude: lowBeforeReset], updatedWith: claudeOnlySnapshot(claudeReading(8, reset5h: passedReset, source: .staleCache, at: freedNow)))
+expectEqual(keptThroughOutage[.claude], lowBeforeReset, "a cached reading does not replace a measurement")
+expectEqual(UsageAlertEvaluator.lastReadings([.claude: lowBeforeReset], updatedWith: claudeOnlySnapshot(refilled))[.claude], refilled, "a measurement replaces the last reading")
+
 print("TokenTrackerSmokeTests passed")

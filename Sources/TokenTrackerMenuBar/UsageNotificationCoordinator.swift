@@ -6,6 +6,10 @@ import UserNotifications
 final class UsageNotificationCoordinator {
     private let settings: Settings
     private var deliveredAlertIDs = Set<String>()
+    /// Each provider's last reading with numbers, for telling when a low window
+    /// has refilled. Kept current while notifications are off, so turning them
+    /// back on does not compare against a reading from hours ago.
+    private var lastReadings: [Provider: ProviderUsage] = [:]
 
     init(settings: Settings) {
         self.settings = settings
@@ -15,11 +19,21 @@ final class UsageNotificationCoordinator {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
+    /// Starts from the snapshot cached before the last quit, so a window that ran
+    /// low and reset while the app was not running is still reported.
+    func seedReadings(from snapshot: UsageSnapshot?) {
+        guard let snapshot else { return }
+        lastReadings = UsageAlertEvaluator.lastReadings(lastReadings, updatedWith: snapshot)
+    }
+
     func handleNotifications(
         for snapshot: UsageSnapshot,
         extraCandidates: [UsageAlertCandidate] = [],
         localizer: Localizer
     ) {
+        let previousReadings = lastReadings
+        lastReadings = UsageAlertEvaluator.lastReadings(previousReadings, updatedWith: snapshot)
+
         guard settings.notificationsEnabled else {
             deliveredAlertIDs.removeAll()
             return
@@ -27,6 +41,11 @@ final class UsageNotificationCoordinator {
 
         let candidates = UsageAlertEvaluator.candidates(
             snapshot: snapshot,
+            settings: alertSettings(),
+            localizer: localizer
+        ) + UsageAlertEvaluator.freedUpCandidates(
+            previous: previousReadings,
+            current: snapshot,
             settings: alertSettings(),
             localizer: localizer
         ) + extraCandidates

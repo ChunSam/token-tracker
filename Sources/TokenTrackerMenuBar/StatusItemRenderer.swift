@@ -21,9 +21,30 @@ final class StatusItemRenderer {
     private let sevenDayWarningColor = NSColor(red: 1.0, green: 0.54, blue: 0.56, alpha: 1.0)
     private let statusItemHorizontalPadding: CGFloat = 4
 
-    func setMenu(_ menu: NSMenu) {
-        statusItem.menu = menu
+    /// Clicking the item sends `action` with the status bar button as the sender,
+    /// which the panel anchors to.
+    func setClickAction(target: AnyObject, action: Selector) {
+        statusItem.button?.target = target
+        statusItem.button?.action = action
     }
+
+    /// The provider's template glyph for the popover, or nil when the resource
+    /// bundle is missing (see `resourceBundle`).
+    static func providerIcon(_ provider: Provider) -> NSImage? {
+        if let cached = providerIcons[provider] {
+            return cached
+        }
+        let name = provider == .claude ? "claudeTemplate@2x" : "codexTemplate@2x"
+        guard let url = resourceBundle?.url(forResource: name, withExtension: "png"),
+              let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        image.isTemplate = true
+        providerIcons[provider] = image
+        return image
+    }
+
+    private static var providerIcons: [Provider: NSImage] = [:]
 
     func setPlaceholder(mode _: DisplayMode, labelStyle _: ProviderLabelStyle) {
         setStatusTitle("AI --")
@@ -280,7 +301,7 @@ final class StatusItemRenderer {
     ///
     /// Resolving the packaged copy directly keeps the miss recoverable: no bundle
     /// means a blank icon, not a crash.
-    private static let resourceBundle: Bundle? = {
+    static let resourceBundle: Bundle? = {
         // Named `<package>_<target>` by SwiftPM; build_app.sh copies it by the same name.
         let bundleName = "TokenTrackerMenuBar_TokenTrackerMenuBar.bundle"
         let candidates = [

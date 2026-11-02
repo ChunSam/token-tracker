@@ -33,6 +33,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
   작게 쪼개고, 과거 CI에서 터진 패턴(문자열 보간 안의 삼항 — `:`를 형식 지정자로 읽는다)을 피한다.
   CI가 초록으로 오기 전에 "동작한다"고 보고하지 않는다.
 - Windows 테스트의 `now`는 `2026-05-27`로 고정돼 있다. 새 테스트는 자기 `now`를 주입한다.
+- 이 머신의 `swift build`는 Command Line Tools 툴체인이라 SwiftUI 매크로 플러그인이 없다. `@State`
+  같은 매크로 기반 래퍼는 컴파일되지 않으므로 `@Published`·`ObservableObject`·`ButtonStyle`로 우회한다.
 
 ## 데이터 흐름
 
@@ -91,5 +93,5 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
 `main`은 보호 브랜치다. 브랜치 → PR → CI 두 잡 초록 → **사용자의 명시적 승인("머지해") 후**
 rebase 머지로 선형 히스토리를 유지한다. 커밋 메시지는 영어, PR 본문과 대화는 한국어다.
 
-메뉴 폭은 긴 오류 문자열에 쉽게 밀린다. 새 행을 넣을 때는 짧게 쓰고, 길어지는 정보는 서브메뉴나
-진단 텍스트로 내린다.
+macOS 팝업은 폭 320pt 고정이고 긴 문장은 줄바꿈한다. 카드에는 상태를 읽는 데 필요한 것만 두고,
+드물게 쓰는 정보는 `⋯` 메뉴나 진단 텍스트로 내린다. Windows 트레이 메뉴는 여전히 긴 문자열에 폭이 밀린다.

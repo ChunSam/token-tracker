@@ -166,7 +166,10 @@ public enum UsageForecastAlert {
             return UsageAlertCandidate(
                 id: "\(input.provider.rawValue)-\(windowLabel)-empty-before-reset-\(resetID)",
                 title: localizer.text(.depletionAlertTitle),
-                body: "\(input.provider.displayName) \(windowLabel): ~\(UsageForecaster.durationText(input.forecast.secondsToEmpty)) → 0% (before reset)"
+                body: localizer.text(.depletionAlertBody)
+                    .replacingOccurrences(of: "{provider}", with: input.provider.displayName)
+                    .replacingOccurrences(of: "{window}", with: windowLabel)
+                    .replacingOccurrences(of: "{time}", with: UsageForecaster.durationText(input.forecast.secondsToEmpty))
             )
         }
     }

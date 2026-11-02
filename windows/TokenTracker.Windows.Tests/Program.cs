@@ -756,6 +756,46 @@ ExpectEqual(UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled:
 var safeForecastInput = new ForecastAlertInput(Provider.Claude, ForecastWindow.FiveHour, earlyResetForecast, now.AddHours(1));
 ExpectEqual(UsageForecastAlert.Candidates(new[] { safeForecastInput }, enabled: true).Count, 0, "No forecast alert when the reset comes first");
 
+// Alert bodies follow the language setting like their titles. The ids do not:
+// duplicate suppression is keyed on them, so switching language must not re-fire.
+string AlertBodies(AppLanguage language)
+{
+    var bodyLocalizer = new Localizer(language);
+    var stalledSnapshot = new UsageSnapshot(
+        Claude: new ProviderUsage(Provider.Claude, 55, 70, null, null, UsageSource.StaleCache, null, null, null, now - TimeSpan.FromMinutes(90)),
+        Codex: new ProviderUsage(Provider.Codex, 80, 90, null, null, UsageSource.Api, null, null, null, now),
+        UpdatedAt: now);
+    var stalledAlerts = UsageAlertEvaluator.Candidates(
+        stalledSnapshot,
+        new UsageAlertSettings(true, 0, 0, 0, TimeSpan.FromMinutes(30)),
+        now,
+        bodyLocalizer);
+    var lowAndResetAlerts = UsageAlertEvaluator.Candidates(
+        alertSnapshot,
+        new UsageAlertSettings(true, 20, 10, 10),
+        now,
+        bodyLocalizer);
+    var depletionAlerts = UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled: true, localizer: bodyLocalizer);
+    return string.Join(" | ", stalledAlerts.Concat(lowAndResetAlerts).Concat(depletionAlerts).Select(candidate => candidate.Body));
+}
+
+ExpectEqual(
+    AlertBodies(AppLanguage.English),
+    "Claude last measured 1h30m ago | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h reset in 5m | Claude 5h: ~2h 0m → 0% (before reset)",
+    "English alert bodies are unchanged");
+ExpectEqual(
+    AlertBodies(AppLanguage.Korean),
+    "Claude 마지막 측정 1h30m 전 | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h 5m 후 리셋 | Claude 5h: ~2h 0m → 0% (리셋 전)",
+    "Korean alert bodies are translated; the symbol-only low-balance bodies stay as they are");
+ExpectEqual(
+    string.Join(",", UsageAlertEvaluator.Candidates(alertSnapshot, new UsageAlertSettings(true, 20, 10, 10), now, new Localizer(AppLanguage.Korean)).Select(candidate => candidate.Id)),
+    string.Join(",", alerts.Select(alert => alert.Id)),
+    "Alert ids do not depend on the language");
+ExpectEqual(
+    string.Join(",", UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled: true, localizer: new Localizer(AppLanguage.Korean)).Select(candidate => candidate.Id)),
+    string.Join(",", UsageForecastAlert.Candidates(new[] { forecastAlertInput }, enabled: true).Select(candidate => candidate.Id)),
+    "Forecast alert ids do not depend on the language");
+
 // Sparkline
 ExpectEqual(SparklineText.Render(new[] { 0, 25, 50, 75, 100 }), "▁▃▅▇█", "Sparkline maps values across the eight blocks");
 ExpectEqual(SparklineText.Render(new[] { 42 }), "", "A single point renders nothing");

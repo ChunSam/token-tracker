@@ -205,7 +205,10 @@ public static class UsageForecastAlert
             result.Add(new UsageAlertCandidate(
                 $"{input.Provider.ToId()}-{windowLabel}-empty-before-reset-{resetId}",
                 localizer.Text(L10nKey.DepletionAlertTitle),
-                $"{name} {windowLabel}: ~{UsageForecaster.DurationText(input.Forecast.SecondsToEmpty)} → 0% (before reset)"));
+                localizer.Text(L10nKey.DepletionAlertBody)
+                    .Replace("{provider}", name, StringComparison.Ordinal)
+                    .Replace("{window}", windowLabel, StringComparison.Ordinal)
+                    .Replace("{time}", UsageForecaster.DurationText(input.Forecast.SecondsToEmpty), StringComparison.Ordinal)));
         }
 
         return result;

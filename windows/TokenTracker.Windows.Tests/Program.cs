@@ -89,6 +89,50 @@ ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.LowestRemaining),
 ExpectEqual(DisplayFormatter.Tooltip(snapshot, ProviderLabelStyle.Abbreviation), "Cdx 91%, Cl 63%", "abbreviated tooltip");
 ExpectEqual(DisplayFormatter.Tooltip(snapshot, ProviderLabelStyle.Icon), "Codex 91%, Claude 63%", "named tooltip");
 
+// The tooltip's countdown, on the only text surface a Windows tray has. Same
+// machinery and the same truth table as the menu bar app's.
+var countdownNow = DateTimeOffset.Now;
+var englishCountdown = new Localizer(AppLanguage.English);
+var fiveHourLead = new ProviderUsage(
+    Provider.Claude, 63, 80, countdownNow.AddSeconds(8010), countdownNow.AddSeconds(273900),
+    UsageSource.Api, null, null, null, countdownNow);
+var sevenDayLead = new ProviderUsage(
+    Provider.Claude, 100, 8, countdownNow.AddSeconds(8010), countdownNow.AddSeconds(273900),
+    UsageSource.Api, null, null, null, countdownNow);
+
+ExpectEqual(DisplayFormatter.FormatResetCompact(countdownNow.AddSeconds(2550), englishCountdown), "42m", "Under an hour shows minutes only");
+ExpectEqual(DisplayFormatter.FormatResetCompact(countdownNow.AddSeconds(8010), englishCountdown), "2h13m", "Hours and minutes drop the inner space");
+ExpectEqual(DisplayFormatter.FormatResetCompact(countdownNow.AddSeconds(273900), englishCountdown), "3d4h", "Over a day shows days and hours");
+ExpectEqual(DisplayFormatter.FormatResetCompact(countdownNow.AddSeconds(-60), englishCountdown), "now", "A passed reset reads as now");
+Expect(DisplayFormatter.FormatResetCompact(null, englishCountdown) is null, "No reset instant yields no countdown at all");
+
+ExpectEqual(DisplayFormatter.DisplayWindow(fiveHourLead), ForecastWindow.FiveHour, "A healthy 7d leaves the 5h window on display");
+ExpectEqual(DisplayFormatter.DisplayResetAt(fiveHourLead), fiveHourLead.ResetAt5h, "The countdown follows the displayed window");
+ExpectEqual(DisplayFormatter.DisplayWindow(sevenDayLead), ForecastWindow.SevenDay, "A low 7d takes over the display");
+ExpectEqual(DisplayFormatter.DisplayResetAt(sevenDayLead), sevenDayLead.ResetAt7d, "Taking over the percent takes over the countdown too");
+
+ExpectEqual(DisplayFormatter.ResetCountdownSuffix(fiveHourLead, true, englishCountdown), " 2h13m", "A live reading still shows its countdown");
+ExpectEqual(DisplayFormatter.ResetCountdownSuffix(fiveHourLead, false, englishCountdown), "", "The countdown can be turned off");
+ExpectEqual(
+    DisplayFormatter.ResetCountdownSuffix(fiveHourLead with { Source = UsageSource.StaleCache }, true, englishCountdown),
+    "",
+    "A cached reading shows its percentage but no countdown");
+
+var countdownSnapshot = new UsageSnapshot(
+    Claude: fiveHourLead,
+    Codex: new ProviderUsage(
+        Provider.Codex, 91, 99, countdownNow.AddSeconds(2550), null,
+        UsageSource.Api, null, null, null, countdownNow),
+    UpdatedAt: countdownNow);
+ExpectEqual(
+    DisplayFormatter.Tooltip(countdownSnapshot, ProviderLabelStyle.Abbreviation, true, englishCountdown),
+    "Cdx 91% 42m, Cl 63% 2h13m",
+    "The tooltip pairs each percentage with its own window's countdown");
+ExpectEqual(
+    DisplayFormatter.Tooltip(countdownSnapshot, ProviderLabelStyle.Abbreviation),
+    "Cdx 91%, Cl 63%",
+    "The tooltip is unchanged while the countdown is off");
+
 var unavailableSnapshot = new UsageSnapshot(
     Claude: ProviderUsage.Unavailable(Provider.Claude, "Disabled"),
     Codex: ProviderUsage.Unavailable(Provider.Codex, "HTTP request failed"),

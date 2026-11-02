@@ -22,15 +22,37 @@ public static class DisplayFormatter
     public static string DetailLine(ProviderUsage usage) =>
         $"{usage.DisplayName}: 5h {FormatPercent(usage.RemainingPercent5h)}, 7d {FormatPercent(usage.RemainingPercent7d)}";
 
-    public static int? DisplayPercent(ProviderUsage usage)
+    /// Which window the percentage comes from. DisplayPercent reads its number
+    /// from here so the countdown shown beside it always names the reset that
+    /// number is actually counting down to, rather than the two drifting apart.
+    public static ForecastWindow? DisplayWindow(ProviderUsage usage)
     {
         if (usage.RemainingPercent7d is <= 10)
         {
-            return usage.RemainingPercent7d;
+            return ForecastWindow.SevenDay;
         }
 
-        return usage.RemainingPercent5h ?? usage.RemainingPercent7d;
+        if (usage.RemainingPercent5h is not null)
+        {
+            return ForecastWindow.FiveHour;
+        }
+
+        return usage.RemainingPercent7d is not null ? ForecastWindow.SevenDay : null;
     }
+
+    public static int? DisplayPercent(ProviderUsage usage) => DisplayWindow(usage) switch
+    {
+        ForecastWindow.FiveHour => usage.RemainingPercent5h,
+        ForecastWindow.SevenDay => usage.RemainingPercent7d,
+        _ => null
+    };
+
+    public static DateTimeOffset? DisplayResetAt(ProviderUsage usage) => DisplayWindow(usage) switch
+    {
+        ForecastWindow.FiveHour => usage.ResetAt5h,
+        ForecastWindow.SevenDay => usage.ResetAt7d,
+        _ => null
+    };
 
     /// Warning emphasis is reserved for an actually low 7d window. Showing the
     /// 7d number merely because the 5h window is absent (the normal Codex state
@@ -105,14 +127,83 @@ public static class DisplayFormatter
         return localizer.Text(L10nKey.WindowNotOpen);
     }
 
-    public static string Tooltip(UsageSnapshot? snapshot, ProviderLabelStyle labelStyle = ProviderLabelStyle.Icon)
+    /// Tooltip variant of FormatReset: the same buckets without the inner space,
+    /// because the tooltip is trimmed to what the shell will show. Returns null
+    /// rather than "--" when there is no reset, so the caller appends nothing.
+    public static string? FormatResetCompact(DateTimeOffset? date, Localizer localizer)
+    {
+        if (date is null)
+        {
+            return null;
+        }
+
+        var remaining = date.Value - DateTimeOffset.Now;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return localizer.Text(L10nKey.Now);
+        }
+
+        if (remaining.TotalHours < 1)
+        {
+            return $"{Math.Max(0, (int)remaining.TotalMinutes)}m";
+        }
+
+        if (remaining.TotalDays < 1)
+        {
+            return $"{(int)remaining.TotalHours}h{remaining.Minutes}m";
+        }
+
+        return $"{(int)remaining.TotalDays}d{remaining.Hours}h";
+    }
+
+    /// The countdown suffix for a provider's tooltip segment: a leading space plus
+    /// the compact time, or an empty string when the countdown is off, the window
+    /// is unknown, or the provider reported no reset instant.
+    public static string ResetCountdownSuffix(
+        ProviderUsage? usage,
+        bool showResetCountdown,
+        Localizer localizer)
+    {
+        if (!showResetCountdown || usage is null)
+        {
+            return string.Empty;
+        }
+
+        // A cached reading's reset instant keeps ticking down while the value
+        // behind it stands still, and once it passes the countdown reads "now" for
+        // as long as the fallback lasts. Show no time rather than a wrong one. A
+        // status-line reading is a measurement with a live window: it is only
+        // reported while it is fresh, and a window whose reset has passed is
+        // dropped on the way in.
+        if (usage.Source != UsageSource.Api && usage.Source != UsageSource.StatusLine)
+        {
+            return string.Empty;
+        }
+
+        var text = FormatResetCompact(DisplayResetAt(usage), localizer);
+        if (text is null)
+        {
+            return string.Empty;
+        }
+
+        return " " + text;
+    }
+
+    public static string Tooltip(
+        UsageSnapshot? snapshot,
+        ProviderLabelStyle labelStyle = ProviderLabelStyle.Icon,
+        bool showResetCountdown = false,
+        Localizer? localizer = null)
     {
         if (snapshot is null)
         {
             return "Token Tracker: loading";
         }
 
-        return $"{ProviderLabel(Provider.Codex, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Codex))}, {ProviderLabel(Provider.Claude, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Claude))}";
+        localizer ??= new Localizer(AppLanguage.English);
+        var codexCountdown = ResetCountdownSuffix(snapshot.Codex, showResetCountdown, localizer);
+        var claudeCountdown = ResetCountdownSuffix(snapshot.Claude, showResetCountdown, localizer);
+        return $"{ProviderLabel(Provider.Codex, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Codex))}{codexCountdown}, {ProviderLabel(Provider.Claude, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Claude))}{claudeCountdown}";
     }
 
     public static int? TrayIconPercent(UsageSnapshot? snapshot, DisplayMode mode)

@@ -12,6 +12,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private readonly NotifyIcon notifyIcon = new();
     private readonly System.Windows.Forms.Timer timer = new();
+    private readonly System.Windows.Forms.Timer countdownTimer = new();
     private readonly SettingsStore settingsStore = new();
     private readonly CacheStore cacheStore = new();
     private readonly UsageHistoryStore historyStore = new();
@@ -40,6 +41,14 @@ internal sealed class TrayAppContext : ApplicationContext
         timer.Tick += async (_, _) => await RefreshAsync();
         timer.Start();
 
+        // The usage poll runs as slowly as every 5 minutes, but the tooltip's
+        // countdown has minute resolution, so it has to re-render from the cached
+        // snapshot on its own or it reads minutes stale. Purely local: no fetch,
+        // so this keeps ticking while polling is paused.
+        countdownTimer.Interval = 30 * 1000;
+        countdownTimer.Tick += (_, _) => UpdateTooltip();
+        SyncCountdownTimer();
+
         _ = RefreshAsync();
     }
 
@@ -48,6 +57,7 @@ internal sealed class TrayAppContext : ApplicationContext
         if (disposing)
         {
             timer.Dispose();
+            countdownTimer.Dispose();
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
             providerLogos.Dispose();
@@ -107,7 +117,7 @@ internal sealed class TrayAppContext : ApplicationContext
             historyStore.Append(UsageHistoryPolicy.MeasurementsOnly(snapshot), settings.HistoryRetentionDays);
             HandleNotifications(snapshot);
             SetIcon(snapshot);
-            notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
+            UpdateTooltip();
         }
         catch (Exception ex)
         {
@@ -366,7 +376,8 @@ internal sealed class TrayAppContext : ApplicationContext
                 {
                     SaveSettings();
                     SetIcon(snapshot);
-                    notifyIcon.Text = TrimTooltip(DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle));
+                    UpdateTooltip();
+                    SyncCountdownTimer();
                     notifyIcon.ContextMenuStrip = BuildMenu();
                 },
                 () =>
@@ -588,6 +599,14 @@ internal sealed class TrayAppContext : ApplicationContext
 
         return $"{(int)elapsed.TotalHours}h";
     }
+
+    private void UpdateTooltip() =>
+        notifyIcon.Text = TrimTooltip(
+            DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle, settings.ShowResetCountdown, Localizer));
+
+    /// The countdown ticks only while it is on screen, so the timer follows the
+    /// setting rather than repainting a tooltip nobody asked for.
+    private void SyncCountdownTimer() => countdownTimer.Enabled = settings.ShowResetCountdown;
 
     private static string TrimTooltip(string text) =>
         text.Length <= 63 ? text : text[..60] + "...";

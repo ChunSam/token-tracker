@@ -119,6 +119,11 @@ internal sealed class SettingsForm : Form
             settings.ShowForecast = value;
             onGeneralChange();
         });
+        AddCheckbox(layout, localizer.Text(L10nKey.ShowResetCountdownLabel), settings.ShowResetCountdown, value =>
+        {
+            settings.ShowResetCountdown = value;
+            onGeneralChange();
+        });
 
         AddHeader(layout, localizer.Text(L10nKey.Notifications));
         AddCheckbox(

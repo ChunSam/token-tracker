@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TokenTracker.Windows.Core;
 
 public sealed record UsageAlertSettings
@@ -162,6 +164,93 @@ public static class UsageAlertEvaluator
             localizer.Text(L10nKey.StalledAlertBody)
                 .Replace("{provider}", usage.DisplayName, StringComparison.Ordinal)
                 .Replace("{time}", ago, StringComparison.Ordinal));
+    }
+
+    /// A window that had run low has reset and can be used again. The low-balance
+    /// alert said to hold off; this says when that is over, which otherwise only
+    /// shows to someone who opens the menu.
+    ///
+    /// <paramref name="previous"/> holds each provider's last reading with numbers,
+    /// whatever its source, so a reset that passes during an outage is still
+    /// reported once the provider is measured again. Only a measurement can say the
+    /// window refilled. The alert fires on the one poll that sees the change: by the
+    /// next, the refilled reading has become <paramref name="previous"/> and the
+    /// condition no longer holds.
+    public static IReadOnlyList<UsageAlertCandidate> FreedUpCandidates(
+        IReadOnlyDictionary<Provider, ProviderUsage> previous,
+        UsageSnapshot current,
+        UsageAlertSettings settings,
+        Localizer? localizer = null)
+    {
+        if (!settings.NotificationsEnabled)
+        {
+            return Array.Empty<UsageAlertCandidate>();
+        }
+
+        localizer ??= new Localizer(AppLanguage.English);
+        var candidates = new List<UsageAlertCandidate>();
+        foreach (var provider in new[] { Provider.Claude, Provider.Codex })
+        {
+            var after = current.Usage(provider);
+            if (!previous.TryGetValue(provider, out var before) ||
+                (after.Source != UsageSource.Api && after.Source != UsageSource.StatusLine))
+            {
+                continue;
+            }
+
+            var windows = new[]
+            {
+                ("5h", settings.FiveHourThreshold, before.RemainingPercent5h, before.ResetAt5h, after.RemainingPercent5h),
+                ("7d", settings.SevenDayThreshold, before.RemainingPercent7d, before.ResetAt7d, after.RemainingPercent7d)
+            };
+            foreach (var (label, threshold, was, resetAt, now) in windows)
+            {
+                if (threshold <= 0 ||
+                    was is not { } wasPercent || wasPercent > threshold ||
+                    resetAt is not { } resetDate || resetDate > after.UpdatedAt ||
+                    now is not { } nowPercent || nowPercent <= threshold || nowPercent <= wasPercent)
+                {
+                    continue;
+                }
+
+                candidates.Add(new UsageAlertCandidate(
+                    $"{provider.ToId()}-{label}-freed-{resetDate.ToUnixTimeSeconds()}",
+                    localizer.Text(L10nKey.FreedUpAlertTitle),
+                    localizer.Text(L10nKey.FreedUpAlertBody)
+                        .Replace("{provider}", after.DisplayName, StringComparison.Ordinal)
+                        .Replace("{window}", label, StringComparison.Ordinal)
+                        .Replace("{percent}", nowPercent.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)));
+            }
+        }
+
+        return candidates;
+    }
+
+    /// What <see cref="FreedUpCandidates"/> compares against on the next poll. A
+    /// measurement replaces the provider's entry; a cached or missing reading leaves
+    /// it alone, so an outage does not erase the low balance a reset will be
+    /// measured against. A cached reading still fills an empty entry, which is how
+    /// a cached snapshot seeds the map at launch.
+    public static Dictionary<Provider, ProviderUsage> LastReadings(
+        IReadOnlyDictionary<Provider, ProviderUsage> previous,
+        UsageSnapshot snapshot)
+    {
+        var readings = new Dictionary<Provider, ProviderUsage>(previous);
+        foreach (var provider in new[] { Provider.Claude, Provider.Codex })
+        {
+            var usage = snapshot.Usage(provider);
+            if (!usage.IsAvailable)
+            {
+                continue;
+            }
+
+            if (usage.Source == UsageSource.Api || usage.Source == UsageSource.StatusLine || !readings.ContainsKey(provider))
+            {
+                readings[provider] = usage;
+            }
+        }
+
+        return readings;
     }
 
     private static IEnumerable<UsageAlertCandidate> ResetAlerts(

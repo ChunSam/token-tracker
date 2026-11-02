@@ -19,6 +19,11 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly UsageClient usageClient = new();
     private readonly ProviderLogoStore providerLogos = new();
     private readonly HashSet<string> deliveredAlertIds = new(StringComparer.Ordinal);
+
+    /// Each provider's last reading with numbers, for telling when a low window has
+    /// refilled. Kept current while notifications are off, so turning them back on
+    /// does not compare against a reading from hours ago.
+    private Dictionary<Provider, ProviderUsage> lastReadings = new();
     private AppSettings settings;
     private UsageSnapshot? snapshot;
     private DateTimeOffset? lastSuccessfulRefreshAt;
@@ -48,6 +53,14 @@ internal sealed class TrayAppContext : ApplicationContext
         countdownTimer.Interval = 30 * 1000;
         countdownTimer.Tick += (_, _) => UpdateTooltip();
         SyncCountdownTimer();
+
+        // Start from the snapshot cached before the last exit, so a window that ran
+        // low and reset while the app was not running is still reported.
+        var cached = cacheStore.Load(TimeSpan.FromHours(settings.StaleToleranceHours));
+        if (cached is not null)
+        {
+            lastReadings = UsageAlertEvaluator.LastReadings(lastReadings, cached);
+        }
 
         _ = RefreshAsync();
     }
@@ -425,21 +438,23 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void HandleNotifications(UsageSnapshot usage)
     {
+        var previousReadings = lastReadings;
+        lastReadings = UsageAlertEvaluator.LastReadings(previousReadings, usage);
+
         if (!settings.NotificationsEnabled)
         {
             deliveredAlertIds.Clear();
             return;
         }
 
-        var candidates = UsageAlertEvaluator.Candidates(
-            usage,
-            new UsageAlertSettings(
-                settings.NotificationsEnabled,
-                settings.FiveHourAlertThreshold,
-                settings.SevenDayAlertThreshold,
-                settings.ResetAlertMinutes,
-                UsageAlertEvaluator.StalledThreshold(settings.RefreshIntervalSeconds)),
-            localizer: Localizer).ToList();
+        var alertSettings = new UsageAlertSettings(
+            settings.NotificationsEnabled,
+            settings.FiveHourAlertThreshold,
+            settings.SevenDayAlertThreshold,
+            settings.ResetAlertMinutes,
+            UsageAlertEvaluator.StalledThreshold(settings.RefreshIntervalSeconds));
+        var candidates = UsageAlertEvaluator.Candidates(usage, alertSettings, localizer: Localizer).ToList();
+        candidates.AddRange(UsageAlertEvaluator.FreedUpCandidates(previousReadings, usage, alertSettings, Localizer));
         candidates.AddRange(ForecastCandidates(usage));
         var activeIds = candidates.Select(candidate => candidate.Id).ToHashSet(StringComparer.Ordinal);
         deliveredAlertIds.IntersectWith(activeIds);

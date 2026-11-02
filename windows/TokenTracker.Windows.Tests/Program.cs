@@ -1095,6 +1095,66 @@ ExpectEqual(
     UsagePace.Ahead,
     "a status-line measurement is paced at its own time");
 
+// Freed up: a window that had run low, measured again after its reset.
+var freedNow = new DateTimeOffset(2027, 1, 15, 8, 0, 0, TimeSpan.Zero);
+var freedSettings = new UsageAlertSettings(true, 20, 10, 0);
+ProviderUsage ClaudeReading(int? remaining5h, DateTimeOffset? reset5h, DateTimeOffset at, UsageSource source = UsageSource.Api) =>
+    new(Provider.Claude, remaining5h, 80, reset5h, null, source, null, null, null, at);
+UsageSnapshot ClaudeOnlySnapshot(ProviderUsage claude) =>
+    new(claude, ProviderUsage.Unavailable(Provider.Codex, "Disabled"), claude.UpdatedAt);
+string FreedIds(ProviderUsage? before, ProviderUsage after, UsageAlertSettings? settings = null)
+{
+    var previous = new Dictionary<Provider, ProviderUsage>();
+    if (before is not null)
+    {
+        previous[Provider.Claude] = before;
+    }
+
+    return string.Join(
+        ",",
+        UsageAlertEvaluator.FreedUpCandidates(previous, ClaudeOnlySnapshot(after), settings ?? freedSettings)
+            .Select(candidate => candidate.Id));
+}
+
+var passedReset = freedNow.AddSeconds(-60);
+var lowBeforeReset = ClaudeReading(8, passedReset, freedNow.AddSeconds(-600));
+var refilled = ClaudeReading(100, null, freedNow);
+ExpectEqual(FreedIds(lowBeforeReset, refilled), $"claude-5h-freed-{passedReset.ToUnixTimeSeconds()}", "a low window measured again after its reset is reported freed");
+ExpectEqual(FreedIds(ClaudeReading(50, passedReset, freedNow.AddSeconds(-600)), refilled), "", "a window that never ran low is no news when it resets");
+ExpectEqual(
+    FreedIds(ClaudeReading(8, freedNow.AddSeconds(600), freedNow.AddSeconds(-600)), ClaudeReading(30, freedNow.AddSeconds(600), freedNow)),
+    "",
+    "a balance cannot refill before its reset has passed");
+ExpectEqual(FreedIds(lowBeforeReset, ClaudeReading(100, null, freedNow, UsageSource.StaleCache)), "", "only a measurement can say the window refilled");
+ExpectEqual(FreedIds(lowBeforeReset, ClaudeReading(15, null, freedNow)), "", "still under the threshold after the reset is not freed");
+ExpectEqual(FreedIds(null, refilled), "", "with no earlier reading there is nothing to compare");
+ExpectEqual(
+    FreedIds(lowBeforeReset, refilled, new UsageAlertSettings(true, 0, 10, 0)),
+    "",
+    "a zero threshold turns the freed alert off with the low alert");
+ExpectEqual(
+    UsageAlertEvaluator.FreedUpCandidates(
+        new Dictionary<Provider, ProviderUsage> { [Provider.Claude] = lowBeforeReset },
+        ClaudeOnlySnapshot(refilled),
+        freedSettings,
+        new Localizer(AppLanguage.Korean)).FirstOrDefault()?.Body,
+    "Claude 5h 리셋됨 — 잔량 100%",
+    "the freed alert reads in Korean");
+
+var seededReadings = UsageAlertEvaluator.LastReadings(
+    new Dictionary<Provider, ProviderUsage>(),
+    ClaudeOnlySnapshot(ClaudeReading(8, passedReset, freedNow, UsageSource.StaleCache)));
+ExpectEqual(seededReadings[Provider.Claude].RemainingPercent5h, 8, "a cached reading seeds an empty map");
+Expect(!seededReadings.ContainsKey(Provider.Codex), "a provider with no numbers is not recorded");
+var keptThroughOutage = UsageAlertEvaluator.LastReadings(
+    new Dictionary<Provider, ProviderUsage> { [Provider.Claude] = lowBeforeReset },
+    ClaudeOnlySnapshot(ClaudeReading(8, passedReset, freedNow, UsageSource.StaleCache)));
+ExpectEqual(keptThroughOutage[Provider.Claude], lowBeforeReset, "a cached reading does not replace a measurement");
+ExpectEqual(
+    UsageAlertEvaluator.LastReadings(new Dictionary<Provider, ProviderUsage> { [Provider.Claude] = lowBeforeReset }, ClaudeOnlySnapshot(refilled))[Provider.Claude],
+    refilled,
+    "a measurement replaces the last reading");
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static string StatusLinePayload(

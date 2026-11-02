@@ -12,7 +12,10 @@ Claude Code와 Codex의 토큰 한도 잔량을 퍼센트로 상시 확인하는
 - Claude Code / Codex 사용량 조회 (API 우선, 실패 시 마지막 성공 값을 한도 시간 안에서 유지, 그 뒤 `--`)
 - 메뉴바 표시 모드 4종, 제공자 표기 2종(약어 / 공식 아이콘), 리셋까지 남은 시간 표기
 - 설정 창: 표시 · 제공자 on/off · 새로고침 간격 · 언어(한/영) · 알림 · 히스토리 · 예측
-- 알림: 5시간/7일 잔량 부족, 리셋 임박, 리셋 전 소진 예측 (macOS `UserNotifications` / Windows 풍선)
+- 알림: 5시간/7일 잔량 부족, 리셋 임박, 리셋 전 소진 예측, 수집 중단, 다시 사용 가능
+  (macOS `UserNotifications` / Windows 풍선)
+- 페이스: 창의 경과 비율 대비 사용 비율(빠름·적정·여유), 팝업 막대에 균등 사용 눈금
+- 하루 한 번 GitHub Releases 새 버전 확인(끌 수 있음), 잠자기 해제 10초 뒤 새로고침
 - 로컬 히스토리(기본 7일) 저장, 24시간 추세, 유니코드 스파크라인, CSV 내보내기
 - 소진 예측(현재 소모 속도로 0%에 닿는 시각), 업데이트 일시중지(1h / 3h / 재개할 때까지)
 - 만료 토큰 사전 감지, 429 지수 백오프, 제공자별 쿨다운 파일, 중복 실행 방지
@@ -146,6 +149,11 @@ Token tracker/
 그리고 켜둔 경우 "리셋 전 소진 예상"을 보낸다. 같은 창 인스턴스에 대해 한 번만 보내도록 id로 중복
 제거한다.
 
+"다시 사용 가능"은 직전 값과 이번 측정을 비교한다. 직전 값이 그 창의 알림 기준 이하였고 리셋이
+지났으며 이번 측정(`api`·`statusLine`)이 기준을 넘으면 한 번 보낸다. 직전 값은 제공자별 마지막
+'숫자가 있는 값'이고(`UsageAlertEvaluator.lastReadings`), 측정만 이를 교체하며 캐시 값은 빈 자리만
+채운다. 시작할 때 캐시 스냅샷으로 채워 두므로 앱이 꺼져 있던 동안의 리셋도 잡힌다.
+
 ### 히스토리 · 예측 · 일시중지
 
 - 히스토리는 실측값(`api`)만 저장한다. 60초 안의 연속 기록은 합치고 보관 기간(기본 7일)을 넘긴 것은
@@ -192,7 +200,9 @@ Core (`Sources/TokenTrackerCore/`)
 - `UsageIssueFormatter.swift` — 오류 문자열 → 상태/설명/복구 안내
 - `DisplayFormatter.swift` — 메뉴바 문자열, 표시 창 선택, 리셋 카운트다운
 - `UsageForecast.swift` / `Sparkline.swift` / `UsageHistoryStore.swift` — 예측, 스파크라인, 히스토리
-- `UsageAlertEvaluator.swift` — 알림 후보 계산
+- `UsageAlertEvaluator.swift` — 알림 후보 계산(다시 사용 가능 포함)
+- `UsagePace.swift` — 균등 사용선 대비 페이스와 메뉴 줄
+- `UpdateCheck.swift` — 최신 릴리스 조회·버전 비교·확인 주기
 - `PauseController.swift` / `InstanceArbiter.swift` — 일시중지, 중복 실행 판정
 - `Settings.swift` / `Localization.swift` / `Paths.swift` — UserDefaults, 한/영 문자열, 파일 경로
 

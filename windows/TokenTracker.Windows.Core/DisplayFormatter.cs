@@ -59,7 +59,7 @@ public static class DisplayFormatter
 
     public static string FormatPercent(int? value) => value is null ? "--" : $"{value}%";
 
-    public static string FormatReset(DateTimeOffset? date)
+    public static string FormatReset(DateTimeOffset? date, Localizer localizer)
     {
         if (date is null)
         {
@@ -69,7 +69,7 @@ public static class DisplayFormatter
         var remaining = date.Value - DateTimeOffset.Now;
         if (remaining <= TimeSpan.Zero)
         {
-            return "now";
+            return localizer.Text(L10nKey.Now);
         }
 
         if (remaining.TotalHours < 1)
@@ -94,7 +94,7 @@ public static class DisplayFormatter
     {
         if (resetAt is not null)
         {
-            return FormatReset(resetAt);
+            return FormatReset(resetAt, localizer);
         }
 
         if (remainingPercent is null)

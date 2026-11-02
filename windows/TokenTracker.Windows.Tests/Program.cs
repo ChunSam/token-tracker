@@ -73,6 +73,10 @@ ExpectEqual(
     DisplayFormatter.FormatWindowReset(null, null, englishReset),
     "--",
     "with no balance either there is nothing to claim about the window");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(55, DateTimeOffset.Now.AddMinutes(-1), koreanReset),
+    "지금",
+    "A reset that has just passed reads in the chosen language");
 
 var snapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),

@@ -82,6 +82,11 @@ expectEqual(
     "--",
     "with no balance either there is nothing to claim about the window"
 )
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: 55, resetAt: countdownNow.addingTimeInterval(-60), localizer: koreanReset),
+    "지금",
+    "a reset that has just passed reads in the chosen language"
+)
 
 let fiveHourLead = countdownUsage(.claude, five: 63, seven: 80, reset5h: 8010, reset7d: 273_900)
 expectEqual(DisplayFormatter.displayWindow(fiveHourLead), .fiveHour, "a healthy 7d leaves the 5h window on display")

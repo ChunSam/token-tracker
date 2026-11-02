@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTask: Task<Void, Never>?
     private var lastSuccessfulRefreshAt: Date?
     private var appearanceObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
     private var nextUpdateCheckAt: Date?
     private var updateCheckTask: Task<Void, Never>?
     private var availableUpdateVersion: String?
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleTimer()
         scheduleCountdownTimer()
         observeAppearanceChanges()
+        observeWake()
         if settings.notificationsEnabled {
             notificationCoordinator.requestAuthorization()
         }
@@ -57,6 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         countdownTimer?.invalidate()
         if let appearanceObserver {
             DistributedNotificationCenter.default().removeObserver(appearanceObserver)
+        }
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
         }
     }
 
@@ -188,6 +193,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatusTitle()
+            }
+        }
+    }
+
+    /// After sleep the menu bar keeps showing what was measured before it until the
+    /// next timer tick, up to a whole refresh interval later. Refresh on wake
+    /// instead, once the network has had a few seconds to come back, and restart
+    /// the timer so the next poll is a full interval after this one.
+    private func observeWake() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                self?.startRefresh(showLoadingIndicator: false)
+                self?.scheduleTimer()
             }
         }
     }

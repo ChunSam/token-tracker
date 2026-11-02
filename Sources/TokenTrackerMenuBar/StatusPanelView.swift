@@ -136,8 +136,18 @@ private struct ProviderCard: View {
             name: localizer.text(window == .fiveHour ? .fiveHourWindow : .sevenDayWindow),
             percent: percent,
             resetText: resetText(percent: percent, resetAt: resetAt),
-            level: UsageLevel(remaining: percent, alertThreshold: alertThreshold)
+            level: UsageLevel(remaining: percent, alertThreshold: alertThreshold),
+            evenUseMark: evenUseMark(window)
         )
+    }
+
+    /// Where the bar would stand had the window been used evenly, drawn as a tick so
+    /// a fill short of it reads as "spending fast" at a glance. Rides the forecast
+    /// setting, as the pace line under the bars does.
+    private func evenUseMark(_ window: ForecastWindow) -> Double? {
+        guard context.settings.showForecast,
+              let reading = UsagePaceEvaluator.reading(for: usage, window: window) else { return nil }
+        return Double(reading.expectedRemainingPercent) / 100
     }
 
     private func resetText(percent: Int?, resetAt: Date?) -> String {
@@ -156,6 +166,7 @@ private struct ProviderCard: View {
     @ViewBuilder
     private func notes(_ issue: UsageIssue) -> some View {
         let forecast = context.forecastLines[usage.provider]
+        let pace = context.settings.showForecast ? UsagePaceText.menuLine(for: usage, localizer: localizer) : nil
         // Why signing in again did not stick: nothing has written the store since
         // long before this token could have lapsed.
         let staleCredentials = CredentialStoreAdvice.staleLine(
@@ -168,8 +179,11 @@ private struct ProviderCard: View {
         // detail sentence is only worth the room when there is nothing else to show.
         let detail = usage.isAvailable ? nil : issue.detail
 
-        if forecast != nil || detail != nil || issue.recovery != nil || staleCredentials != nil || issue.technicalDetail != nil {
+        if pace != nil || forecast != nil || detail != nil || issue.recovery != nil || staleCredentials != nil || issue.technicalDetail != nil {
             VStack(alignment: .leading, spacing: 5) {
+                if let pace {
+                    NoteRow(systemImage: "speedometer", text: pace)
+                }
                 if let forecast {
                     NoteRow(systemImage: "chart.line.downtrend.xyaxis", text: forecast)
                 }
@@ -232,6 +246,7 @@ private struct WindowRow: View {
     let percent: Int?
     let resetText: String
     let level: UsageLevel
+    let evenUseMark: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -251,7 +266,7 @@ private struct WindowRow: View {
                     .foregroundStyle(percentColor)
             }
             if let percent {
-                UsageBar(fraction: Double(percent) / 100, tint: level.tint)
+                UsageBar(fraction: Double(percent) / 100, tint: level.tint, mark: evenUseMark)
             }
         }
     }
@@ -265,6 +280,7 @@ private struct WindowRow: View {
 private struct UsageBar: View {
     let fraction: Double
     let tint: Color
+    var mark: Double?
 
     var body: some View {
         GeometryReader { proxy in
@@ -275,6 +291,12 @@ private struct UsageBar: View {
                     .fill(tint)
                     // A sliver stays visible at 1–2% so "almost empty" never reads as "no bar".
                     .frame(width: fraction > 0 ? max(proxy.size.width * min(fraction, 1), 4) : 0)
+                if let mark {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.55))
+                        .frame(width: 2, height: 10)
+                        .offset(x: min(max(proxy.size.width * mark - 1, 0), proxy.size.width - 2))
+                }
             }
         }
         .frame(height: 6)

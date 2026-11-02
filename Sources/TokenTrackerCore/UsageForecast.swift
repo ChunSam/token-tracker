@@ -12,6 +12,14 @@ public enum ForecastWindow: Sendable {
         case .sevenDay: return "7d"
         }
     }
+
+    /// How long the window runs from opening to reset.
+    public var duration: TimeInterval {
+        switch self {
+        case .fiveHour: return 5 * 3600
+        case .sevenDay: return 7 * 24 * 3600
+        }
+    }
 }
 
 /// A depletion forecast for one provider/window: how fast remaining budget is

@@ -182,8 +182,18 @@ struct StatusMenuBuilder {
         if let forecastLine = context.forecastLines[usage.provider] {
             menu.addItem(infoItem("  \(forecastLine)"))
         }
-        menu.addItem(infoItem("  \(context.localizer.text(.fiveHourReset)): \(DisplayFormatter.formatReset(usage.resetAt5h, localizer: context.localizer))"))
-        menu.addItem(infoItem("  \(context.localizer.text(.sevenDayReset)): \(DisplayFormatter.formatReset(usage.resetAt7d, localizer: context.localizer))"))
+        let fiveHourReset = DisplayFormatter.formatWindowReset(
+            remainingPercent: usage.remainingPercent5h,
+            resetAt: usage.resetAt5h,
+            localizer: context.localizer
+        )
+        let sevenDayReset = DisplayFormatter.formatWindowReset(
+            remainingPercent: usage.remainingPercent7d,
+            resetAt: usage.resetAt7d,
+            localizer: context.localizer
+        )
+        menu.addItem(infoItem("  \(context.localizer.text(.fiveHourReset)): \(fiveHourReset)"))
+        menu.addItem(infoItem("  \(context.localizer.text(.sevenDayReset)): \(sevenDayReset)"))
         menu.addItem(infoItem("  \(context.localizer.text(.source)): \(usage.source.rawValue)"))
         if let error = issue.technicalDetail {
             menu.addItem(infoItem("  \(context.localizer.text(.technicalError)): \(error)"))

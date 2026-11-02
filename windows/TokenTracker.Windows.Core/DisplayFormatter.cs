@@ -85,6 +85,26 @@ public static class DisplayFormatter
         return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
     }
 
+    /// The menu's reset text for one window. A window that reports a balance but
+    /// no reset instant is not a failed reading: Claude opens its 5h window on
+    /// first use, so until then there is no reset to name. Saying that beats
+    /// "--", which reads as "we could not get it". With no balance either there
+    /// is nothing to claim about the window, so the placeholder stays.
+    public static string FormatWindowReset(int? remainingPercent, DateTimeOffset? resetAt, Localizer localizer)
+    {
+        if (resetAt is not null)
+        {
+            return FormatReset(resetAt);
+        }
+
+        if (remainingPercent is null)
+        {
+            return "--";
+        }
+
+        return localizer.Text(L10nKey.WindowNotOpen);
+    }
+
     public static string Tooltip(UsageSnapshot? snapshot, ProviderLabelStyle labelStyle = ProviderLabelStyle.Icon)
     {
         if (snapshot is null)

@@ -55,6 +55,25 @@ ExpectEqual(DisplayFormatter.PreferredForecastWindow(Usage(Provider.Claude, 73, 
 ExpectEqual(DisplayFormatter.PreferredForecastWindow(missingFiveHour), ForecastWindow.SevenDay, "forecast surfaces fall back to 7d when 5h is missing");
 ExpectEqual(DisplayFormatter.PreferredForecastWindow(missingBothWindows), ForecastWindow.FiveHour, "default window is 5h when neither reports");
 
+var englishReset = new Localizer(AppLanguage.English);
+var koreanReset = new Localizer(AppLanguage.Korean);
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(63, DateTimeOffset.Now.AddMinutes(42).AddSeconds(30), englishReset),
+    "42m",
+    "a window with a reset still names the time");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(100, null, englishReset),
+    "none yet (opens on first use)",
+    "a balance with no reset means the window has not opened yet");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(100, null, koreanReset),
+    "아직 없음(첫 사용 시 시작)",
+    "the unopened window reads in Korean too");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(null, null, englishReset),
+    "--",
+    "with no balance either there is nothing to claim about the window");
+
 var snapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),
     Codex: Usage(Provider.Codex, 91, 99, now, plan: "plus"),

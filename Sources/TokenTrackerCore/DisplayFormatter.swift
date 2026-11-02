@@ -154,4 +154,19 @@ public struct DisplayFormatter {
         if hours < 24 { return "\(hours)h \(minutes % 60)m" }
         return "\(hours / 24)d \(hours % 24)h"
     }
+
+    /// The menu's reset text for one window. A window that reports a balance but
+    /// no reset instant is not a failed reading: Claude opens its 5h window on
+    /// first use, so until then there is no reset to name. Saying that beats
+    /// `--`, which reads as "we could not get it". With no balance either there
+    /// is nothing to claim about the window, so the placeholder stays.
+    public static func formatWindowReset(
+        remainingPercent: Int?,
+        resetAt: Date?,
+        localizer: Localizer = Localizer(language: .english)
+    ) -> String {
+        if resetAt != nil { return formatReset(resetAt, localizer: localizer) }
+        guard remainingPercent != nil else { return "--" }
+        return localizer.text(.windowNotOpen)
+    }
 }

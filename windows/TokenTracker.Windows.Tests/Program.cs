@@ -77,6 +77,18 @@ ExpectEqual(
     DisplayFormatter.FormatWindowReset(55, DateTimeOffset.Now.AddMinutes(-1), koreanReset),
     "지금",
     "A reset that has just passed reads in the chosen language");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(null, null, englishReset, providerReported: true),
+    "not reported",
+    "A provider that answered without this window did not fail to read it");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(null, null, koreanReset, providerReported: true),
+    "제공되지 않음",
+    "The unreported window reads in Korean too");
+ExpectEqual(
+    DisplayFormatter.FormatWindowReset(100, null, englishReset, providerReported: true),
+    "none yet (opens on first use)",
+    "A window with a balance is unopened, not unreported");
 
 var snapshot = new UsageSnapshot(
     Claude: Usage(Provider.Claude, 63, 80, now),

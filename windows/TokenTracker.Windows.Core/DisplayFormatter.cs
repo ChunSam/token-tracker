@@ -110,21 +110,35 @@ public static class DisplayFormatter
     /// The menu's reset text for one window. A window that reports a balance but
     /// no reset instant is not a failed reading: Claude opens its 5h window on
     /// first use, so until then there is no reset to name. Saying that beats
-    /// "--", which reads as "we could not get it". With no balance either there
-    /// is nothing to claim about the window, so the placeholder stays.
-    public static string FormatWindowReset(int? remainingPercent, DateTimeOffset? resetAt, Localizer localizer)
+    /// "--", which reads as "we could not get it".
+    ///
+    /// With no balance for this window there are still two cases. If the provider
+    /// answered with its other window (providerReported), the read worked and
+    /// this window simply was not in it — Claude Ultra drops the 5h window for
+    /// verified accounts — so say that. Only when nothing came back at all is
+    /// there nothing to claim, and the placeholder stays.
+    public static string FormatWindowReset(
+        int? remainingPercent,
+        DateTimeOffset? resetAt,
+        Localizer localizer,
+        bool providerReported = false)
     {
         if (resetAt is not null)
         {
             return FormatReset(resetAt, localizer);
         }
 
-        if (remainingPercent is null)
+        if (remainingPercent is not null)
         {
-            return "--";
+            return localizer.Text(L10nKey.WindowNotOpen);
         }
 
-        return localizer.Text(L10nKey.WindowNotOpen);
+        if (providerReported)
+        {
+            return localizer.Text(L10nKey.WindowNotReported);
+        }
+
+        return "--";
     }
 
     /// Tooltip variant of FormatReset: the same buckets without the inner space,

@@ -246,8 +246,8 @@ internal sealed class TrayAppContext : ApplicationContext
             }
         }
 
-        var fiveHourReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent5h, usage.ResetAt5h, Localizer);
-        var sevenDayReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent7d, usage.ResetAt7d, Localizer);
+        var fiveHourReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent5h, usage.ResetAt5h, Localizer, usage.IsAvailable);
+        var sevenDayReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent7d, usage.ResetAt7d, Localizer, usage.IsAvailable);
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {fiveHourReset}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {sevenDayReset}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");

@@ -530,6 +530,29 @@ ExpectEqual(
     TimeSpan.FromMinutes(90),
     "A long poll interval waits three polls");
 
+string LowBalanceIds(DateTimeOffset? reset5h, DateTimeOffset? reset7d)
+{
+    var snapshot = new UsageSnapshot(
+        Claude: new ProviderUsage(Provider.Claude, 5, 4, reset5h, reset7d, UsageSource.StaleCache, null, null, null, now),
+        Codex: new ProviderUsage(Provider.Codex, 80, 90, null, null, UsageSource.Api, null, null, null, now),
+        UpdatedAt: now);
+    var settings = new UsageAlertSettings(true, 20, 10, 0);
+    return string.Join(",", UsageAlertEvaluator.Candidates(snapshot, settings, now).Select(candidate => candidate.Id));
+}
+
+ExpectEqual(
+    LowBalanceIds(now.AddMinutes(10), now.AddHours(2)),
+    "claude-5h-low,claude-7d-low",
+    "A balance in a window that has not reset still warns");
+ExpectEqual(
+    LowBalanceIds(now.AddMinutes(-1), now.AddMinutes(-1)),
+    "",
+    "A balance whose window already reset is no reason to warn");
+ExpectEqual(
+    LowBalanceIds(null, null),
+    "claude-5h-low,claude-7d-low",
+    "With no reset instant to judge by the alert stands");
+
 var cachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cache-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
 var cacheStore = new CacheStore(cachePath);
 // CacheStore.Load compares UpdatedAt against the real wall clock, so save a

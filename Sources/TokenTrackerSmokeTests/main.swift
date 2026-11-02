@@ -334,6 +334,23 @@ expectEqual(stalledIDs(ageSeconds: 5400, source: .staleCache, stalledAfter: 0), 
 expectEqual(UsageAlertEvaluator.stalledThreshold(refreshInterval: 300), 1800, "a short poll interval keeps the 30 minute floor")
 expectEqual(UsageAlertEvaluator.stalledThreshold(refreshInterval: 1800), 5400, "a long poll interval waits three polls")
 
+func lowBalanceIDs(reset5h: Date?, reset7d: Date?) -> [String] {
+    let snapshot = UsageSnapshot(
+        claude: ProviderUsage(provider: .claude, remainingPercent5h: 5, remainingPercent7d: 4, resetAt5h: reset5h, resetAt7d: reset7d, source: .staleCache, error: nil, plan: nil, model: nil, updatedAt: now),
+        codex: ProviderUsage(provider: .codex, remainingPercent5h: 80, remainingPercent7d: 90, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now),
+        updatedAt: now
+    )
+    return UsageAlertEvaluator.candidates(
+        snapshot: snapshot,
+        settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 0),
+        now: now
+    ).map(\.id)
+}
+
+expectEqual(lowBalanceIDs(reset5h: now.addingTimeInterval(600), reset7d: now.addingTimeInterval(7200)), ["claude-5h-low", "claude-7d-low"], "a balance in a window that has not reset still warns")
+expectEqual(lowBalanceIDs(reset5h: now.addingTimeInterval(-60), reset7d: now.addingTimeInterval(-60)), [], "a balance whose window already reset is no reason to warn")
+expectEqual(lowBalanceIDs(reset5h: nil, reset7d: nil), ["claude-5h-low", "claude-7d-low"], "with no reset instant to judge by the alert stands")
+
 let earlierSnapshot = UsageSnapshot(
     claude: ProviderUsage(provider: .claude, remainingPercent5h: 40, remainingPercent7d: 70, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),
     codex: ProviderUsage(provider: .codex, remainingPercent5h: 90, remainingPercent7d: 99, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: nil, model: nil, updatedAt: now.addingTimeInterval(-3600)),

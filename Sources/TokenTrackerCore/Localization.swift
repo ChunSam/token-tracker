@@ -57,7 +57,6 @@ public struct Localizer {
         .recovery: "Recovery",
         .diagnostics: "Diagnostics",
         .copyDiagnostics: "Copy Diagnostics",
-        .diagnosticsCopied: "Diagnostics copied",
         .openClaudeCredentials: "Open Claude Credentials",
         .openCodexAuth: "Open Codex Auth",
         .lastSuccessfulUpdate: "Last successful update",
@@ -157,7 +156,6 @@ public struct Localizer {
         .recovery: "복구 방법",
         .diagnostics: "진단",
         .copyDiagnostics: "진단 정보 복사",
-        .diagnosticsCopied: "진단 정보가 복사됨",
         .openClaudeCredentials: "Claude 인증 파일 열기",
         .openCodexAuth: "Codex 인증 파일 열기",
         .lastSuccessfulUpdate: "마지막 성공 업데이트",
@@ -258,7 +256,6 @@ public enum L10nKey: String {
     case recovery
     case diagnostics
     case copyDiagnostics
-    case diagnosticsCopied
     case openClaudeCredentials
     case openCodexAuth
     case lastSuccessfulUpdate

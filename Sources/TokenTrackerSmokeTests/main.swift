@@ -511,6 +511,64 @@ expectEqual(UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled:
 let safeForecastInput = ForecastAlertInput(provider: .claude, window: .fiveHour, forecast: earlyResetForecast!, resetAt: now.addingTimeInterval(3600))
 expectEqual(UsageForecastAlert.candidates(inputs: [safeForecastInput], enabled: true).count, 0, "no forecast alert when the reset comes first")
 
+// Alert bodies follow the language setting like their titles. The ids do not:
+// duplicate suppression is keyed on them, so switching language must not re-fire.
+func alertBodies(_ language: AppLanguage) -> [String] {
+    let bodyLocalizer = Localizer(language: language)
+    let stalled = UsageAlertEvaluator.candidates(
+        snapshot: stalledSnapshot(ageSeconds: 5400, source: .staleCache),
+        settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 0, sevenDayThreshold: 0, resetWarningMinutes: 0, stalledAfter: 1800),
+        now: now,
+        localizer: bodyLocalizer
+    )
+    let lowAndReset = UsageAlertEvaluator.candidates(
+        snapshot: alertSnapshot,
+        settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
+        now: now,
+        localizer: bodyLocalizer
+    )
+    let depletion = UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled: true, localizer: bodyLocalizer)
+    return (stalled + lowAndReset + depletion).map(\.body)
+}
+
+expectEqual(
+    alertBodies(.english),
+    [
+        "Claude last measured 1h30m ago",
+        "Claude 5h 19% <= 20%",
+        "Claude 7d 9% <= 10%",
+        "Claude 5h reset in 5m",
+        "Claude 5h: ~2h 0m → 0% (before reset)"
+    ],
+    "English alert bodies are unchanged"
+)
+expectEqual(
+    alertBodies(.korean),
+    [
+        "Claude 마지막 측정 1h30m 전",
+        "Claude 5h 19% <= 20%",
+        "Claude 7d 9% <= 10%",
+        "Claude 5h 5m 후 리셋",
+        "Claude 5h: ~2h 0m → 0% (리셋 전)"
+    ],
+    "Korean alert bodies are translated; the symbol-only low-balance bodies stay as they are"
+)
+expectEqual(
+    UsageAlertEvaluator.candidates(
+        snapshot: alertSnapshot,
+        settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
+        now: now,
+        localizer: Localizer(language: .korean)
+    ).map(\.id),
+    alertCandidates.map(\.id),
+    "alert ids do not depend on the language"
+)
+expectEqual(
+    UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled: true, localizer: Localizer(language: .korean)).map(\.id),
+    UsageForecastAlert.candidates(inputs: [forecastAlertInput], enabled: true).map(\.id),
+    "forecast alert ids do not depend on the language"
+)
+
 // MARK: Sparkline
 expectEqual(SparklineText.render([0, 25, 50, 75, 100]), "▁▃▅▇█", "sparkline maps values across the eight blocks")
 expectEqual(SparklineText.render([42]), "", "a single point renders nothing")

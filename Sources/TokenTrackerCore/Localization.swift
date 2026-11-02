@@ -63,7 +63,9 @@ public struct Localizer {
         .fiveHourAlertTitle: "5h usage is low",
         .sevenDayAlertTitle: "7d usage is low",
         .resetAlertTitle: "Usage window reset soon",
+        .resetAlertBody: "{provider} {window} reset in {time}",
         .stalledAlertTitle: "Usage stopped updating",
+        .stalledAlertBody: "{provider} last measured {time} ago",
         .fiveHourAlertThreshold: "5h alert threshold",
         .sevenDayAlertThreshold: "7d alert threshold",
         .resetAlertMinutes: "Reset alert window",
@@ -76,6 +78,7 @@ public struct Localizer {
         .forecastLabel: "Projected depletion",
         .forecastBeforeReset: "empties before reset",
         .depletionAlertTitle: "May run out before reset",
+        .depletionAlertBody: "{provider} {window}: ~{time} → 0% (before reset)",
         .showForecastLabel: "Show depletion forecast",
         .showResetCountdownLabel: "Show time until reset in the menu bar",
         .depletionAlertToggle: "Depletion alert (before reset)",
@@ -170,7 +173,9 @@ public struct Localizer {
         .fiveHourAlertTitle: "5시간 사용량 부족",
         .sevenDayAlertTitle: "7일 사용량 부족",
         .resetAlertTitle: "사용량 창 리셋 임박",
+        .resetAlertBody: "{provider} {window} {time} 후 리셋",
         .stalledAlertTitle: "사용량 갱신 멈춤",
+        .stalledAlertBody: "{provider} 마지막 측정 {time} 전",
         .fiveHourAlertThreshold: "5시간 알림 기준",
         .sevenDayAlertThreshold: "7일 알림 기준",
         .resetAlertMinutes: "리셋 알림 시간",
@@ -183,6 +188,7 @@ public struct Localizer {
         .forecastLabel: "예상 소진",
         .forecastBeforeReset: "리셋 전 소진",
         .depletionAlertTitle: "리셋 전 소진 예상",
+        .depletionAlertBody: "{provider} {window}: ~{time} → 0% (리셋 전)",
         .showForecastLabel: "소진 예측 표시",
         .showResetCountdownLabel: "메뉴바에 리셋까지 남은 시간 표시",
         .depletionAlertToggle: "소진 예측 알림 (리셋 전)",
@@ -278,7 +284,9 @@ public enum L10nKey: String {
     case fiveHourAlertTitle
     case sevenDayAlertTitle
     case resetAlertTitle
+    case resetAlertBody
     case stalledAlertTitle
+    case stalledAlertBody
     case fiveHourAlertThreshold
     case sevenDayAlertThreshold
     case resetAlertMinutes
@@ -291,6 +299,7 @@ public enum L10nKey: String {
     case forecastLabel
     case forecastBeforeReset
     case depletionAlertTitle
+    case depletionAlertBody
     case showForecastLabel
     case showResetCountdownLabel
     case depletionAlertToggle

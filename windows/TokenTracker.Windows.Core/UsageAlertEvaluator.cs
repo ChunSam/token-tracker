@@ -71,6 +71,8 @@ public static class UsageAlertEvaluator
             yield return stalled;
         }
 
+        // The low-balance bodies are symbols only, so they read the same in every
+        // language and skip the localizer.
         if (usage.RemainingPercent5h is { } fiveHourRemaining &&
             settings.FiveHourThreshold > 0 &&
             fiveHourRemaining <= settings.FiveHourThreshold &&
@@ -157,7 +159,9 @@ public static class UsageAlertEvaluator
         return new UsageAlertCandidate(
             $"{usage.Provider.ToId()}-stalled",
             localizer.Text(L10nKey.StalledAlertTitle),
-            $"{usage.DisplayName} last measured {ago} ago");
+            localizer.Text(L10nKey.StalledAlertBody)
+                .Replace("{provider}", usage.DisplayName, StringComparison.Ordinal)
+                .Replace("{time}", ago, StringComparison.Ordinal));
     }
 
     private static IEnumerable<UsageAlertCandidate> ResetAlerts(
@@ -190,7 +194,10 @@ public static class UsageAlertEvaluator
             yield return new UsageAlertCandidate(
                 $"{usage.Provider.ToId()}-{reset.Item1}-reset-{resetId}",
                 localizer.Text(L10nKey.ResetAlertTitle),
-                $"{usage.DisplayName} {reset.Item1} reset in {minutes}m");
+                localizer.Text(L10nKey.ResetAlertBody)
+                    .Replace("{provider}", usage.DisplayName, StringComparison.Ordinal)
+                    .Replace("{window}", reset.Item1, StringComparison.Ordinal)
+                    .Replace("{time}", $"{minutes}m", StringComparison.Ordinal));
         }
     }
 }

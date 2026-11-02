@@ -74,6 +74,8 @@ public enum UsageAlertEvaluator {
             alerts.append(stalled)
         }
 
+        // The low-balance bodies are symbols only, so they read the same in every
+        // language and skip the localizer.
         if let remaining = usage.remainingPercent5h,
            settings.fiveHourThreshold > 0,
            remaining <= settings.fiveHourThreshold,
@@ -150,7 +152,9 @@ public enum UsageAlertEvaluator {
         return UsageAlertCandidate(
             id: "\(usage.provider.rawValue)-stalled",
             title: localizer.text(.stalledAlertTitle),
-            body: "\(usage.provider.displayName) last measured \(ago) ago"
+            body: localizer.text(.stalledAlertBody)
+                .replacingOccurrences(of: "{provider}", with: usage.provider.displayName)
+                .replacingOccurrences(of: "{time}", with: ago)
         )
     }
 
@@ -183,7 +187,10 @@ public enum UsageAlertEvaluator {
             return UsageAlertCandidate(
                 id: "\(usage.provider.rawValue)-\(reset.label)-reset-\(resetID)",
                 title: localizer.text(.resetAlertTitle),
-                body: "\(usage.provider.displayName) \(reset.label) reset in \(minutes)m"
+                body: localizer.text(.resetAlertBody)
+                    .replacingOccurrences(of: "{provider}", with: usage.provider.displayName)
+                    .replacingOccurrences(of: "{window}", with: reset.label)
+                    .replacingOccurrences(of: "{time}", with: "\(minutes)m")
             )
         }
     }

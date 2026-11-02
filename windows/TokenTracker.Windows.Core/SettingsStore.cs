@@ -26,6 +26,11 @@ public sealed class AppSettings
     /// </summary>
     public int StaleToleranceHours { get; set; } = 12;
     public bool ShowForecast { get; set; } = true;
+
+    /// Whether the tooltip carries the time until the shown window resets. On by
+    /// default, matching the menu bar app; a settings file written before this
+    /// existed has no key, so it lands here too.
+    public bool ShowResetCountdown { get; set; } = true;
     public bool DepletionAlertEnabled { get; set; }
 
     /// When updates are paused, the instant polling resumes (persisted, so a

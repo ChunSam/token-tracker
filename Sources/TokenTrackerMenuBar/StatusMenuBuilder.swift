@@ -185,12 +185,14 @@ struct StatusMenuBuilder {
         let fiveHourReset = DisplayFormatter.formatWindowReset(
             remainingPercent: usage.remainingPercent5h,
             resetAt: usage.resetAt5h,
-            localizer: context.localizer
+            localizer: context.localizer,
+            providerReported: usage.isAvailable
         )
         let sevenDayReset = DisplayFormatter.formatWindowReset(
             remainingPercent: usage.remainingPercent7d,
             resetAt: usage.resetAt7d,
-            localizer: context.localizer
+            localizer: context.localizer,
+            providerReported: usage.isAvailable
         )
         menu.addItem(infoItem("  \(context.localizer.text(.fiveHourReset)): \(fiveHourReset)"))
         menu.addItem(infoItem("  \(context.localizer.text(.sevenDayReset)): \(sevenDayReset)"))

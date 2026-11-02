@@ -87,6 +87,21 @@ expectEqual(
     "지금",
     "a reset that has just passed reads in the chosen language"
 )
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: nil, resetAt: nil, providerReported: true),
+    "not reported",
+    "a provider that answered without this window did not fail to read it"
+)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: nil, resetAt: nil, localizer: koreanReset, providerReported: true),
+    "제공되지 않음",
+    "the unreported window reads in Korean too"
+)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: 100, resetAt: nil, providerReported: true),
+    "none yet (opens on first use)",
+    "a window with a balance is unopened, not unreported"
+)
 
 let fiveHourLead = countdownUsage(.claude, five: 63, seven: 80, reset5h: 8010, reset7d: 273_900)
 expectEqual(DisplayFormatter.displayWindow(fiveHourLead), .fiveHour, "a healthy 7d leaves the 5h window on display")

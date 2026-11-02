@@ -158,15 +158,21 @@ public struct DisplayFormatter {
     /// The menu's reset text for one window. A window that reports a balance but
     /// no reset instant is not a failed reading: Claude opens its 5h window on
     /// first use, so until then there is no reset to name. Saying that beats
-    /// `--`, which reads as "we could not get it". With no balance either there
-    /// is nothing to claim about the window, so the placeholder stays.
+    /// `--`, which reads as "we could not get it".
+    ///
+    /// With no balance for this window there are still two cases. If the provider
+    /// answered with its other window (`providerReported`), the read worked and
+    /// this window simply was not in it — Claude Ultra drops the 5h window for
+    /// verified accounts — so say that. Only when nothing came back at all is
+    /// there nothing to claim, and the placeholder stays.
     public static func formatWindowReset(
         remainingPercent: Int?,
         resetAt: Date?,
-        localizer: Localizer = Localizer(language: .english)
+        localizer: Localizer = Localizer(language: .english),
+        providerReported: Bool = false
     ) -> String {
         if resetAt != nil { return formatReset(resetAt, localizer: localizer) }
-        guard remainingPercent != nil else { return "--" }
-        return localizer.text(.windowNotOpen)
+        if remainingPercent != nil { return localizer.text(.windowNotOpen) }
+        return providerReported ? localizer.text(.windowNotReported) : "--"
     }
 }

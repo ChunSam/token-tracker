@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using TokenTracker.Windows.Core;
 
 namespace TokenTracker.Windows;
@@ -15,6 +16,8 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon notifyIcon = new();
     private readonly System.Windows.Forms.Timer timer = new();
     private readonly System.Windows.Forms.Timer countdownTimer = new();
+    private readonly System.Windows.Forms.Timer wakeTimer = new();
+    private readonly SynchronizationContext uiContext;
     private readonly SettingsStore settingsStore = new();
     private readonly CacheStore cacheStore = new();
     private readonly UsageHistoryStore historyStore = new();
@@ -59,6 +62,23 @@ internal sealed class TrayAppContext : ApplicationContext
         countdownTimer.Tick += (_, _) => UpdateTooltip();
         SyncCountdownTimer();
 
+        // After sleep the tray keeps showing what was measured before it until the
+        // next timer tick, up to a whole refresh interval later. Refresh on resume
+        // instead, once the network has had a few seconds to come back, and restart
+        // the poll timer so the next poll is a full interval after this one.
+        wakeTimer.Interval = 10 * 1000;
+        wakeTimer.Tick += async (_, _) =>
+        {
+            wakeTimer.Stop();
+            timer.Stop();
+            timer.Start();
+            await RefreshAsync();
+        };
+        // Building the menu above created a control, which installed the WinForms
+        // context for this thread.
+        uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
         // Start from the snapshot cached before the last exit, so a window that ran
         // low and reset while the app was not running is still reported.
         var cached = cacheStore.Load(TimeSpan.FromHours(settings.StaleToleranceHours));
@@ -74,8 +94,10 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         if (disposing)
         {
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             timer.Dispose();
             countdownTimer.Dispose();
+            wakeTimer.Dispose();
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
             providerLogos.Dispose();
@@ -186,6 +208,21 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             checkingForUpdates = false;
         }
+    }
+
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+        {
+            return;
+        }
+
+        // SystemEvents may raise this off the UI thread; the timer belongs to it.
+        uiContext.Post(_ =>
+        {
+            wakeTimer.Stop();
+            wakeTimer.Start();
+        }, null);
     }
 
     private void SetIcon(UsageSnapshot? usage)

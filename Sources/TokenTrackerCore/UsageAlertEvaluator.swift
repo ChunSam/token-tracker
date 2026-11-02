@@ -76,7 +76,8 @@ public enum UsageAlertEvaluator {
 
         if let remaining = usage.remainingPercent5h,
            settings.fiveHourThreshold > 0,
-           remaining <= settings.fiveHourThreshold {
+           remaining <= settings.fiveHourThreshold,
+           !windowHasReset(usage.resetAt5h, now: now) {
             alerts.append(
                 UsageAlertCandidate(
                     id: "\(usage.provider.rawValue)-5h-low",
@@ -88,7 +89,8 @@ public enum UsageAlertEvaluator {
 
         if let remaining = usage.remainingPercent7d,
            settings.sevenDayThreshold > 0,
-           remaining <= settings.sevenDayThreshold {
+           remaining <= settings.sevenDayThreshold,
+           !windowHasReset(usage.resetAt7d, now: now) {
             alerts.append(
                 UsageAlertCandidate(
                     id: "\(usage.provider.rawValue)-7d-low",
@@ -100,6 +102,19 @@ public enum UsageAlertEvaluator {
 
         alerts.append(contentsOf: resetAlerts(for: usage, settings: settings, now: now, localizer: localizer))
         return alerts
+    }
+
+    /// A balance only ever describes the window it was measured in. Once that
+    /// window's reset has passed, the number on hand belongs to a window that has
+    /// already refilled, so it is no reason to warn — and a cached reading can sit
+    /// on the wrong side of a reset for hours. `resetCountdownSuffix` makes the
+    /// same call about a cached reading's time; this keeps the alerts in step.
+    ///
+    /// With no reset instant to judge by there is nothing to go on, so the alert
+    /// stands.
+    private static func windowHasReset(_ resetAt: Date?, now: Date) -> Bool {
+        guard let resetAt else { return false }
+        return resetAt <= now
     }
 
     /// How long a cached reading may stand before the menu bar is quietly out of

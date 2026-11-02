@@ -73,7 +73,8 @@ public static class UsageAlertEvaluator
 
         if (usage.RemainingPercent5h is { } fiveHourRemaining &&
             settings.FiveHourThreshold > 0 &&
-            fiveHourRemaining <= settings.FiveHourThreshold)
+            fiveHourRemaining <= settings.FiveHourThreshold &&
+            !WindowHasReset(usage.ResetAt5h, now))
         {
             yield return new UsageAlertCandidate(
                 $"{usage.Provider.ToId()}-5h-low",
@@ -83,7 +84,8 @@ public static class UsageAlertEvaluator
 
         if (usage.RemainingPercent7d is { } sevenDayRemaining &&
             settings.SevenDayThreshold > 0 &&
-            sevenDayRemaining <= settings.SevenDayThreshold)
+            sevenDayRemaining <= settings.SevenDayThreshold &&
+            !WindowHasReset(usage.ResetAt7d, now))
         {
             yield return new UsageAlertCandidate(
                 $"{usage.Provider.ToId()}-7d-low",
@@ -95,6 +97,24 @@ public static class UsageAlertEvaluator
         {
             yield return candidate;
         }
+    }
+
+    /// A balance only ever describes the window it was measured in. Once that
+    /// window's reset has passed, the number on hand belongs to a window that has
+    /// already refilled, so it is no reason to warn — and a cached reading can sit
+    /// on the wrong side of a reset for hours. FormatWindowReset makes the same
+    /// call about a cached reading's time; this keeps the alerts in step.
+    ///
+    /// With no reset instant to judge by there is nothing to go on, so the alert
+    /// stands.
+    private static bool WindowHasReset(DateTimeOffset? resetAt, DateTimeOffset now)
+    {
+        if (resetAt is not { } date)
+        {
+            return false;
+        }
+
+        return date <= now;
     }
 
     /// How long a cached reading may stand before the tray is quietly out of

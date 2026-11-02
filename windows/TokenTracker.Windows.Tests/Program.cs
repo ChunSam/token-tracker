@@ -1155,6 +1155,48 @@ ExpectEqual(
     refilled,
     "a measurement replaces the last reading");
 
+// Update check: what GitHub names as the latest release, and whether it is newer.
+ExpectEqual(UpdateCheck.LatestVersion("{\"tag_name\":\"v1.1.17\",\"draft\":false,\"prerelease\":false}"), "1.1.17", "a release tag reads without its v");
+Expect(UpdateCheck.LatestVersion("{\"tag_name\":\"v1.2.0\",\"prerelease\":true}") is null, "a prerelease is not offered");
+Expect(UpdateCheck.LatestVersion("{\"tag_name\":\"v1.2.0\",\"draft\":true}") is null, "a draft is not offered");
+Expect(UpdateCheck.LatestVersion("{\"tag_name\":\"v1.2.0-beta\"}") is null, "a tag that is not plain numbers is not offered");
+Expect(UpdateCheck.LatestVersion("{\"message\":\"Not Found\"}") is null, "an error body has no version");
+Expect(UpdateCheck.LatestVersion("not json") is null, "a body that is not JSON has no version");
+Expect(UpdateCheck.IsNewer("1.1.17", "1.1.16"), "a later patch is newer");
+Expect(UpdateCheck.IsNewer("1.2", "1.1.16"), "a later minor is newer whatever the patch");
+Expect(UpdateCheck.IsNewer("1.1.10", "1.1.9"), "versions compare as numbers, not text");
+Expect(!UpdateCheck.IsNewer("1.1.16", "1.1.16"), "the same version is not newer");
+Expect(!UpdateCheck.IsNewer("1.1.15", "1.1.16"), "an older version is not newer");
+Expect(!UpdateCheck.IsNewer("1.1.17", "unknown"), "a build that cannot name its version is never prompted");
+var updateAttempt = new DateTimeOffset(2027, 1, 15, 8, 0, 0, TimeSpan.Zero);
+ExpectEqual(UpdateCheck.NextCheck(updateAttempt, true), updateAttempt.AddHours(24), "a good check waits a day");
+ExpectEqual(UpdateCheck.NextCheck(updateAttempt, false), updateAttempt.AddHours(1), "a failed check is retried within the hour");
+Expect(UpdateCheck.IsDue(null, updateAttempt), "the first check is due at once");
+Expect(!UpdateCheck.IsDue(updateAttempt.AddMinutes(1), updateAttempt), "a check is not due before its time");
+Expect(UpdateCheck.IsDue(updateAttempt, updateAttempt), "a check is due at its time");
+ExpectEqual(UpdateCheck.CurrentVersion(new Version(1, 1, 16, 18)), "1.1.16", "the running build names itself the way tags do");
+Expect(UpdateCheck.CurrentVersion(null) is null, "an assembly with no version names none");
+
+using (var releaseClient = new HttpClient(new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK)
+       {
+           Content = new StringContent("{\"tag_name\":\"v1.1.17\"}")
+       })))
+{
+    ExpectEqual(await UpdateCheck.FetchLatestVersionAsync(releaseClient), "1.1.17", "a release response yields its version");
+}
+
+using (var limitedClient = new HttpClient(new QueueHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.Forbidden))))
+{
+    Expect(await UpdateCheck.FetchLatestVersionAsync(limitedClient) is null, "a refused check yields nothing rather than an error");
+}
+
+Expect(new AppSettings().CheckForUpdates, "update checks are on by default");
+var updateSettingsPath = Path.Combine(Path.GetTempPath(), "token-tracker-update-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+Directory.CreateDirectory(Path.GetDirectoryName(updateSettingsPath)!);
+File.WriteAllText(updateSettingsPath, "{\"RefreshIntervalSeconds\":300}");
+Expect(new SettingsStore(updateSettingsPath).Load().CheckForUpdates, "a settings file from before the update check lands on the default");
+Directory.Delete(Path.GetDirectoryName(updateSettingsPath)!, recursive: true);
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static string StatusLinePayload(

@@ -1047,6 +1047,54 @@ foreach (var statusLineLanguage in new[] { AppLanguage.English, AppLanguage.Kore
 
 RunStatusLineBridgeScriptTests();
 
+// Pace: one measurement against the line of using the window evenly to its reset.
+var paceNow = new DateTimeOffset(2027, 1, 15, 8, 0, 0, TimeSpan.Zero);
+UsagePaceReading? PaceAt(int? remaining, double? resetInSeconds, ForecastWindow window = ForecastWindow.FiveHour)
+{
+    DateTimeOffset? resetAt = resetInSeconds is { } seconds ? paceNow.AddSeconds(seconds) : null;
+    return UsagePaceEvaluator.Reading(remaining, resetAt, window, paceNow);
+}
+
+ExpectEqual(PaceAt(30, 9000)?.Pace, UsagePace.Ahead, "half the window gone with 70% used is ahead of pace");
+ExpectEqual(PaceAt(50, 9000)?.Pace, UsagePace.OnTrack, "half gone with half used is on track");
+ExpectEqual(PaceAt(41, 9000)?.Pace, UsagePace.OnTrack, "nine points under the line is within the tolerance");
+ExpectEqual(PaceAt(39, 9000)?.Pace, UsagePace.Ahead, "eleven points under the line is ahead");
+ExpectEqual(PaceAt(75, 9000)?.Pace, UsagePace.Behind, "half gone with a quarter used is behind pace");
+ExpectEqual(PaceAt(50, 9000)?.ExpectedRemainingPercent, 50, "the even line sits at the share of the window still to run");
+ExpectEqual(PaceAt(80, 302_400, ForecastWindow.SevenDay)?.Pace, UsagePace.Behind, "the 7d window is measured against its own length");
+Expect(PaceAt(50, null) is null, "without a reset there is no line to compare against");
+Expect(PaceAt(50, -60) is null, "a window past its reset has no pace");
+Expect(PaceAt(50, 20_000) is null, "a reset further off than the window is long is not placed");
+Expect(PaceAt(null, 9000) is null, "without a balance there is no pace");
+
+var pacedUsage = new ProviderUsage(
+    Provider.Claude,
+    30,
+    75,
+    paceNow.AddSeconds(9000),
+    paceNow.AddSeconds(302_400),
+    UsageSource.Api,
+    Error: null,
+    Plan: null,
+    Model: null,
+    UpdatedAt: paceNow);
+ExpectEqual(
+    UsagePaceText.MenuLine(pacedUsage, new Localizer(AppLanguage.Korean)),
+    "페이스: 5h 빠름 · 7d 여유",
+    "the pace line names each window in Korean");
+ExpectEqual(
+    UsagePaceText.MenuLine(pacedUsage, new Localizer(AppLanguage.English)),
+    "Pace: 5h ahead · 7d under",
+    "the pace line names each window in English");
+var cachedPacedUsage = pacedUsage with { Source = UsageSource.StaleCache };
+Expect(UsagePaceEvaluator.Reading(cachedPacedUsage, ForecastWindow.FiveHour) is null, "a cached reading gets no pace");
+Expect(UsagePaceText.MenuLine(cachedPacedUsage, new Localizer(AppLanguage.English)) is null, "nor a pace line");
+var bridgedPacedUsage = pacedUsage with { Source = UsageSource.StatusLine };
+ExpectEqual(
+    UsagePaceEvaluator.Reading(bridgedPacedUsage, ForecastWindow.FiveHour)?.Pace,
+    UsagePace.Ahead,
+    "a status-line measurement is paced at its own time");
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static string StatusLinePayload(

@@ -244,6 +244,12 @@ internal sealed class TrayAppContext : ApplicationContext
             {
                 AddDisabled(provider.DropDownItems, $"  {forecastLine}");
             }
+
+            var paceLine = UsagePaceText.MenuLine(usage, Localizer);
+            if (paceLine is not null)
+            {
+                AddDisabled(provider.DropDownItems, $"  {paceLine}");
+            }
         }
 
         var fiveHourReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent5h, usage.ResetAt5h, Localizer, usage.IsAvailable);

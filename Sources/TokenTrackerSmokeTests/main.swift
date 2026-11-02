@@ -777,4 +777,49 @@ expectEqual(TokenFingerprint.of(["a"]), TokenFingerprint.of(["a"]), "the same to
 expect(TokenFingerprint.of(["a"]) != TokenFingerprint.of(["b"]), "signing in again changes the fingerprint")
 expectEqual(TokenFingerprint.of(["a", "b"]), TokenFingerprint.of(["b", "a"]), "candidate order does not change the fingerprint")
 
+// Pace: one measurement against the line of using the window evenly to its reset.
+let paceNow = Date(timeIntervalSince1970: 1_800_000_000)
+func pace(_ remaining: Int?, resetIn: TimeInterval?, window: ForecastWindow = .fiveHour) -> UsagePaceReading? {
+    UsagePaceEvaluator.reading(
+        remainingPercent: remaining,
+        resetAt: resetIn.map { paceNow.addingTimeInterval($0) },
+        window: window,
+        measuredAt: paceNow
+    )
+}
+expectEqual(pace(30, resetIn: 9000)?.pace, UsagePace.ahead, "half the window gone with 70% used is ahead of pace")
+expectEqual(pace(50, resetIn: 9000)?.pace, UsagePace.onTrack, "half gone with half used is on track")
+expectEqual(pace(41, resetIn: 9000)?.pace, UsagePace.onTrack, "nine points under the line is within the tolerance")
+expectEqual(pace(39, resetIn: 9000)?.pace, UsagePace.ahead, "eleven points under the line is ahead")
+expectEqual(pace(75, resetIn: 9000)?.pace, UsagePace.behind, "half gone with a quarter used is behind pace")
+expectEqual(pace(50, resetIn: 9000)?.expectedRemainingPercent, 50, "the even line sits at the share of the window still to run")
+expectEqual(pace(80, resetIn: 302_400, window: .sevenDay)?.pace, UsagePace.behind, "the 7d window is measured against its own length")
+expect(pace(50, resetIn: nil) == nil, "without a reset there is no line to compare against")
+expect(pace(50, resetIn: -60) == nil, "a window past its reset has no pace")
+expect(pace(50, resetIn: 20_000) == nil, "a reset further off than the window is long is not placed")
+expect(pace(nil, resetIn: 9000) == nil, "without a balance there is no pace")
+
+let pacedUsage = ProviderUsage(
+    provider: .claude, remainingPercent5h: 30, remainingPercent7d: 75,
+    resetAt5h: paceNow.addingTimeInterval(9000), resetAt7d: paceNow.addingTimeInterval(302_400),
+    source: .api, error: nil, plan: nil, model: nil, updatedAt: paceNow
+)
+expectEqual(
+    UsagePaceText.menuLine(for: pacedUsage, localizer: Localizer(language: .korean)),
+    "페이스: 5h 빠름 · 7d 여유",
+    "the pace line names each window in Korean"
+)
+expectEqual(
+    UsagePaceText.menuLine(for: pacedUsage, localizer: Localizer(language: .english)),
+    "Pace: 5h ahead · 7d under",
+    "the pace line names each window in English"
+)
+var cachedPacedUsage = pacedUsage
+cachedPacedUsage.source = .staleCache
+expect(UsagePaceEvaluator.reading(for: cachedPacedUsage, window: .fiveHour) == nil, "a cached reading gets no pace")
+expect(UsagePaceText.menuLine(for: cachedPacedUsage, localizer: Localizer(language: .english)) == nil, "nor a pace line")
+var bridgedPacedUsage = pacedUsage
+bridgedPacedUsage.source = .statusLine
+expectEqual(UsagePaceEvaluator.reading(for: bridgedPacedUsage, window: .fiveHour)?.pace, UsagePace.ahead, "a status-line measurement is paced at its own time")
+
 print("TokenTrackerSmokeTests passed")

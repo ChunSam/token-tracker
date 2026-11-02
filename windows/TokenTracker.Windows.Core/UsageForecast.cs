@@ -12,6 +12,10 @@ public static class ForecastWindowExtensions
     /// Language-neutral window marker used in menu lines and alert bodies.
     public static string ShortLabel(this ForecastWindow window) =>
         window == ForecastWindow.FiveHour ? "5h" : "7d";
+
+    /// How long the window runs from opening to reset.
+    public static TimeSpan Duration(this ForecastWindow window) =>
+        window == ForecastWindow.FiveHour ? TimeSpan.FromHours(5) : TimeSpan.FromDays(7);
 }
 
 /// A depletion forecast for one provider/window: how fast remaining budget is

@@ -64,6 +64,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
 
 - **현지화**: 문자열 하나에 사전 **4개**(en/ko × macOS/Windows)와 키 enum 2개. macOS는 ko→en→키
   순으로 폴백하지만 **Windows는 한국어가 없으면 enum 이름을 그대로 노출한다**. 양쪽을 같이 채운다.
+  화면·알림에 나가는 문자열은 전부 사전을 거친다 — Core enum의 영어 `label`이나 알림 본문의 문자열
+  보간은 사전 점검에 안 잡혀, 설정 선택지와 알림 본문이 그렇게 영어로 남아 있었다.
 - **버전 기본값 2곳**: `scripts/build_app.sh`의 `APP_VERSION`/`APP_BUILD`,
   `windows/TokenTracker.Windows/TokenTracker.Windows.csproj`의 `<Version>`. CI가 드리프트를 막는다.
   릴리스 빌드는 태그와 run number로 덮어쓰므로 이 값들은 로컬 빌드용이다.
@@ -86,7 +88,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
 산출물을 실제로 내려받아 설치·실행해 본다.**
 
 릴리스 순서: 두 버전 기본값 범프 → PR 머지 → `git tag -a vX.Y.Z` → push → `release.yml`이 DMG·zip·
-체크섬을 만들고 GitHub Release를 낸다.
+체크섬을 만들고 GitHub Release를 낸다. 받아서 설치하는 단계까지의 절차와 함정은 `release` 스킬
+(`.claude/skills/release/`)에 있다.
 
 ## 작업 방식
 

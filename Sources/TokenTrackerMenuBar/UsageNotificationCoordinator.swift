@@ -44,7 +44,8 @@ final class UsageNotificationCoordinator {
             notificationsEnabled: settings.notificationsEnabled,
             fiveHourThreshold: settings.fiveHourAlertThreshold,
             sevenDayThreshold: settings.sevenDayAlertThreshold,
-            resetWarningMinutes: settings.resetAlertMinutes
+            resetWarningMinutes: settings.resetAlertMinutes,
+            stalledAfter: UsageAlertEvaluator.stalledThreshold(refreshInterval: settings.refreshInterval)
         )
     }
 

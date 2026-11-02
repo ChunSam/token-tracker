@@ -236,8 +236,10 @@ internal sealed class TrayAppContext : ApplicationContext
             }
         }
 
-        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {DisplayFormatter.FormatReset(usage.ResetAt5h)}");
-        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {DisplayFormatter.FormatReset(usage.ResetAt7d)}");
+        var fiveHourReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent5h, usage.ResetAt5h, Localizer);
+        var sevenDayReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent7d, usage.ResetAt7d, Localizer);
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {fiveHourReset}");
+        AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {sevenDayReset}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
         if (!string.IsNullOrWhiteSpace(issue.TechnicalDetail))

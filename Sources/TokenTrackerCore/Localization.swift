@@ -49,6 +49,7 @@ public struct Localizer {
         .quit: "Quit",
         .fiveHourReset: "5h reset",
         .sevenDayReset: "7d reset",
+        .windowNotOpen: "none yet (opens on first use)",
         .source: "Source",
         .status: "Status",
         .error: "Error",
@@ -147,6 +148,7 @@ public struct Localizer {
         .quit: "종료",
         .fiveHourReset: "5시간 리셋",
         .sevenDayReset: "7일 리셋",
+        .windowNotOpen: "아직 없음(첫 사용 시 시작)",
         .source: "데이터 출처",
         .status: "상태",
         .error: "오류",
@@ -246,6 +248,7 @@ public enum L10nKey: String {
     case quit
     case fiveHourReset
     case sevenDayReset
+    case windowNotOpen
     case source
     case status
     case error

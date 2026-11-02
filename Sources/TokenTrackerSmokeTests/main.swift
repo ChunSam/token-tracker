@@ -61,6 +61,28 @@ expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(
 expectEqual(DisplayFormatter.formatResetCompact(countdownNow.addingTimeInterval(-60)), "now", "a passed reset reads as now")
 expect(DisplayFormatter.formatResetCompact(nil) == nil, "no reset instant yields no countdown at all")
 
+let koreanReset = Localizer(language: .korean)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: 63, resetAt: countdownNow.addingTimeInterval(2550)),
+    "42m",
+    "a window with a reset still names the time"
+)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: 100, resetAt: nil),
+    "none yet (opens on first use)",
+    "a balance with no reset means the window has not opened yet"
+)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: 100, resetAt: nil, localizer: koreanReset),
+    "아직 없음(첫 사용 시 시작)",
+    "the unopened window reads in Korean too"
+)
+expectEqual(
+    DisplayFormatter.formatWindowReset(remainingPercent: nil, resetAt: nil),
+    "--",
+    "with no balance either there is nothing to claim about the window"
+)
+
 let fiveHourLead = countdownUsage(.claude, five: 63, seven: 80, reset5h: 8010, reset7d: 273_900)
 expectEqual(DisplayFormatter.displayWindow(fiveHourLead), .fiveHour, "a healthy 7d leaves the 5h window on display")
 expectEqual(DisplayFormatter.displayResetAt(fiveHourLead), fiveHourLead.resetAt5h, "the countdown follows the displayed window")

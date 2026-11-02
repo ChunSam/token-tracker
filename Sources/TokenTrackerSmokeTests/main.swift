@@ -97,6 +97,8 @@ expectEqual(
     "제공되지 않음",
     "the unreported window reads in Korean too"
 )
+expectEqual(koreanReset.text(.claudeOnly), "Claude만", "the display mode choices read in Korean")
+expectEqual(koreanReset.text(.officialLogos), "공식 로고", "the provider label choices read in Korean")
 expectEqual(
     DisplayFormatter.formatWindowReset(remainingPercent: 100, resetAt: nil, providerReported: true),
     "none yet (opens on first use)",

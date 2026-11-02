@@ -28,27 +28,11 @@ public enum DisplayMode: String, CaseIterable, Sendable {
     case both
     case codexOnly
     case claudeOnly
-
-    public var label: String {
-        switch self {
-        case .lowestRemaining: "Lowest remaining"
-        case .both: "Claude + Codex"
-        case .codexOnly: "Codex only"
-        case .claudeOnly: "Claude only"
-        }
-    }
 }
 
 public enum ProviderLabelStyle: String, CaseIterable, Sendable {
     case abbreviation
     case icon
-
-    public var label: String {
-        switch self {
-        case .abbreviation: "Abbreviations"
-        case .icon: "Icons"
-        }
-    }
 }
 
 public struct ProviderUsage: Codable, Equatable, Sendable {

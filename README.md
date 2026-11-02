@@ -7,13 +7,13 @@ macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용�
 - Claude / Codex 사용량 잔량을 메뉴바에 표시
 - 5시간 / 7일 리셋 잔량과 리셋까지 남은 시간 확인
 - 표시 방식 선택
-  - `Lowest remaining`
+  - 가장 낮은 잔량 (`Lowest remaining`)
   - `Claude + Codex`
-  - `Codex only`
-  - `Claude only`
+  - Codex만 (`Codex only`)
+  - Claude만 (`Claude only`)
 - 제공자 표기 선택
   - `Cdx / Cl`
-  - 공식 앱 아이콘 기반 표기
+  - 공식 로고 (앱 아이콘 기반 표기)
 - 7일 잔량이 10% 이하일 때 7일 잔량을 우선 표시
 - 표시 중인 창의 리셋까지 남은 시간을 메뉴바에 함께 표기 (설정에서 끄기 가능)
 - 7일 잔량 기준으로 표시 중인 퍼센트는 파스텔 레드로 강조

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var usageService = UsageService(settings: settings)
     private lazy var notificationCoordinator = UsageNotificationCoordinator(settings: settings)
     private var preferencesWindowController: PreferencesWindowController?
+    private lazy var statusPanel = StatusPanelController(actions: statusPanelActions)
     private var snapshot: UsageSnapshot?
     private var timer: Timer?
     private var countdownTimer: Timer?
@@ -35,7 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !terminateIfDuplicateInstance() else { return }
         NSApp.setActivationPolicy(.accessory)
         statusItemRenderer.setPlaceholder(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
-        configureMenu()
+        statusItemRenderer.setClickAction(target: self, action: #selector(toggleStatusPanel(_:)))
+        configurePanel()
         // Use startRefresh (not refreshNow) on launch so a persisted pause is
         // honored across restarts — only an explicit user "Refresh Now" lifts it.
         startRefresh(showLoadingIndicator: true)
@@ -78,7 +80,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func refreshNow() {
+    @objc private func toggleStatusPanel(_ sender: NSStatusBarButton) {
+        // Rebuild on open so history-derived lines (forecast, sparklines) are current.
+        if !statusPanel.isShown {
+            configurePanel()
+        }
+        statusPanel.toggle(relativeTo: sender)
+    }
+
+    private func refreshNow() {
         // A manual refresh is an explicit request to fetch now, so it also
         // lifts an active pause.
         if PauseController.isPaused(until: settings.pollPausedUntil) {
@@ -90,16 +100,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startRefresh(showLoadingIndicator: Bool) {
         guard refreshTask == nil else { return }
         if PauseController.isPaused(until: settings.pollPausedUntil) {
-            // Skip the network fetch while paused; keep the menu's countdown fresh.
-            configureMenu()
+            // Skip the network fetch while paused; keep the panel's countdown fresh.
+            configurePanel()
             return
         }
         if showLoadingIndicator || snapshot == nil {
             statusItemRenderer.setLoading(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         }
+        statusPanel.model.isRefreshing = true
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { refreshTask = nil }
+            defer {
+                refreshTask = nil
+                statusPanel.model.isRefreshing = false
+            }
             let result = await usageService.refresh()
             snapshot = result
             // The newest real measurement in this snapshot, by its own timestamp.
@@ -121,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 localizer: localizer
             )
             updateStatusTitle()
-            configureMenu()
+            configurePanel()
         }
     }
 
@@ -147,27 +161,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private var statusMenuActions: StatusMenuActions {
-        StatusMenuActions(
-            target: self,
-            refreshNow: #selector(refreshNow),
-            showPreferences: #selector(showPreferences),
-            copyDiagnostics: #selector(copyDiagnostics),
-            openClaudeCredentials: #selector(openClaudeCredentials),
-            openCodexAuth: #selector(openCodexAuth),
-            exportHistoryCSV: #selector(exportHistoryCSV),
-            toggleLaunchAtLogin: #selector(toggleLaunchAtLogin),
-            pause1h: #selector(pausePolling1h),
-            pause3h: #selector(pausePolling3h),
-            pauseUntilResumed: #selector(pausePollingUntilResumed),
-            resumePolling: #selector(resumePolling),
-            quit: #selector(quit)
+    private var statusPanelActions: StatusPanelActions {
+        StatusPanelActions(
+            refreshNow: { [weak self] in self?.refreshNow() },
+            showPreferences: { [weak self] in self?.showPreferences() },
+            copyDiagnostics: { [weak self] in self?.copyDiagnostics() },
+            openClaudeCredentials: { [weak self] in self?.openClaudeCredentials() },
+            openCodexAuth: { [weak self] in self?.openCodexAuth() },
+            exportHistoryCSV: { [weak self] in self?.exportHistoryCSV() },
+            toggleLaunchAtLogin: { [weak self] in self?.toggleLaunchAtLogin() },
+            pause1h: { [weak self] in self?.pausePolling(for: 3600) },
+            pause3h: { [weak self] in self?.pausePolling(for: 3 * 3600) },
+            pauseUntilResumed: { [weak self] in self?.pausePollingUntilResumed() },
+            resumePolling: { [weak self] in self?.resumePolling() },
+            quit: { NSApp.terminate(nil) }
         )
     }
 
-    private func configureMenu() {
+    private func configurePanel() {
         let reporter = diagnosticsReporter
-        let context = StatusMenuContext(
+        statusPanel.model.context = StatusPanelContext(
             localizer: localizer,
             settings: settings,
             snapshot: snapshot,
@@ -183,8 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
             runningInstanceCount: reporter.runningInstanceCount
         )
-        let menu = StatusMenuBuilder(actions: statusMenuActions, context: context).build()
-        statusItemRenderer.setMenu(menu)
     }
 
     /// Per-provider "projected depletion" menu lines, computed from stored
@@ -257,16 +268,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return UsageForecaster.durationText(PauseController.remaining(until: until))
     }
 
-    @objc private func pausePolling1h() { pausePolling(for: 3600) }
-
-    @objc private func pausePolling3h() { pausePolling(for: 3 * 3600) }
-
-    @objc private func pausePollingUntilResumed() {
+    private func pausePollingUntilResumed() {
         settings.pollPausedUntil = .distantFuture
         applyPauseChange()
     }
 
-    @objc private func resumePolling() {
+    private func resumePolling() {
         settings.pollPausedUntil = nil
         applyPauseChange()
         refreshNow()
@@ -279,10 +286,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyPauseChange() {
         updateStatusTitle()
-        configureMenu()
+        configurePanel()
     }
 
-    @objc private func showPreferences() {
+    private func showPreferences() {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController(
                 settings: settings,
@@ -293,14 +300,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onProviderChange: { [weak self] in
                     Task { @MainActor in
-                        self?.configureMenu()
+                        self?.configurePanel()
                         self?.refreshNow()
                     }
                 },
                 onNotificationsEnabled: { [weak self] in
                     Task { @MainActor in
                         self?.notificationCoordinator.requestAuthorization()
-                        self?.configureMenu()
+                        self?.configurePanel()
                     }
                 }
             )
@@ -308,20 +315,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesWindowController?.show()
     }
 
-    @objc private func copyDiagnostics() {
+    private func copyDiagnostics() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(diagnosticsReporter.diagnosticsText(), forType: .string)
     }
 
-    @objc private func openClaudeCredentials() {
+    private func openClaudeCredentials() {
         revealInFinder(DiagnosticsReporter.claudeCredentialsURL)
     }
 
-    @objc private func openCodexAuth() {
+    private func openCodexAuth() {
         revealInFinder(DiagnosticsReporter.codexAuthURL)
     }
 
-    @objc private func exportHistoryCSV() {
+    private func exportHistoryCSV() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "token-tracker-history.csv"
         panel.allowedContentTypes = [.commaSeparatedText]
@@ -336,17 +343,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func toggleLaunchAtLogin() {
+    private func toggleLaunchAtLogin() {
         do {
             try loginItemManager.setEnabled(!loginItemManager.isEnabled)
         } catch {
             showError(localizer.text(.launchFailed), detail: error.localizedDescription)
         }
-        configureMenu()
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
+        configurePanel()
     }
 
     private func showError(_ title: String, detail: String) {
@@ -361,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleTimer()
         scheduleCountdownTimer()
         updateStatusTitle()
-        configureMenu()
+        configurePanel()
     }
 
     private func fileExists(at url: URL) -> Bool {

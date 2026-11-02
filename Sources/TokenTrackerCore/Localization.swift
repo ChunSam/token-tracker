@@ -47,15 +47,10 @@ public struct Localizer {
         .language: "Language",
         .launchAtLogin: "Launch at Login",
         .quit: "Quit",
-        .fiveHourReset: "5h reset",
-        .sevenDayReset: "7d reset",
         .windowNotOpen: "none yet (opens on first use)",
         .windowNotReported: "not reported",
-        .source: "Source",
-        .status: "Status",
         .error: "Error",
         .technicalError: "Technical error",
-        .recovery: "Recovery",
         .diagnostics: "Diagnostics",
         .copyDiagnostics: "Copy Diagnostics",
         .openClaudeCredentials: "Open Claude Credentials",
@@ -90,7 +85,6 @@ public struct Localizer {
         .pauseUntilResumed: "Until I resume",
         .resumeNow: "Resume now",
         .updatesPaused: "Updates paused",
-        .plan: "Plan",
         .launchFailed: "Launch at Login failed",
         .statusEnabled: "Enabled",
         .statusDisabled: "Disabled",
@@ -132,7 +126,15 @@ public struct Localizer {
         .recoveryRefreshLater: "Refresh again later.",
         .recoveryTryAgainLater: "Try again later.",
         .now: "now",
-        .ago: "ago"
+        .ago: "ago",
+        .general: "General",
+        .display: "Display",
+        .data: "Data",
+        .enableNotifications: "Send notifications",
+        .fiveHourWindow: "5-hour",
+        .sevenDayWindow: "7-day",
+        .resetsIn: "resets in {time}",
+        .more: "More"
     ]
 
     private let korean: [L10nKey: String] = [
@@ -147,15 +149,10 @@ public struct Localizer {
         .language: "언어",
         .launchAtLogin: "로그인 시 실행",
         .quit: "종료",
-        .fiveHourReset: "5시간 리셋",
-        .sevenDayReset: "7일 리셋",
         .windowNotOpen: "아직 없음(첫 사용 시 시작)",
         .windowNotReported: "제공되지 않음",
-        .source: "데이터 출처",
-        .status: "상태",
         .error: "오류",
         .technicalError: "기술 오류",
-        .recovery: "복구 방법",
         .diagnostics: "진단",
         .copyDiagnostics: "진단 정보 복사",
         .openClaudeCredentials: "Claude 인증 파일 열기",
@@ -190,7 +187,6 @@ public struct Localizer {
         .pauseUntilResumed: "재개할 때까지",
         .resumeNow: "지금 재개",
         .updatesPaused: "업데이트 일시중지됨",
-        .plan: "플랜",
         .launchFailed: "로그인 시 실행 설정 실패",
         .statusEnabled: "켜짐",
         .statusDisabled: "꺼짐",
@@ -232,7 +228,15 @@ public struct Localizer {
         .recoveryRefreshLater: "나중에 다시 새로고침하세요.",
         .recoveryTryAgainLater: "나중에 다시 시도하세요.",
         .now: "지금",
-        .ago: "전"
+        .ago: "전",
+        .general: "일반",
+        .display: "표시",
+        .data: "데이터",
+        .enableNotifications: "알림 받기",
+        .fiveHourWindow: "5시간",
+        .sevenDayWindow: "7일",
+        .resetsIn: "{time} 후 리셋",
+        .more: "더 보기"
     ]
 }
 
@@ -248,15 +252,10 @@ public enum L10nKey: String {
     case language
     case launchAtLogin
     case quit
-    case fiveHourReset
-    case sevenDayReset
     case windowNotOpen
     case windowNotReported
-    case source
-    case status
     case error
     case technicalError
-    case recovery
     case diagnostics
     case copyDiagnostics
     case openClaudeCredentials
@@ -291,7 +290,6 @@ public enum L10nKey: String {
     case pauseUntilResumed
     case resumeNow
     case updatesPaused
-    case plan
     case launchFailed
     case statusEnabled
     case statusDisabled
@@ -334,4 +332,12 @@ public enum L10nKey: String {
     case recoveryTryAgainLater
     case now
     case ago
+    case general
+    case display
+    case data
+    case enableNotifications
+    case fiveHourWindow
+    case sevenDayWindow
+    case resetsIn
+    case more
 }

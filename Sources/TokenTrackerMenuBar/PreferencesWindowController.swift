@@ -1,59 +1,32 @@
 import AppKit
+import SwiftUI
 import TokenTrackerCore
 
 @MainActor
 final class PreferencesWindowController: NSWindowController {
-    private let settings: Settings
-    private let onGeneralChange: () -> Void
-    private let onProviderChange: () -> Void
-    private let onNotificationsEnabled: () -> Void
-
-    private lazy var claudeEnabled = NSButton(checkboxWithTitle: "Claude", target: self, action: #selector(toggleProvider(_:)))
-    private lazy var codexEnabled = NSButton(checkboxWithTitle: "Codex", target: self, action: #selector(toggleProvider(_:)))
-    private lazy var displayMode = NSPopUpButton()
-    private lazy var labelStyle = NSPopUpButton()
-    private lazy var refreshInterval = NSPopUpButton()
-    private lazy var language = NSPopUpButton()
-    private lazy var notificationsEnabled = NSButton(checkboxWithTitle: localizer.text(.statusEnabled), target: self, action: #selector(toggleNotifications))
-    private lazy var showForecast = NSButton(checkboxWithTitle: localizer.text(.showForecastLabel), target: self, action: #selector(toggleShowForecast))
-    private lazy var depletionAlert = NSButton(checkboxWithTitle: localizer.text(.depletionAlertToggle), target: self, action: #selector(toggleDepletionAlert))
-    private lazy var showResetCountdown = NSButton(checkboxWithTitle: localizer.text(.showResetCountdownLabel), target: self, action: #selector(toggleShowResetCountdown))
-    private lazy var fiveHourValue = NSTextField(labelWithString: "")
-    private lazy var fiveHourStepper = NSStepper()
-    private lazy var sevenDayValue = NSTextField(labelWithString: "")
-    private lazy var sevenDayStepper = NSStepper()
-    private lazy var resetValue = NSTextField(labelWithString: "")
-    private lazy var resetStepper = NSStepper()
-    private lazy var historyValue = NSTextField(labelWithString: "")
-    private lazy var historyStepper = NSStepper()
-    private lazy var staleValue = NSTextField(labelWithString: "")
-    private lazy var staleStepper = NSStepper()
-
-    private var localizer: Localizer {
-        Localizer(language: settings.language)
-    }
-
     init(
-        settings: Settings,
+        settings: TokenTrackerCore.Settings,
         onGeneralChange: @escaping () -> Void,
         onProviderChange: @escaping () -> Void,
         onNotificationsEnabled: @escaping () -> Void
     ) {
-        self.settings = settings
-        self.onGeneralChange = onGeneralChange
-        self.onProviderChange = onProviderChange
-        self.onNotificationsEnabled = onNotificationsEnabled
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
+        let model = PreferencesModel(
+            settings: settings,
+            onGeneralChange: onGeneralChange,
+            onProviderChange: onProviderChange,
+            onNotificationsEnabled: onNotificationsEnabled
         )
+        // Tall enough to show every section at once, but never taller than the screen:
+        // a small display scrolls the form instead of pushing the window off-screen.
+        let visibleHeight = NSScreen.main?.visibleFrame.height ?? 800
+        let height = min(PreferencesView.fullHeight, visibleHeight - 80)
+        let window = NSWindow(
+            contentViewController: NSHostingController(rootView: PreferencesView(model: model, height: height))
+        )
+        window.styleMask = [.titled, .closable]
         window.title = "Token Tracker"
         window.isReleasedWhenClosed = false
         super.init(window: window)
-        buildContent()
-        reload()
     }
 
     @available(*, unavailable)
@@ -62,259 +35,213 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     func show() {
-        reload()
         showWindow(nil)
         window?.center()
         NSApp.activate(ignoringOtherApps: true)
     }
+}
 
-    private func buildContent() {
-        guard let contentView = window?.contentView else {
-            return
-        }
+/// Mirrors `Settings` for the form. Each property writes through to `Settings` and
+/// fires the same callback the old AppKit controls did; this window is the only
+/// writer of these keys, so the values read at init stay current.
+@MainActor
+final class PreferencesModel: ObservableObject {
+    private let settings: TokenTrackerCore.Settings
+    private let onGeneralChange: () -> Void
+    private let onProviderChange: () -> Void
+    private let onNotificationsEnabled: () -> Void
 
-        // Rebuildable: clear any previous content (e.g. after a language change)
-        // and re-apply the localized checkbox titles that were set once at init.
-        contentView.subviews.forEach { $0.removeFromSuperview() }
-        notificationsEnabled.title = localizer.text(.statusEnabled)
-        showForecast.title = localizer.text(.showForecastLabel)
-        showResetCountdown.title = localizer.text(.showResetCountdownLabel)
-        depletionAlert.title = localizer.text(.depletionAlertToggle)
-
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        displayMode.target = self
-        displayMode.action = #selector(selectDisplayMode)
-        labelStyle.target = self
-        labelStyle.action = #selector(selectLabelStyle)
-        refreshInterval.target = self
-        refreshInterval.action = #selector(selectRefreshInterval)
-        language.target = self
-        language.action = #selector(selectLanguage)
-
-        configureStepper(fiveHourStepper, min: 0, max: 100, action: #selector(changeFiveHourThreshold))
-        configureStepper(sevenDayStepper, min: 0, max: 100, action: #selector(changeSevenDayThreshold))
-        configureStepper(resetStepper, min: 0, max: 1440, action: #selector(changeResetAlertMinutes))
-        configureStepper(historyStepper, min: 1, max: 365, action: #selector(changeHistoryRetention))
-        configureStepper(staleStepper, min: 1, max: 48, action: #selector(changeStaleTolerance))
-
-        stack.addArrangedSubview(section(localizer.text(.providers), views: [claudeEnabled, codexEnabled]))
-        stack.addArrangedSubview(row(label: localizer.text(.displayMode), control: displayMode))
-        stack.addArrangedSubview(row(label: localizer.text(.providerLabelStyle), control: labelStyle))
-        stack.addArrangedSubview(row(label: localizer.text(.refreshInterval), control: refreshInterval))
-        stack.addArrangedSubview(row(label: localizer.text(.language), control: language))
-        stack.addArrangedSubview(showResetCountdown)
-        stack.addArrangedSubview(showForecast)
-        stack.addArrangedSubview(section(localizer.text(.notifications), views: [notificationsEnabled]))
-        stack.addArrangedSubview(stepperRow(label: localizer.text(.fiveHourAlertThreshold), value: fiveHourValue, stepper: fiveHourStepper))
-        stack.addArrangedSubview(stepperRow(label: localizer.text(.sevenDayAlertThreshold), value: sevenDayValue, stepper: sevenDayStepper))
-        stack.addArrangedSubview(stepperRow(label: localizer.text(.resetAlertMinutes), value: resetValue, stepper: resetStepper))
-        stack.addArrangedSubview(depletionAlert)
-        stack.addArrangedSubview(stepperRow(label: localizer.text(.staleToleranceHours), value: staleValue, stepper: staleStepper))
-        stack.addArrangedSubview(stepperRow(label: localizer.text(.historyRetentionDays), value: historyValue, stepper: historyStepper))
-
-        contentView.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: contentView.topAnchor),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
-        ])
+    @Published var claudeEnabled: Bool {
+        didSet { settings.claudeEnabled = claudeEnabled; onProviderChange() }
     }
-
-    private func reload() {
-        claudeEnabled.state = settings.claudeEnabled ? .on : .off
-        codexEnabled.state = settings.codexEnabled ? .on : .off
-        notificationsEnabled.state = settings.notificationsEnabled ? .on : .off
-        showForecast.state = settings.showForecast ? .on : .off
-        showResetCountdown.state = settings.showResetCountdown ? .on : .off
-        depletionAlert.state = settings.depletionAlertEnabled ? .on : .off
-
-        reloadPopup(displayMode, values: DisplayMode.allCases.map { ($0.label, $0.rawValue) }, selected: settings.displayMode.rawValue)
-        reloadPopup(labelStyle, values: ProviderLabelStyle.allCases.map { ($0.label, $0.rawValue) }, selected: settings.providerLabelStyle.rawValue)
-        reloadPopup(refreshInterval, values: [(title: "1m", value: "60"), (title: "5m", value: "300"), (title: "15m", value: "900")], selected: String(Int(settings.refreshInterval)))
-        reloadPopup(language, values: AppLanguage.allCases.map { ($0.label, $0.rawValue) }, selected: settings.language.rawValue)
-
-        fiveHourStepper.integerValue = settings.fiveHourAlertThreshold
-        sevenDayStepper.integerValue = settings.sevenDayAlertThreshold
-        resetStepper.integerValue = settings.resetAlertMinutes
-        historyStepper.integerValue = settings.historyRetentionDays
-        staleStepper.integerValue = settings.staleToleranceHours
-        updateStepperLabels()
+    @Published var codexEnabled: Bool {
+        didSet { settings.codexEnabled = codexEnabled; onProviderChange() }
     }
-
-    private func reloadPopup(_ popup: NSPopUpButton, values: [(title: String, value: String)], selected: String) {
-        popup.removeAllItems()
-        for item in values {
-            popup.addItem(withTitle: item.title)
-            popup.lastItem?.representedObject = item.value
-        }
-        if let item = popup.itemArray.first(where: { $0.representedObject as? String == selected }) {
-            popup.select(item)
-        }
+    @Published var language: AppLanguage {
+        didSet { settings.language = language; onGeneralChange() }
     }
-
-    private func updateStepperLabels() {
-        fiveHourValue.stringValue = "\(settings.fiveHourAlertThreshold)%"
-        sevenDayValue.stringValue = "\(settings.sevenDayAlertThreshold)%"
-        resetValue.stringValue = "\(settings.resetAlertMinutes)m"
-        historyValue.stringValue = "\(settings.historyRetentionDays)d"
-        staleValue.stringValue = "\(settings.staleToleranceHours)h"
+    @Published var refreshInterval: TimeInterval {
+        didSet { settings.refreshInterval = refreshInterval; onGeneralChange() }
     }
-
-    @objc private func toggleProvider(_ sender: NSButton) {
-        if sender === claudeEnabled {
-            settings.claudeEnabled = sender.state == .on
-        } else {
-            settings.codexEnabled = sender.state == .on
-        }
-        onProviderChange()
+    @Published var displayMode: DisplayMode {
+        didSet { settings.displayMode = displayMode; onGeneralChange() }
     }
-
-    @objc private func selectDisplayMode() {
-        if let raw = displayMode.selectedItem?.representedObject as? String,
-           let value = DisplayMode(rawValue: raw) {
-            settings.displayMode = value
-            onGeneralChange()
-        }
+    @Published var providerLabelStyle: ProviderLabelStyle {
+        didSet { settings.providerLabelStyle = providerLabelStyle; onGeneralChange() }
     }
-
-    @objc private func selectLabelStyle() {
-        if let raw = labelStyle.selectedItem?.representedObject as? String,
-           let value = ProviderLabelStyle(rawValue: raw) {
-            settings.providerLabelStyle = value
-            onGeneralChange()
-        }
+    @Published var showResetCountdown: Bool {
+        didSet { settings.showResetCountdown = showResetCountdown; onGeneralChange() }
     }
-
-    @objc private func selectRefreshInterval() {
-        if let raw = refreshInterval.selectedItem?.representedObject as? String,
-           let value = TimeInterval(raw) {
-            settings.refreshInterval = value
-            onGeneralChange()
-        }
+    @Published var showForecast: Bool {
+        didSet { settings.showForecast = showForecast; onGeneralChange() }
     }
-
-    @objc private func selectLanguage() {
-        if let raw = language.selectedItem?.representedObject as? String,
-           let value = AppLanguage(rawValue: raw) {
-            settings.language = value
-            onGeneralChange()
-            // Re-localize this window's own labels. Deferred so we don't mutate
-            // the view hierarchy from inside the popup's own action.
-            DispatchQueue.main.async { [weak self] in
-                self?.buildContent()
-                self?.reload()
+    @Published var notificationsEnabled: Bool {
+        didSet {
+            settings.notificationsEnabled = notificationsEnabled
+            if notificationsEnabled {
+                onNotificationsEnabled()
+            } else {
+                onGeneralChange()
             }
         }
     }
+    @Published var fiveHourAlertThreshold: Int {
+        didSet { settings.fiveHourAlertThreshold = fiveHourAlertThreshold; onGeneralChange() }
+    }
+    @Published var sevenDayAlertThreshold: Int {
+        didSet { settings.sevenDayAlertThreshold = sevenDayAlertThreshold; onGeneralChange() }
+    }
+    @Published var resetAlertMinutes: Int {
+        didSet { settings.resetAlertMinutes = resetAlertMinutes; onGeneralChange() }
+    }
+    @Published var depletionAlertEnabled: Bool {
+        didSet { settings.depletionAlertEnabled = depletionAlertEnabled; onGeneralChange() }
+    }
+    @Published var staleToleranceHours: Int {
+        didSet { settings.staleToleranceHours = staleToleranceHours; onGeneralChange() }
+    }
+    @Published var historyRetentionDays: Int {
+        didSet { settings.historyRetentionDays = historyRetentionDays; onGeneralChange() }
+    }
 
-    @objc private func toggleNotifications() {
-        settings.notificationsEnabled = notificationsEnabled.state == .on
-        if settings.notificationsEnabled {
-            onNotificationsEnabled()
-        } else {
-            onGeneralChange()
+    var localizer: Localizer {
+        Localizer(language: language)
+    }
+
+    init(
+        settings: TokenTrackerCore.Settings,
+        onGeneralChange: @escaping () -> Void,
+        onProviderChange: @escaping () -> Void,
+        onNotificationsEnabled: @escaping () -> Void
+    ) {
+        self.settings = settings
+        self.onGeneralChange = onGeneralChange
+        self.onProviderChange = onProviderChange
+        self.onNotificationsEnabled = onNotificationsEnabled
+        claudeEnabled = settings.claudeEnabled
+        codexEnabled = settings.codexEnabled
+        language = settings.language
+        refreshInterval = settings.refreshInterval
+        displayMode = settings.displayMode
+        providerLabelStyle = settings.providerLabelStyle
+        showResetCountdown = settings.showResetCountdown
+        showForecast = settings.showForecast
+        notificationsEnabled = settings.notificationsEnabled
+        fiveHourAlertThreshold = settings.fiveHourAlertThreshold
+        sevenDayAlertThreshold = settings.sevenDayAlertThreshold
+        resetAlertMinutes = settings.resetAlertMinutes
+        depletionAlertEnabled = settings.depletionAlertEnabled
+        staleToleranceHours = settings.staleToleranceHours
+        historyRetentionDays = settings.historyRetentionDays
+    }
+}
+
+private struct PreferencesView: View {
+    static let fullHeight: CGFloat = 845
+
+    @ObservedObject var model: PreferencesModel
+    let height: CGFloat
+
+    var body: some View {
+        let localizer = model.localizer
+        Form {
+            Section(localizer.text(.providers)) {
+                Toggle("Claude", isOn: $model.claudeEnabled)
+                Toggle("Codex", isOn: $model.codexEnabled)
+            }
+
+            Section {
+                Picker(localizer.text(.language), selection: $model.language) {
+                    ForEach(AppLanguage.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Picker(localizer.text(.refreshInterval), selection: $model.refreshInterval) {
+                    Text("1m").tag(TimeInterval(60))
+                    Text("5m").tag(TimeInterval(300))
+                    Text("15m").tag(TimeInterval(900))
+                }
+            } header: {
+                Text(localizer.text(.general))
+            } footer: {
+                if model.refreshInterval < 300 {
+                    Label(localizer.text(.refreshIntervalWarning), systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section(localizer.text(.display)) {
+                Picker(localizer.text(.displayMode), selection: $model.displayMode) {
+                    ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Picker(localizer.text(.providerLabelStyle), selection: $model.providerLabelStyle) {
+                    ForEach(ProviderLabelStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Toggle(localizer.text(.showResetCountdownLabel), isOn: $model.showResetCountdown)
+                Toggle(localizer.text(.showForecastLabel), isOn: $model.showForecast)
+            }
+
+            Section(localizer.text(.notifications)) {
+                Toggle(localizer.text(.enableNotifications), isOn: $model.notificationsEnabled)
+                Group {
+                    StepperRow(
+                        title: localizer.text(.fiveHourAlertThreshold),
+                        value: $model.fiveHourAlertThreshold,
+                        range: 0...100,
+                        unit: "%"
+                    )
+                    StepperRow(
+                        title: localizer.text(.sevenDayAlertThreshold),
+                        value: $model.sevenDayAlertThreshold,
+                        range: 0...100,
+                        unit: "%"
+                    )
+                    StepperRow(
+                        title: localizer.text(.resetAlertMinutes),
+                        value: $model.resetAlertMinutes,
+                        range: 0...1440,
+                        unit: "m"
+                    )
+                    Toggle(localizer.text(.depletionAlertToggle), isOn: $model.depletionAlertEnabled)
+                }
+                .disabled(!model.notificationsEnabled)
+            }
+
+            Section(localizer.text(.data)) {
+                StepperRow(
+                    title: localizer.text(.staleToleranceHours),
+                    value: $model.staleToleranceHours,
+                    range: 1...48,
+                    unit: "h"
+                )
+                StepperRow(
+                    title: localizer.text(.historyRetentionDays),
+                    value: $model.historyRetentionDays,
+                    range: 1...365,
+                    unit: "d"
+                )
+            }
         }
+        .formStyle(.grouped)
+        .toggleStyle(.switch)
+        .frame(width: 460, height: height)
     }
+}
 
-    @objc private func changeFiveHourThreshold() {
-        settings.fiveHourAlertThreshold = fiveHourStepper.integerValue
-        updateStepperLabels()
-        onGeneralChange()
-    }
+private struct StepperRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let unit: String
 
-    @objc private func changeSevenDayThreshold() {
-        settings.sevenDayAlertThreshold = sevenDayStepper.integerValue
-        updateStepperLabels()
-        onGeneralChange()
-    }
-
-    @objc private func changeResetAlertMinutes() {
-        settings.resetAlertMinutes = resetStepper.integerValue
-        updateStepperLabels()
-        onGeneralChange()
-    }
-
-    @objc private func changeStaleTolerance() {
-        settings.staleToleranceHours = staleStepper.integerValue
-        updateStepperLabels()
-        onGeneralChange()
-    }
-
-    @objc private func changeHistoryRetention() {
-        settings.historyRetentionDays = historyStepper.integerValue
-        updateStepperLabels()
-        onGeneralChange()
-    }
-
-    @objc private func toggleShowResetCountdown() {
-        settings.showResetCountdown = showResetCountdown.state == .on
-        onGeneralChange()
-    }
-
-    @objc private func toggleShowForecast() {
-        settings.showForecast = showForecast.state == .on
-        onGeneralChange()
-    }
-
-    @objc private func toggleDepletionAlert() {
-        settings.depletionAlertEnabled = depletionAlert.state == .on
-        onGeneralChange()
-    }
-
-    private func configureStepper(_ stepper: NSStepper, min: Double, max: Double, action: Selector) {
-        stepper.minValue = min
-        stepper.maxValue = max
-        stepper.increment = 1
-        stepper.target = self
-        stepper.action = action
-    }
-
-    private func section(_ title: String, views: [NSView]) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.addArrangedSubview(header(title))
-        for view in views {
-            stack.addArrangedSubview(view)
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 6) {
+                Text("\(value)\(unit)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Stepper(title, value: $value, in: range)
+                    .labelsHidden()
+            }
         }
-        return stack
-    }
-
-    private func row(label: String, control: NSView) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 12
-        let labelView = NSTextField(labelWithString: label)
-        labelView.widthAnchor.constraint(equalToConstant: 160).isActive = true
-        control.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
-        stack.addArrangedSubview(labelView)
-        stack.addArrangedSubview(control)
-        return stack
-    }
-
-    private func stepperRow(label: String, value: NSTextField, stepper: NSStepper) -> NSView {
-        let valueStack = NSStackView()
-        valueStack.orientation = .horizontal
-        valueStack.alignment = .centerY
-        valueStack.spacing = 8
-        value.widthAnchor.constraint(equalToConstant: 52).isActive = true
-        valueStack.addArrangedSubview(value)
-        valueStack.addArrangedSubview(stepper)
-        return row(label: label, control: valueStack)
-    }
-
-    private func header(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-        return label
     }
 }

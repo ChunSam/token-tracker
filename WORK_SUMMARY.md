@@ -159,7 +159,7 @@ Token tracker/
 
 `ServiceManagement`의 `SMAppService.mainApp`을 사용해 로그인 항목을 등록/해제한다.
 
-메뉴 항목:
+팝업의 `⋯` 메뉴 항목:
 
 - `Launch at Login: Enabled`
 - `Launch at Login: Disabled`
@@ -170,11 +170,13 @@ Token tracker/
 
 macOS UI (`Sources/TokenTrackerMenuBar/`)
 
-- `AppDelegate.swift` — 새로고침 루프, 타이머, 메뉴 구성 호출, 액션 핸들러
+- `AppDelegate.swift` — 새로고침 루프, 타이머, 팝업 내용 구성, 액션 핸들러
 - `StatusItemRenderer.swift` — 메뉴바 텍스트/아이콘 그리기. 리소스 번들은 `Bundle.module`이 아니라
   `Contents/Resources`에서 직접 찾는다(릴리스 `.app`에서 `Bundle.module`은 trap한다)
-- `StatusMenuBuilder.swift` — 상세 메뉴 조립
-- `PreferencesWindowController.swift` — 설정 창
+- `StatusPanelController.swift` — 상태 항목 클릭 시 여는 `NSPopover`. 바깥 클릭은 전역 모니터로 닫는다
+  (`.transient`는 상태 항목을 다시 눌러도 닫히지 않는다)
+- `StatusPanelView.swift` — 팝업 내용(SwiftUI): 제공자 카드, 잔량 막대, 하단 버튼과 `⋯` 메뉴
+- `PreferencesWindowController.swift` — 설정 창(SwiftUI 그룹형 Form)
 - `UsageNotificationCoordinator.swift` — 알림 권한·중복 제거·발송
 - `DiagnosticsReporter.swift` — 진단 텍스트
 - `LoginItemManager.swift` — 로그인 항목 등록/해제
@@ -197,7 +199,7 @@ Core (`Sources/TokenTrackerCore/`)
 Windows (`windows/`)
 
 - `TokenTracker.Windows/TrayAppContext.cs` — 트레이 메뉴와 새로고침 루프 (macOS `AppDelegate` +
-  `StatusMenuBuilder`에 대응)
+  `StatusPanelView`에 대응)
 - `TokenTracker.Windows.Core/` — 위 Core 파일들의 C# 포트. 파일명이 1:1로 대응한다
 - `TokenTracker.Windows.Tests/Program.cs` — Core 스모크 테스트
 

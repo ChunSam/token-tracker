@@ -544,12 +544,34 @@ var alerts = UsageAlertEvaluator.Candidates(
     now);
 ExpectEqual(
     string.Join(",", alerts.Select(alert => alert.Id)),
-    $"claude-5h-low,claude-7d-low,claude-5h-reset-{now.AddMinutes(5).ToUnixTimeSeconds()}",
-    "Alert evaluator emits low usage and reset alerts");
+    "claude-5h-low,claude-7d-low",
+    "A low window gets its low alert and no reset warning: the refill is good news");
 ExpectEqual(
     UsageAlertEvaluator.Candidates(alertSnapshot, new UsageAlertSettings(false, 20, 10, 10), now).Count,
     0,
     "Disabled notifications emit no alerts");
+
+// Reset warnings: only for a measured window with more left than its low threshold,
+// since what it has not used by the reset is gone.
+string ResetAlertBodies(int? unused5h, UsageSource source = UsageSource.Api, int threshold = 20, AppLanguage language = AppLanguage.English)
+{
+    var snapshot = new UsageSnapshot(
+        Claude: new ProviderUsage(Provider.Claude, unused5h, 90, now.AddMinutes(5), now.AddDays(3), source, null, null, null, now),
+        Codex: ProviderUsage.Unavailable(Provider.Codex, "Disabled"),
+        UpdatedAt: now);
+    return string.Join(" | ", UsageAlertEvaluator.Candidates(snapshot, new UsageAlertSettings(true, threshold, 10, 10), now, new Localizer(language))
+        .Where(candidate => candidate.Id.Contains("-reset-", StringComparison.Ordinal))
+        .Select(candidate => candidate.Body));
+}
+ExpectEqual(ResetAlertBodies(60), "Claude 5h resets in 5m with 60% unused", "A reset with plenty left is worth a warning");
+ExpectEqual(ResetAlertBodies(60, language: AppLanguage.Korean), "Claude 5h 5m 후 리셋 — 60% 남음", "The reset warning reads in Korean");
+ExpectEqual(ResetAlertBodies(20), "", "A window at its low threshold gets no reset warning");
+ExpectEqual(ResetAlertBodies(21), "Claude 5h resets in 5m with 21% unused", "One point above the threshold is warned about");
+ExpectEqual(ResetAlertBodies(1, threshold: 0), "Claude 5h resets in 5m with 1% unused", "With the low alert off, anything left is worth a warning");
+ExpectEqual(ResetAlertBodies(0, threshold: 0), "", "Nothing left is nothing to lose");
+ExpectEqual(ResetAlertBodies(null), "", "A window with no number gets no reset warning");
+ExpectEqual(ResetAlertBodies(60, UsageSource.StaleCache), "", "A cached number may have been spent since");
+ExpectEqual(ResetAlertBodies(60, UsageSource.StatusLine), "Claude 5h resets in 5m with 60% unused", "A status-line reading is a measurement");
 
 string StalledIds(TimeSpan age, UsageSource source, TimeSpan stalledAfter)
 {
@@ -781,11 +803,11 @@ string AlertBodies(AppLanguage language)
 
 ExpectEqual(
     AlertBodies(AppLanguage.English),
-    "Claude last measured 1h30m ago | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h reset in 5m | Claude 5h: ~2h 0m → 0% (before reset)",
+    "Claude last measured 1h30m ago | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h: ~2h 0m → 0% (before reset)",
     "English alert bodies are unchanged");
 ExpectEqual(
     AlertBodies(AppLanguage.Korean),
-    "Claude 마지막 측정 1h30m 전 | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h 5m 후 리셋 | Claude 5h: ~2h 0m → 0% (리셋 전)",
+    "Claude 마지막 측정 1h30m 전 | Claude 5h 19% <= 20% | Claude 7d 9% <= 10% | Claude 5h: ~2h 0m → 0% (리셋 전)",
     "Korean alert bodies are translated; the symbol-only low-balance bodies stay as they are");
 ExpectEqual(
     string.Join(",", UsageAlertEvaluator.Candidates(alertSnapshot, new UsageAlertSettings(true, 20, 10, 10), now, new Localizer(AppLanguage.Korean)).Select(candidate => candidate.Id)),

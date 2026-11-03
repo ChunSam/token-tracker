@@ -253,40 +253,52 @@ public static class UsageAlertEvaluator
         return readings;
     }
 
+    /// A reset is worth warning about only while there is something left to lose:
+    /// what the window has not used by then is gone. A window at or below its
+    /// low-balance threshold gets no warning — its refill is good news, which the
+    /// freed-up alert reports once it lands. The number has to be a measurement,
+    /// since the body states it and a cached one may have been spent since.
     private static IEnumerable<UsageAlertCandidate> ResetAlerts(
         ProviderUsage usage,
         UsageAlertSettings settings,
         DateTimeOffset now,
         Localizer localizer)
     {
-        if (settings.ResetWarningMinutes <= 0)
+        if (settings.ResetWarningMinutes <= 0 ||
+            (usage.Source != UsageSource.Api && usage.Source != UsageSource.StatusLine))
         {
             yield break;
         }
 
         var warningWindow = TimeSpan.FromMinutes(settings.ResetWarningMinutes);
-        foreach (var reset in new[] { ("5h", usage.ResetAt5h), ("7d", usage.ResetAt7d) })
+        var resets = new[]
         {
-            if (reset.Item2 is not { } date)
+            ("5h", usage.ResetAt5h, usage.RemainingPercent5h, settings.FiveHourThreshold),
+            ("7d", usage.ResetAt7d, usage.RemainingPercent7d, settings.SevenDayThreshold)
+        };
+        foreach (var (label, resetAt, unusedPercent, threshold) in resets)
+        {
+            if (resetAt is not { } date || unusedPercent is not { } unused || unused <= threshold)
             {
                 continue;
             }
 
-            var remaining = date - now;
-            if (remaining <= TimeSpan.Zero || remaining > warningWindow)
+            var timeLeft = date - now;
+            if (timeLeft <= TimeSpan.Zero || timeLeft > warningWindow)
             {
                 continue;
             }
 
-            var minutes = Math.Max(0, (int)Math.Ceiling(remaining.TotalMinutes));
+            var minutes = Math.Max(0, (int)Math.Ceiling(timeLeft.TotalMinutes));
             var resetId = date.ToUnixTimeSeconds();
             yield return new UsageAlertCandidate(
-                $"{usage.Provider.ToId()}-{reset.Item1}-reset-{resetId}",
+                $"{usage.Provider.ToId()}-{label}-reset-{resetId}",
                 localizer.Text(L10nKey.ResetAlertTitle),
                 localizer.Text(L10nKey.ResetAlertBody)
                     .Replace("{provider}", usage.DisplayName, StringComparison.Ordinal)
-                    .Replace("{window}", reset.Item1, StringComparison.Ordinal)
-                    .Replace("{time}", $"{minutes}m", StringComparison.Ordinal));
+                    .Replace("{window}", label, StringComparison.Ordinal)
+                    .Replace("{time}", $"{minutes}m", StringComparison.Ordinal)
+                    .Replace("{percent}", unused.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
         }
     }
 }

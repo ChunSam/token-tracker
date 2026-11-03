@@ -225,31 +225,36 @@ public enum UsageAlertEvaluator {
         return readings
     }
 
+    /// A reset is worth warning about only while there is something left to lose:
+    /// what the window has not used by then is gone. A window at or below its
+    /// low-balance threshold gets no warning — its refill is good news, which the
+    /// freed-up alert reports once it lands. The number has to be a measurement,
+    /// since the body states it and a cached one may have been spent since.
     private static func resetAlerts(
         for usage: ProviderUsage,
         settings: UsageAlertSettings,
         now: Date,
         localizer: Localizer
     ) -> [UsageAlertCandidate] {
-        guard settings.resetWarningMinutes > 0 else {
+        guard settings.resetWarningMinutes > 0, usage.source == .api || usage.source == .statusLine else {
             return []
         }
 
         let warningWindow = TimeInterval(settings.resetWarningMinutes * 60)
-        let resets: [(label: String, date: Date?)] = [
-            ("5h", usage.resetAt5h),
-            ("7d", usage.resetAt7d)
+        let resets: [(label: String, date: Date?, unused: Int?, threshold: Int)] = [
+            ("5h", usage.resetAt5h, usage.remainingPercent5h, settings.fiveHourThreshold),
+            ("7d", usage.resetAt7d, usage.remainingPercent7d, settings.sevenDayThreshold)
         ]
 
         return resets.compactMap { reset in
-            guard let date = reset.date else {
+            guard let date = reset.date, let unused = reset.unused, unused > reset.threshold else {
                 return nil
             }
-            let remaining = date.timeIntervalSince(now)
-            guard remaining > 0, remaining <= warningWindow else {
+            let timeLeft = date.timeIntervalSince(now)
+            guard timeLeft > 0, timeLeft <= warningWindow else {
                 return nil
             }
-            let minutes = max(0, Int(ceil(remaining / 60)))
+            let minutes = max(0, Int(ceil(timeLeft / 60)))
             let resetID = Int(date.timeIntervalSince1970)
             return UsageAlertCandidate(
                 id: "\(usage.provider.rawValue)-\(reset.label)-reset-\(resetID)",
@@ -258,6 +263,7 @@ public enum UsageAlertEvaluator {
                     .replacingOccurrences(of: "{provider}", with: usage.provider.displayName)
                     .replacingOccurrences(of: "{window}", with: reset.label)
                     .replacingOccurrences(of: "{time}", with: "\(minutes)m")
+                    .replacingOccurrences(of: "{percent}", with: "\(unused)")
             )
         }
     }

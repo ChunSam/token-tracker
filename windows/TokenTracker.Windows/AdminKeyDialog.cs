@@ -8,10 +8,16 @@ namespace TokenTracker.Windows;
 /// Asks for a provider's Admin key. The key file is read only here, when the user
 /// opens this, and the key goes nowhere but into DPAPI.
 /// </summary>
+internal enum AdminKeyChange
+{
+    None,
+    Saved,
+    Deleted
+}
+
 internal static class AdminKeyDialog
 {
-    /// True when a key was saved or deleted.
-    public static bool Run(IWin32Window owner, Provider provider, IAdminKeyStore store, Localizer localizer)
+    public static AdminKeyChange Run(IWin32Window owner, Provider provider, IAdminKeyStore store, Localizer localizer)
     {
         var existing = store.Key(provider);
         var stored = existing is null
@@ -84,28 +90,28 @@ internal static class AdminKeyDialog
                 var key = input.Text.Trim();
                 if (key.Length == 0)
                 {
-                    return false;
+                    return AdminKeyChange.None;
                 }
 
                 if (!AdminKeyText.LooksLikeAdminKey(key, provider))
                 {
                     Fail(owner, localizer.Text(L10nKey.AdminKeyInvalid)
                         .Replace("{prefix}", AdminKeyText.Prefix(provider), StringComparison.Ordinal));
-                    return false;
+                    return AdminKeyChange.None;
                 }
 
                 if (!store.Save(provider, key))
                 {
                     Fail(owner, localizer.Text(L10nKey.AdminKeySaveFailed));
-                    return false;
+                    return AdminKeyChange.None;
                 }
 
-                return true;
+                return AdminKeyChange.Saved;
             case DialogResult.Abort:
                 store.Delete(provider);
-                return true;
+                return AdminKeyChange.Deleted;
             default:
-                return false;
+                return AdminKeyChange.None;
         }
     }
 

@@ -1,6 +1,10 @@
 # 금액 표시 설계 (Claude · Codex)
 
-상태: 설계 초안 (2026-11-03). 구현 전 검토용이다.
+상태: 설계 초안 (2026-11-03), 1차 검토 반영. 구현 전 검토용이다.
+
+1차 검토에서 정한 것:
+- 시각과 기간 경계(오늘·이번 달)는 사용자 기기의 시간대를 따른다. 특정 시간대(한국 시간이나 UTC)로 고정하지 않는다.
+- 구독만 쓰고 추가 사용 금액을 꺼 둔 사용자에게는 금액이 어디에도 나오지 않는다(팝업·메뉴바·트레이·알림).
 
 ## 왜 필요한가
 
@@ -47,25 +51,30 @@ Codex에 API 키로 로그인하므로, 앱이 읽는 구독용 OAuth 토큰이 
 ```
 
 - `balance`는 문자열이다. 숫자로 읽히면 표시하고, 아니면 표시하지 않는다.
-- `has_credits`가 false이고 `unlimited`도 false면 크레딧 줄을 아예 숨긴다.
+- 크레딧을 쓰지 않는 사용자(`has_credits`가 false)에게는 아무것도 표시하지 않는다(아래 "금액 표시 조건").
 
 ### 2단계 — 조직 청구 비용 (Admin API)
 
-**Claude (Anthropic Console 조직)**
+**Claude (Anthropic Console 조직)** — 엔드포인트가 둘이고, 시간 단위와 반영 속도가 다르다.
 
-- 엔드포인트: `GET https://api.anthropic.com/v1/organizations/cost_report` (기존 Usage and Cost API).
-  - 헤더: `x-api-key: <Admin 키>`, `anthropic-version: 2023-06-01`.
-  - 파라미터: `starting_at`, `ending_at`(RFC 3339), `bucket_width=1d`(비용은 하루 단위만), `limit` 최대 31,
-    `group_by[]=description`(모델별 내역).
-  - 응답: `data[]`는 오래된 날부터의 일 버킷(빈 날 포함), 각 버킷의 `results[]`에 `amount`·`currency`.
-  - **금액 단위: USD, 센트 단위의 소수 문자열** (`"123.45"`는 $1.2345).
-  - 반영 지연: 보통 5분 이내. 조회는 지속적으로 1분에 한 번까지 권장.
+| | Analytics API (신규, 베타) | Usage and Cost API (기존) |
+|---|---|---|
+| 비용 엔드포인트 | `GET /v1/organizations/analytics/cost` | `GET /v1/organizations/cost_report` |
+| 비용 시간 단위 | `1m`·`1h`·`1d` 버킷, 또는 범위 합계 | `1d`만 (UTC 날짜) |
+| 반영 지연 | 보통 4시간, 최대 24시간. 응답의 `data_refreshed_at` 이후는 비었거나 부분 값 | 보통 5분 |
+| 금액 형식 | `cost.amount` = `"41280.000000"` (센트, 소수 6자리) | `amount` = `"123.45"` (센트) |
+| 범위 제한 | 요청당 최대 31일, 2026-01-01 이후·최근 365일, 1시간 버킷은 경계를 정시로 내림 | 제한 적음 |
+| 헤더 | `x-api-key`, `anthropic-version: 2023-06-01`, `anthropic-beta: analytics-usage-cost-2026-08-24` | `x-api-key`, `anthropic-version: 2023-06-01` |
+
+- 사용자 시간대의 "오늘"·"이번 달" 경계를 지키려면 **시간 단위 비용**이 필요하고, 그것은 Analytics API에만
+  있다. 기존 API는 UTC 날짜 단위라 다른 시간대의 하루를 쪼갤 수 없다. 그래서 기본안은 Analytics API다
+  (아래 "시간대와 기간 경계", 결정 1).
+  - 요청 1: 사용자 시간대의 이번 달 1일 00:00부터 지금까지, `time_bucket_width=1h`, `order_by=time`.
+    시간별 합계를 로컬 날짜로 묶어 "오늘"과 "이번 달"을 만든다(최대 744행, 한 페이지 1,000행).
+  - 요청 2: 같은 범위를 버킷 없이 `group_by[]=model`로 — 이번 달 모델별 비중.
 - 키: `sk-ant-admin01-...`. **개인 계정은 발급받을 수 없다** — Console에서 조직을 먼저 만들어야 한다.
-- 신규 Usage and Cost Analytics API(`/v1/organizations/analytics/cost`, 베타 헤더
-  `analytics-usage-cost-2026-08-24`)는 1분·1시간 버킷을 주지만 반영에 4~24시간이 걸린다. 메뉴바에서
-  "지금까지"를 보여주는 용도로는 5분 지연인 기존 API가 맞다. 기존 API는 "legacy, remains supported"
-  상태이므로, 폐기 공지가 나오면 Analytics API로 옮긴다(파서만 바뀌도록 클라이언트를 분리한다).
-  - Analytics 금액은 `"41280.000000"`(센트, 소수 6자리) 형태다. 단위는 같다.
+- 기존 API는 "legacy, remains supported" 상태다. 신선도를 우선하는 결정을 하면 이쪽을 쓴다.
+  클라이언트는 엔드포인트별 파서만 바뀌도록 나눈다.
 
 **Codex (OpenAI 조직)**
 
@@ -81,11 +90,27 @@ Codex에 API 키로 로그인하므로, 앱이 읽는 구독용 OAuth 토큰이 
 - Codex CLI가 API 키로 로그인돼 있으면 `~/.codex/auth.json`이 `auth_mode: "apikey"`와 `OPENAI_API_KEY`를
   갖는다. 이 키로는 비용을 읽을 수 없지만, "구독 한도가 없는 이유"를 안내하는 데 쓴다.
 
-### 날짜 경계: UTC
+### 시간대와 기간 경계
 
-두 Admin API 모두 비용을 **UTC 하루 단위**로만 준다. 그래서 "오늘"은 UTC 날짜이고, 한국에서는 매일
-09:00에 바뀐다. "이번 달"도 UTC 달 기준이다. 로컬 날짜로 맞출 방법이 없으므로 화면에 `(UTC)`를 붙여
-숨기지 않는다. 청구서도 UTC 기준이라 "이번 달"은 청구서와 맞는다.
+화면에 나오는 모든 시각과 "오늘"·"이번 달"의 경계는 **기기의 현재 시간대**를 따른다. 코드에 특정 시간대를
+적지 않는다. macOS는 `TimeZone.current`, Windows는 `TimeZoneInfo.Local`을 쓰고, 순수 함수는 시간대를
+인자로 받아 테스트에서 여러 시간대를 넣어 본다. 기기 시간대가 바뀌면(여행, 설정 변경) 다음 조회부터 새
+경계로 다시 계산한다. 서머타임이 있는 시간대에서는 23시간·25시간인 날이 생기므로, 경계는 "자정 + 24시간"이
+아니라 달력으로 계산한다.
+
+- 날짜 경계를 API 요청 범위로 바꿀 때는 로컬 자정을 UTC 시각으로 변환해 넘긴다.
+- **Claude (Analytics API, 1시간 버킷):** 정시 단위 오프셋 시간대(한국 +9, 미국 동부 −5/−4 등)는 경계가
+  정확하다. 30분·45분 오프셋 시간대(인도 +5:30, 네팔 +5:45 등)는 API가 경계를 정시로 내리므로 최대 45분
+  어긋난다. 필요하면 경계가 걸친 한 시간만 `1m` 버킷으로 다시 받아 맞춘다(구현 3단계에서 판단).
+- **OpenAI (costs, `1d`만):** `start_time`을 로컬 자정으로 주면 버킷이 그 시각부터 하루씩 잘리는지, UTC
+  자정에 맞춰지는지 문서로 확인되지 않는다. **실제 키로 먼저 확인한다**(결정 2).
+  - 로컬 자정 기준으로 잘리면: "오늘"·"이번 달" 모두 로컬 기준으로 정확하다.
+  - UTC 자정에 맞춰지면: 로컬 경계로 하루를 쪼갤 수 없다. 그때의 표시 방식은 결정 2에서 고른다.
+- **반영 지연을 숨기지 않는다:** Analytics API는 몇 시간 늦게 반영되므로, 금액 옆이나 도움말에
+  `data_refreshed_at`을 로컬 시각으로 보여준다(`14:20 기준`). 기준 시각이 오늘 자정보다 이르면 "오늘"
+  금액은 `집계 전`으로 표시한다(0원으로 보이면 안 된다).
+- 청구서는 UTC 달 기준이라, 로컬 "이번 달"은 달 경계 부근에서 청구서와 몇 시간분 다를 수 있다. 화면 문구는
+  "이번 달 사용"으로 하고, 청구 금액이라고 부르지 않는다.
 
 ## Core 모델 (양쪽 1:1)
 
@@ -103,8 +128,8 @@ public enum CostSource: String, Sendable {
 public struct ProviderCost: Equatable, Sendable {
     public let provider: Provider
     public let source: CostSource
-    public let monthToDate: CostAmount?   // UTC 달 1일부터
-    public let today: CostAmount?         // UTC 오늘 버킷
+    public let monthToDate: CostAmount?   // 기기 시간대의 이번 달 1일 00:00부터
+    public let today: CostAmount?         // 기기 시간대의 오늘 00:00부터, 집계 전이면 nil
     public let limit: CostAmount?         // 추가 사용량 한도 또는 사용자가 정한 월 예산
     public let creditBalance: CostAmount? // Codex 크레딧 잔액
     public let topItems: [CostLineItem]   // 이번 달 상위 3개 (모델/라인 아이템)
@@ -115,14 +140,18 @@ public struct ProviderCost: Equatable, Sendable {
 
 순수 함수 (`now` 주입, 진리표 테스트 대상):
 
-- `CostPeriod.monthStart(now:)`, `CostPeriod.dayStart(now:)` — UTC 경계.
-- `AnthropicCostParser.parse(json:now:)` — 센트 문자열 → Decimal 달러, 버킷 합산, 이번 달·오늘 분리,
-  설명별 합산 후 상위 3개.
-- `OpenAICostParser.parse(json:now:)` — `result`/`results` 둘 다, 달러 숫자, 같은 집계.
+- `CostPeriod.monthStart(now:timeZone:)`, `CostPeriod.dayStart(now:timeZone:)` — 기기 시간대의 달력
+  경계를 UTC 시각으로 돌려준다(서머타임 포함).
+- `CostPeriod.requestRange(now:timeZone:)` — 이번 달 1일 00:00(로컬) ~ 지금. 31일 제한 안에 든다.
+- `AnthropicCostParser.parseHourly(json:timeZone:now:)` — Analytics 시간 버킷의 센트 문자열 → Decimal
+  달러, 로컬 날짜로 묶어 이번 달·오늘 분리, `data_refreshed_at` 보존.
+- `AnthropicCostParser.parseByModel(json:)` — 모델별 합계 → 상위 3개.
+- `OpenAICostParser.parse(json:timeZone:now:)` — `result`/`results` 둘 다, 달러 숫자, 같은 집계.
 - `SubscriptionCostParser.claude(json:)`, `.codex(json:)` — 1단계 필드. 형태가 다르면 `nil`.
 - `CostFormatter.text(_:localizer:)` — `$12.34`, 1000 이상은 `$1.2K`, 0.01 미만은 `<$0.01`.
-- `CostBudget.alerts(cost:budget:now:)` — 월 예산 80%·100% 알림 후보. id는
-  `{provider}-cost-{80|100}-{yyyy-MM}` (UTC 달 단위로 한 번).
+- `CostBudget.alerts(cost:budget:now:timeZone:)` — 월 예산 80%·100% 알림 후보. id는
+  `{provider}-cost-{80|100}-{yyyy-MM}` (로컬 달 단위로 한 번).
+- `CostVisibility.shows(...)` — 아래 "금액 표시 조건"의 진리표. 화면·메뉴바·알림이 모두 이것 하나를 본다.
 
 금액은 부동소수점을 쓰지 않는다(Swift `Decimal`, C# `decimal`). 센트 문자열을 Double로 바꾸면 합산에서
 1센트 단위 오차가 난다.
@@ -130,13 +159,14 @@ public struct ProviderCost: Equatable, Sendable {
 ## 수집
 
 - 비용 조회는 사용량 폴링과 **별도 주기**로 돈다. `CostPolicy.nextFetch(after:succeeded:)` = 성공 후 10분,
-  실패 후 5분. 1단계 값은 사용량 응답에 같이 오므로 사용량 주기를 그대로 따른다.
-- 한 번 조회할 때 이번 달 1일(UTC)부터 지금까지를 `limit=31`로 받는다. 한 페이지면 충분하지만
-  `has_more`/`next_page`는 처리한다.
+  실패 후 5분. Analytics API는 몇 시간 단위로 갱신되므로 더 자주 물어도 값이 바뀌지 않는다. 1단계 값은
+  사용량 응답에 같이 오므로 사용량 주기를 그대로 따른다.
+- 한 번 조회할 때 `CostPeriod.requestRange`(로컬 이번 달 1일 00:00 ~ 지금)를 받는다. Claude는 시간 버킷
+  요청과 모델별 요청 두 번, OpenAI는 `limit=31` 한 번. `has_more`/`next_page`는 처리한다.
 - 429는 기존 `RateLimitBackoff`(키 지문 기반)를 재사용한다. 401·403은 "Admin 키가 거부됨"으로 분류한다.
 - 실패하면 마지막 성공 값을 캐시로 보여주되, 사용량과 같은 규칙으로 표시를 구분한다(`캐시 데이터 사용
-  중`). 금액은 이미 쓴 돈이라 시간이 지나도 틀리지 않으므로, 캐시 유지 기간은 사용량보다 길게(같은 UTC
-  달 안) 둔다.
+  중`). 금액은 이미 쓴 돈이라 시간이 지나도 틀리지 않으므로, 캐시 유지 기간은 사용량보다 길게(같은 로컬
+  달 안) 둔다. 캐시된 "오늘"은 날짜가 바뀌면 버린다.
 - 히스토리: 하루 마감 금액만 남긴다(일 단위 막대 차트용, 4단계 후보). 이번 범위에서는 저장하지 않는다.
 
 ## 자격 증명 저장 (2단계)
@@ -157,13 +187,13 @@ Admin 키는 조직 관리 권한(키 생성·삭제, 멤버 관리)까지 가�
 
 | 키 (macOS `Settings` / Windows `AppSettings`) | 기본값 | 설명 |
 |---|---|---|
-| `showSubscriptionExtras` / `ShowSubscriptionExtras` | true | 1단계 금액 줄 표시 |
 | `claudeCostEnabled` / `ClaudeCostEnabled` | false | Claude Admin API 비용 조회 (키가 있어야 의미) |
 | `codexCostEnabled` / `CodexCostEnabled` | false | OpenAI Admin API 비용 조회 |
 | `claudeMonthlyBudget` / `ClaudeMonthlyBudget` | 0 | 월 예산(USD, 0이면 끔) |
 | `codexMonthlyBudget` / `CodexMonthlyBudget` | 0 | 월 예산(USD, 0이면 끔) |
 
-기존 `claudeEnabled`·`codexEnabled`는 "구독 한도 표시"로 의미를 좁힌다. API만 쓰는 사용자는 구독 한도를
+1단계 금액은 따로 켜고 끄는 설정이 없다. 추가 사용 금액을 켠 사용자에게만 자동으로 나온다(아래 "금액
+표시 조건"). 기존 `claudeEnabled`·`codexEnabled`는 "구독 한도 표시"로 의미를 좁힌다. API만 쓰는 사용자는 구독 한도를
 끄고 비용만 켤 수 있어야 `로그인 필요` 카드가 사라진다. 키 이름은 바꾸지 않으므로 마이그레이션은 없다.
 
 설정 화면 배치(양쪽): 제공자 섹션의 각 제공자 아래에 "구독 한도" 토글, "API 비용" 토글 + `Admin 키…`
@@ -171,68 +201,97 @@ Admin 키는 조직 관리 권한(키 생성·삭제, 멤버 관리)까지 가�
 
 ## 화면
 
+### 금액 표시 조건
+
+금액(금액 줄, 예산 막대, 메뉴바 금액, 트레이 금액, 금액 알림)은 **그 사용자가 실제로 돈을 내는 경로가 있을
+때만** 나온다. 구독만 쓰고 추가 사용 금액을 꺼 둔 사용자에게는 이 기능이 없는 것과 같다. 설정 화면의
+"API 비용" 항목(키 입력)만 남는다.
+
+| 제공자 | 금액을 보여주는 경우 | 근거 필드 |
+|---|---|---|
+| Claude 구독 | 추가 사용량이 켜져 있음 | `spend.enabled == true` 또는 `extra_usage.is_enabled == true` |
+| Codex 구독 | 크레딧을 갖고 있음 | `credits.has_credits == true` (잔액이 숫자로 읽힐 때) |
+| Claude·Codex API | Admin 키가 있고 "API 비용"을 켰음 | 설정 + 저장된 키 |
+
+- 셋 다 아니면 그 제공자 카드에는 금액 영역이 없고, 메뉴바·트레이에도 금액이 없으며, 금액 알림도 없다.
+- 판단은 매 조회마다 다시 한다. 사용자가 추가 사용량을 켜거나 끄면 다음 조회에 바로 반영된다.
+- 필드가 없거나 형태가 다르면 "꺼짐"으로 본다(모르는 상태에서 금액을 지어내지 않는다).
+- 2026-11-03 확인한 Pro 계정 응답(`spend.enabled: false`, `extra_usage.is_enabled: false`,
+  `user_disabled: true`)은 표시하지 않는 경우다. 이 사용자의 화면은 지금과 똑같아야 한다.
+
 ### macOS 팝업
 
-제공자 카드 안에서 기존 5h·7d 막대 아래에 금액 영역을 둔다. 구독 한도가 꺼져 있으면 금액 영역만 있는
-카드가 된다.
+금액 표시 조건을 만족하는 제공자만, 카드 안의 기존 5h·7d 막대 아래에 금액 영역을 둔다. 구독 한도가 꺼진
+API 사용자는 금액 영역만 있는 카드가 된다.
 
 ```
 Claude  [api]                                   ● 정상
-  이번 달 (UTC)                              $42.18
+  이번 달 사용                               $42.18
   ▓▓▓▓▓▓▓▓░░░░░░░░  예산 $100 중 42%
-  오늘 (UTC) $3.07 · Opus 71% · Sonnet 27%
+  오늘 $3.07 · Opus 71% · Sonnet 27%     14:20 기준
 Codex   [plus]                                  ● 정상
   5시간 ... 7일 ...                             (기존)
   크레딧 잔액  $18.40
 ```
+
+- 기준 시각(`14:20 기준`)은 기기 시간대의 시각이다. 오늘 날짜가 아니면 `11월 2일 22:10 기준`처럼 날짜를 붙인다.
 
 - 금액 숫자는 오른쪽 정렬, 기존 퍼센트와 같은 굵기.
 - 예산이 없으면 막대를 그리지 않는다. 80% 이상이면 주황, 100% 이상이면 빨강(기존 `UsageLevel` 규칙과 같은
   색 체계).
 - 1단계 Claude 추가 사용량: `추가 사용량  $1.86 / $5.00` + 막대(한도 대비).
 - 상태 배지: Admin API 값은 `정상`, 캐시는 `캐시 데이터 사용 중`, 키 거부는 `Admin 키 거부됨`(빨강).
-- 데이터 반영 시각: `data_refreshed_at`이 있으면(Analytics API로 옮긴 뒤) 도움말에 `기준 시각 10:42`.
+- 데이터 반영 시각: Claude는 `data_refreshed_at`을 `14:20 기준`으로 항상 보여준다. OpenAI는 응답에 반영
+  시각이 없으므로 조회 시각만 도움말에 둔다.
 
 ### 메뉴바
 
-- 구독 한도가 켜져 있으면 지금과 같다(퍼센트). 금액은 메뉴바에 나오지 않는다.
-- 구독 한도가 꺼지고 비용만 켜진 제공자는 이번 달 금액을 쓴다: `Cl $42`, 로고 모드면 로고 + `$42`.
+- 구독만 쓰고 추가 사용 금액을 꺼 둔 사용자는 지금과 완전히 같다.
+- 구독 한도가 켜져 있으면 지금과 같다(퍼센트). 추가 사용량·크레딧 금액은 메뉴바에 나오지 않는다(결정 3).
+- 구독 한도가 꺼지고 API 비용만 켜진 제공자는 이번 달 금액을 쓴다: `Cl $42`, 로고 모드면 로고 + `$42`.
   둘 다 비용만이면 `Cl $42 · Cdx $8`.
 - 예산 80% 이상이면 기존 7일 경고처럼 강조색을 쓴다.
 
 ### Windows
 
-- 트레이 메뉴 제공자 하위 메뉴에 `이번 달 (UTC): $42.18`, `오늘 (UTC): $3.07`, `예산: $100 중 42%`,
-  상위 항목 줄을 추가한다.
+- 금액 표시 조건을 만족하는 제공자만, 트레이 메뉴 하위 메뉴에 `이번 달 사용: $42.18`, `오늘: $3.07`,
+  `예산: $100 중 42%`, `14:20 기준`, 상위 항목 줄을 추가한다.
 - 툴팁 첫 줄: 구독 한도가 없는 제공자는 `Claude $42 (이번 달)`.
 - 트레이 아이콘(16×16)은 퍼센트를 그리는 자리라 금액을 그리지 않는다. 구독 한도가 모두 꺼져 있으면
   아이콘에 `$`를 그린다.
 
 ### 알림
 
-- 월 예산 80%, 100% 도달 시 제공자별로 한 번씩(같은 UTC 달 안에서는 다시 보내지 않는다).
+- 금액 알림도 금액 표시 조건을 따른다. 조건을 만족하지 않는 제공자에게는 금액 알림이 없다.
+- 월 예산 80%, 100% 도달 시 제공자별로 한 번씩(같은 로컬 달 안에서는 다시 보내지 않는다).
 - 1단계: Claude `spend.severity`가 `normal`이 아니게 바뀌면 한 번, Codex `overage_limit_reached`가 true가 되면
   한 번.
 - 기존 알림처럼 `알림 받기`가 꺼져 있으면 보내지 않는다.
 
 ## 현지화
 
-새 키(사전 4개 + enum 2개): `costThisMonth` "이번 달 (UTC)" / "This month (UTC)", `costToday`,
+새 키(사전 4개 + enum 2개): `costThisMonth` "이번 달 사용" / "This month", `costToday` "오늘" / "Today",
+`costAsOf` "{time} 기준" / "as of {time}", `costNotYetTallied` "집계 전" / "Not tallied yet",
 `costBudget` "예산 {limit} 중 {percent}%", `costExtraUsage` "추가 사용량", `costCreditBalance`
 "크레딧 잔액", `costAdminKeyRejected` "Admin 키 거부됨", `costBudgetAlertTitle`, `costBudgetAlertBody`
-"{provider} 이번 달 비용 {amount} — 예산의 {percent}%", 설정 문구들. 금액 형식(`$`, 천 단위 `K`)은
-언어와 무관하게 같다.
+"{provider} 이번 달 사용 {amount} — 예산의 {percent}%", 설정 문구들. 금액 형식(`$`, 천 단위 `K`)은
+언어와 무관하게 같다. 시각과 날짜는 기기 지역 설정의 형식(12시간/24시간)을 따른다.
 
 ## 테스트
 
 양쪽 Core에 같은 진리표:
 
-- 파서: 문서 예시를 본뜬 고정 JSON — Anthropic 센트 문자열(`"123.45"` → $1.2345), 빈 날 버킷 포함,
-  여러 페이지, OpenAI `result`/`results` 둘 다, 통화 대소문자.
-- UTC 경계: 한국 시간 08:59와 09:01에 "오늘" 버킷이 바뀌는지, 달 마지막 날 → 다음 달 1일.
-- 합산: Decimal로 31일 × 여러 항목을 더해 센트 오차가 없는지.
+- 파서: 문서 예시를 본뜬 고정 JSON — Analytics 센트 문자열(`"41280.000000"` → $412.80), 시간 버킷,
+  `data_refreshed_at`(값·null), 여러 페이지, OpenAI `result`/`results` 둘 다, 통화 대소문자.
+- 시간대 경계: 같은 시간 버킷 묶음을 여러 시간대로 집계해 "오늘"·"이번 달"이 각 시간대의 자정에서
+  갈리는지. 한국(+9), 미국 동부(서머타임 시작·끝 날 23·25시간), 인도(+5:30, 정시 내림 허용 오차),
+  UTC. 달 마지막 날 → 다음 달 1일.
+- 반영 지연: `data_refreshed_at`이 오늘 자정보다 이르면 "오늘"은 `집계 전`(nil).
+- 합산: Decimal로 31일 × 24시간 × 여러 항목을 더해 센트 오차가 없는지.
 - 예산 알림: 79/80/100%, 예산 0, 같은 달 중복 억제, 달이 바뀌면 재무장.
-- 1단계: 추가 사용량 꺼짐(지금 실측 응답 그대로) → 표시 없음, 켜짐(가정한 형태) → 표시, 이상한 형태 → 표시 없음.
+- 금액 표시 조건: 지금 실측한 Pro 응답(추가 사용량 꺼짐) → 아무 데도 표시 없음, 켜짐(가정한 형태) → 표시,
+  필드 없음·이상한 형태 → 표시 없음, Codex `has_credits` false → 없음, API 비용은 키·토글 둘 다 있어야
+  표시. 팝업·메뉴바·트레이·알림이 같은 판단을 쓰는지.
 - 클라이언트: 가짜 HTTP 핸들러로 401·403·429·200 (Windows는 `QueueHttpMessageHandler`, macOS는
   `HTTPClient` 주입).
 
@@ -242,8 +301,9 @@ Codex   [plus]                                  ● 정상
 
 ## 구현 순서 (PR 단위)
 
-1. Core: `CostAmount`·파서·포매터·UTC 경계·예산 알림 + 양쪽 진리표 (UI 없음).
-2. 1단계: Codex 크레딧 잔액 표시(실제 값 확인 가능), Claude 추가 사용량은 플래그 뒤에.
+1. Core: `CostAmount`·파서·포매터·시간대 경계·표시 조건·예산 알림 + 양쪽 진리표 (UI 없음).
+2. 1단계: Codex 크레딧 잔액, Claude 추가 사용량. 둘 다 표시 조건 뒤에 있으므로, 이 개발 계정(둘 다 꺼짐)에서는
+   화면이 바뀌지 않는 것을 확인한다.
 3. 2단계 수집: Admin 키 저장(macOS 키체인, Windows DPAPI), 클라이언트 두 개, 주기·캐시·백오프, 진단 줄.
 4. 2단계 화면: 설정(토글·키 시트·예산), 팝업 카드, 메뉴바 규칙, Windows 메뉴·툴팁.
 5. 예산 알림, 문서(README·WORK_SUMMARY), 릴리스.
@@ -258,11 +318,24 @@ Claude Code의 `~/.claude/projects/**/*.jsonl`과 Codex의 세션 로그에서 �
 
 ## 결정이 필요한 것
 
-1. "오늘"을 UTC 날짜로 보여주는 것이 괜찮은가 (로컬 날짜로는 API가 주지 않는다).
-2. 예산 알림 기준 80%·100%가 적당한가.
-3. 구독 한도와 비용이 둘 다 켜진 경우 메뉴바에 금액을 같이 보여줄 것인가 (초안: 보여주지 않음).
-4. Admin 키를 메뉴바 앱에 보관하는 위험을 감수할 것인가 (초안: 키체인·DPAPI + 전용 키 안내).
-5. 3단계(로컬 추정)를 언젠가 할 것인가.
+1. **Claude 데이터 출처 — 로컬 경계 정확도와 신선도 중 무엇을 우선할지.**
+   - A (기본안): Analytics API 시간 버킷. 어느 시간대든 "오늘"·"이번 달" 경계가 정확하다. 대신 4~24시간 늦게
+     반영되어, 낮 동안 "오늘"은 자주 `집계 전`이고 금액 옆에 `14:20 기준`이 붙는다.
+   - B: 기존 API(5분 지연)의 일 단위 금액을, 같은 API의 시간별 토큰 사용량 비율로 시간에 나눠 로컬 경계로
+     다시 묶는다. 정확하고 신선하지만 구현이 가장 복잡하다(모델·토큰 종류별 배분, 웹 검색·코드 실행은 근사).
+   - C: 기존 API 일 단위만. 신선하지만 다른 시간대의 하루를 쪼갤 수 없어 "오늘"은 보여주지 않고 "이번
+     달"만 보여준다(달 경계에서 시간대 오프셋만큼 어긋남).
+   - 추천: A로 시작하고, 지연이 불편하면 B로 올린다(파서·집계만 바뀐다).
+2. **OpenAI 하루 버킷이 UTC 자정 기준으로 잘리는 경우의 표시.** 실제 키로 확인하기 전까지는 모른다.
+   - a (추천): "이번 달"만 보여주고 "오늘"은 숨긴다.
+   - b: 시간별 토큰 사용량으로 배분한다(1번의 B와 같은 방식, 복잡).
+3. **구독 + 추가 사용량을 켠 사용자의 메뉴바에 금액도 보여줄지.** 초안: 보여주지 않고 팝업에만 둔다.
+4. **예산 알림 기준.** 초안: 80%와 100%.
+5. **Admin 키 보관.** 조직 관리 권한까지 있는 키를 메뉴바 앱에 두는 위험을 감수할지. 초안: 키체인·DPAPI,
+   이 앱 전용 키와 만료일 설정 안내.
+6. **통화.** 두 API 모두 USD로만 준다. 초안: USD 그대로 표시한다. 원화 등으로 바꾸려면 환율을 외부에서
+   받아야 해서, 앱이 사용량 제공자 말고 요청을 보내는 곳이 하나 더 생긴다.
+7. **로컬 로그 추정(3단계)을 언젠가 할지.** 초안: 2단계 이후 필요하면.
 
 ## 참고
 

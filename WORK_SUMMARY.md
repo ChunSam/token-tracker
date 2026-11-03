@@ -137,7 +137,10 @@ Token tracker/
   1초 기다린 뒤 Enter로 신뢰 화면의 기본값 "No, exit"를 골라 스스로 나가게 하고, 안 나가면
   SIGTERM, 그래도 남으면 SIGKILL. 시간 초과는 15초.
 - Windows는 PTY 대신 숨은 콘솔(`CreateNoWindow`, 리디렉션 없음)로 띄우고, 파일이 바뀌어 만료되지
-  않은 토큰으로 읽히면 갱신으로 본 뒤 프로세스 트리를 종료한다. 실제 PC에서는 아직 확인하지 못했다.
+  않은 토큰으로 읽히면 갱신으로 본 뒤 프로세스 트리를 종료한다. UTM의 Windows 11 Arm VM(CLI 2.1.317)
+  에서 `expiresAt`을 과거로 돌려 확인했다: 앱이 +0.6초에 `claude.exe`를 띄우고 +1.3초에 파일이 8시간
+  토큰으로 바뀌었으며, 콘솔 창도 남은 프로세스도 없었다. macOS와 달리 `~/.claude.json`을 한 번 쓴다.
+  x64 PC와 릴리스 zip으로는 아직 확인하지 않았다 — `docs/windows-vm-testing.md`.
 - 재시도 간격은 성공 후 5분, 실패·CLI 없음 후 30분(`ClaudeCLIRefresh.nextAttempt`, 양쪽 1:1).
 
 ### Claude 상태줄 브리지
@@ -238,6 +241,8 @@ Windows (`windows/`)
 - `scripts/build_app.sh` — release 빌드 후 `.app` 조립, `AppIcon.png` → `AppIcon.icns`.
   `APP_VERSION`/`APP_BUILD` 로컬 기본값을 가진다(릴리스는 태그·run number로 덮어씀)
 - `scripts/verify_app_bundle.swift` — 조립된 `.app`의 실행 파일·Info.plist·리소스 번들 검사
+- `scripts/utm-windows-ps.sh` — UTM Windows VM 안에서 PowerShell 스크립트를 실행하고 출력을 받아 옴
+  (`--user`는 로그인한 사용자 세션에서). 개발용이며 빌드와 무관.
 - `scripts/claude-statusline-bridge.sh` / `.ps1` — 상태줄 브리지. 사용자 설정이며 빌드에는 포함되지
   않는다. 양쪽 스모크 테스트가 스크립트를 실제로 실행해 재생 규칙을 검증한다
 - `windows/TokenTracker.Windows/TokenTracker.Windows.csproj` — `<Version>` 로컬 기본값.
@@ -305,7 +310,8 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
 - 첫 Claude Keychain 접근 시 macOS 권한 허용 창이 뜰 수 있다.
 - 산출물은 unsigned `.app`이다. 다른 Mac에서 더블클릭으로 열려면 Developer ID 서명과 notarization이
   필요하다.
-- 이 개발 머신에는 dotnet이 없다.
+- 이 개발 머신에는 dotnet이 없다. 대신 UTM의 Windows 11 Arm VM에서 C# 테스트·publish·앱 실행을
+  한다(`docs/windows-vm-testing.md`). VM 밖에서는 여전히 CI가 유일한 C# 게이트다.
 
 ## 다음 개선 후보
 

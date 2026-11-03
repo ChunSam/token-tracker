@@ -8,9 +8,10 @@ refreshed, or submitted to a live usage endpoint during this investigation.
 
 Token Tracker reads Claude Code's stored access token, checks `expiresAt`, and
 requests `https://api.anthropic.com/api/oauth/usage`. It does not own a login flow
-or refresh credentials. macOS tries Keychain before the credentials file;
-Windows uses the credentials file. Expired credentials require the external
-credential owner to supply a valid token.
+and never spends a refresh token. macOS tries Keychain before the credentials
+file; Windows uses the credentials file. An expired token is renewed by the
+credential owner: since 2026-11-03 the app starts the unmodified Claude Code to
+do it (see *CLI-delegated renewal* below).
 
 Cache lifetime now starts at each provider's actual measurement time, not the
 latest poll attempt. The versioned cache discards older records whose timestamps
@@ -82,3 +83,24 @@ forecast — those still admit `source == .api` only.
 
 [Claude status-line bridge](claude-statusline-bridge.md) documents the file
 format, the installation, and the reasoning behind each of those rules.
+
+## CLI-delegated renewal
+
+Added on 2026-11-03, after comparing how other usage trackers keep the token
+alive. Refreshing the token in the app is ruled out twice over: Anthropic's
+refresh tokens are single-use, so an app that spends Claude Code's copy signs the
+CLI out (CodexBar shipped this as its issue #1161 and backed it out), and the
+credential-use terms above bar third-party logins and credential handling.
+Session cookies fall under the same terms.
+
+What stays inside them is running the unmodified CLI, which renews its own store
+as it starts. Measured with 2.1.314 on macOS, an interactive launch rewrote the
+expired keychain token about 0.7 s after start, before its first screen, with no
+model request; `claude auth status` did not renew at all. So when every stored
+token has lapsed, `ClaudeCLIRefresher` starts `claude` once in a folder Claude
+Code has never trusted, so the launch stops at the trust prompt before hooks,
+plugins or a session, waits for the store to move, and reads it again. The
+launch details are in `WORK_SUMMARY.md`; the Windows run is in
+[Windows VM testing](windows-vm-testing.md). This keeps a token alive for users
+who mostly work in Claude Desktop, which never writes this store. It does not
+replace `/login` once the refresh token itself has lapsed.

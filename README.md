@@ -235,6 +235,9 @@ Windows 앱은 `.NET 10` 기반입니다. Windows 개발 환경에서 아래 명
 dotnet run --project windows/TokenTracker.Windows.Tests
 ```
 
+Apple Silicon Mac에서는 UTM의 Windows 11 Arm 가상 머신으로 테스트·빌드·실행을 할 수 있습니다.
+설정과 Mac에서 가상 머신을 다루는 방법은 [Windows VM 테스트](docs/windows-vm-testing.md)에 있습니다.
+
 ### Windows 앱 실행
 
 ```powershell

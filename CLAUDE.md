@@ -29,7 +29,9 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
   `windows/TokenTracker.Windows.Tests/Program.cs`)의 top-level assertion 나열이고, 첫 실패에서
   종료한다. **테스트 하나만 고르는 수단이 없으므로**, 특정 assertion만 보려면 그 부분만 남기고
   임시로 잘라 실행한 뒤 되돌린다. `Tests/TokenTrackerCoreTests/`는 빈 잔재다.
-- **이 개발 머신에는 dotnet이 없다.** Windows 코드의 컴파일 검증은 CI가 유일한 게이트다. C# 변경은
+- **이 개발 머신에는 dotnet이 없다.** UTM의 Windows 11 Arm VM(`Windows`)에 .NET 10 SDK와 Claude Code가
+  있어 `scripts/utm-windows-ps.sh`로 C# 테스트·publish·앱 실행을 할 수 있다(`docs/windows-vm-testing.md`).
+  VM이 꺼져 있거나 없으면 CI가 유일한 게이트다. C# 변경은
   작게 쪼개고, 과거 CI에서 터진 패턴(문자열 보간 안의 삼항 — `:`를 형식 지정자로 읽는다)을 피한다.
   CI가 초록으로 오기 전에 "동작한다"고 보고하지 않는다.
 - Windows 테스트의 `now`는 `2026-05-27`로 고정돼 있다. 새 테스트는 자기 `now`를 주입한다.

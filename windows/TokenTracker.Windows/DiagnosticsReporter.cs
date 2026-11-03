@@ -11,19 +11,22 @@ internal sealed class DiagnosticsReporter
     private readonly UsageSnapshot? snapshot;
     private readonly DateTimeOffset? lastSuccessfulRefreshAt;
     private readonly int runningInstanceCount;
+    private readonly ClaudeCliRefreshAttempt? claudeCliRefreshAttempt;
 
     public DiagnosticsReporter(
         AppSettings settings,
         UsageHistoryStore historyStore,
         UsageSnapshot? snapshot,
         DateTimeOffset? lastSuccessfulRefreshAt,
-        int runningInstanceCount)
+        int runningInstanceCount,
+        ClaudeCliRefreshAttempt? claudeCliRefreshAttempt)
     {
         this.settings = settings;
         this.historyStore = historyStore;
         this.snapshot = snapshot;
         this.lastSuccessfulRefreshAt = lastSuccessfulRefreshAt;
         this.runningInstanceCount = runningInstanceCount;
+        this.claudeCliRefreshAttempt = claudeCliRefreshAttempt;
     }
 
     public string DiagnosticsText()
@@ -72,6 +75,15 @@ internal sealed class DiagnosticsReporter
         lines.Add($"Claude credential last written: {credentialLastWritten}");
         lines.Add($"Claude credential age: {credentialAge}");
         lines.Add($"Claude credentials file exists: {File.Exists(ClaudeCredentialsPath)}");
+        // Whether the app may start Claude Code to renew a lapsed token, which CLI it
+        // would start, and how the last try went.
+        var renewalSetting = settings.RenewClaudeTokenWithCli ? "on" : "off";
+        var lastRenewal = claudeCliRefreshAttempt is { } attempt
+            ? IsoString(attempt.AttemptedAt) + " " + attempt.Outcome
+            : "none";
+        lines.Add($"Claude CLI renewal: {renewalSetting}");
+        lines.Add($"Claude CLI: {ClaudeCliRefresh.Locate() ?? "not found"}");
+        lines.Add($"Claude CLI last renewal: {lastRenewal}");
         lines.Add($"Codex auth file exists: {File.Exists(CodexAuthPath)}");
 
         // Whether the bridge is installed at all, and how old its measurement is.

@@ -64,6 +64,11 @@ internal sealed class SettingsForm : Form
 
         AddHeader(layout, localizer.Text(L10nKey.Providers));
         AddProviderCheckbox(layout, "Claude", settings.ClaudeEnabled, value => settings.ClaudeEnabled = value);
+        AddCheckbox(layout, localizer.Text(L10nKey.RenewClaudeTokenWithCli), settings.RenewClaudeTokenWithCli, value =>
+        {
+            settings.RenewClaudeTokenWithCli = value;
+            onGeneralChange();
+        });
         AddProviderCheckbox(layout, "Codex", settings.CodexEnabled, value => settings.CodexEnabled = value);
 
         AddCombo(

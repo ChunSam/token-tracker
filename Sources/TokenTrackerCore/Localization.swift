@@ -88,6 +88,7 @@ public struct Localizer {
         .updateAvailable: "New version {version}",
         .downloadUpdate: "Download",
         .checkForUpdates: "Check for updates",
+        .renewClaudeTokenWithCLI: "Auto-renew token via Claude Code",
         .showForecastLabel: "Show depletion forecast",
         .showResetCountdownLabel: "Show time until reset in the menu bar",
         .depletionAlertToggle: "Depletion alert (before reset)",
@@ -207,6 +208,7 @@ public struct Localizer {
         .updateAvailable: "새 버전 {version}",
         .downloadUpdate: "다운로드",
         .checkForUpdates: "업데이트 확인",
+        .renewClaudeTokenWithCLI: "Claude Code로 토큰 자동 갱신",
         .showForecastLabel: "소진 예측 표시",
         .showResetCountdownLabel: "메뉴바에 리셋까지 남은 시간 표시",
         .depletionAlertToggle: "소진 예측 알림 (리셋 전)",
@@ -327,6 +329,7 @@ public enum L10nKey: String {
     case updateAvailable
     case downloadUpdate
     case checkForUpdates
+    case renewClaudeTokenWithCLI
     case showForecastLabel
     case showResetCountdownLabel
     case depletionAlertToggle

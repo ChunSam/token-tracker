@@ -21,7 +21,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly SettingsStore settingsStore = new();
     private readonly CacheStore cacheStore = new();
     private readonly UsageHistoryStore historyStore = new();
-    private readonly UsageClient usageClient = new();
+    private readonly UsageClient usageClient = new(claudeCliRefresher: new ClaudeCliRefresher());
     private readonly ProviderLogoStore providerLogos = new();
     private readonly HashSet<string> deliveredAlertIds = new(StringComparer.Ordinal);
 
@@ -127,7 +127,7 @@ internal sealed class TrayAppContext : ApplicationContext
         try
         {
             var claudeTask = settings.ClaudeEnabled
-                ? usageClient.FetchClaudeAsync()
+                ? usageClient.FetchClaudeAsync(settings.RenewClaudeTokenWithCli)
                 : Task.FromResult(ProviderUsage.Unavailable(Provider.Claude, "Disabled"));
             var codexTask = settings.CodexEnabled
                 ? usageClient.FetchCodexAsync()
@@ -469,7 +469,7 @@ internal sealed class TrayAppContext : ApplicationContext
     }
 
     private DiagnosticsReporter Diagnostics() =>
-        new(settings, historyStore, snapshot, lastSuccessfulRefreshAt, RunningInstanceCount());
+        new(settings, historyStore, snapshot, lastSuccessfulRefreshAt, RunningInstanceCount(), usageClient.ClaudeCliRefreshLastAttempt);
 
     private void ShowSettings()
     {

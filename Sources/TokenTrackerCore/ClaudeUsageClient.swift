@@ -5,29 +5,44 @@ struct ClaudeUsageClient: Sendable {
     private let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let rateLimitState = RateLimitState(store: RateLimitStore(url: AppPaths.claudeRateLimit))
     private let statusLineStore: ClaudeStatusLineStore
+    let cliRefresher: ClaudeCLIRefresher?
     fileprivate static let defaultRateLimitCooldown: TimeInterval = 300
 
-    init(http: HTTPClient = HTTPClient(), statusLineStore: ClaudeStatusLineStore = ClaudeStatusLineStore()) {
+    init(
+        http: HTTPClient = HTTPClient(),
+        statusLineStore: ClaudeStatusLineStore = ClaudeStatusLineStore(),
+        cliRefresher: ClaudeCLIRefresher? = nil
+    ) {
         self.http = http
         self.statusLineStore = statusLineStore
+        self.cliRefresher = cliRefresher
     }
 
     /// The API endpoint first, because only that is a measurement taken now. The
-    /// status-line bridge is the fallback for the state this app cannot fix on its
-    /// own: the stored token has lapsed and only running the CLI refreshes it, so
-    /// without the bridge Claude usage simply stops until the user signs in again.
-    func fetch() async -> ProviderUsage {
-        let api = await fetchFromProviderAPI()
+    /// status-line bridge is the fallback for when the stored token has lapsed and
+    /// Claude Code could not renew it — or was not asked to.
+    func fetch(renewingExpiredToken: Bool = false) async -> ProviderUsage {
+        let api = await fetchFromProviderAPI(renewingExpiredToken: renewingExpiredToken)
         guard !api.isAvailable else { return api }
         return ClaudeStatusLineBridge.usage(statusLineStore.read(), apiError: api.error) ?? api
     }
 
-    private func fetchFromProviderAPI() async -> ProviderUsage {
-        let candidates: [TokenCandidate]
+    private func fetchFromProviderAPI(renewingExpiredToken: Bool) async -> ProviderUsage {
+        var candidates: [TokenCandidate]
         do {
             candidates = try readTokenCandidates()
         } catch {
             return .unavailable(.claude, error: error.localizedDescription)
+        }
+
+        // Every stored token has lapsed: have Claude Code renew the store before
+        // reporting it, and read it again only if it moved.
+        if renewingExpiredToken,
+           candidates.allSatisfy(\.isExpired),
+           let cliRefresher,
+           await cliRefresher.refreshIfDue(),
+           let renewed = try? readTokenCandidates() {
+            candidates = renewed
         }
 
         // Every stored token has lapsed. Spending a request on one would return an

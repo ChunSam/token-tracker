@@ -19,6 +19,7 @@ public final class Settings {
         static let depletionAlertEnabled = "depletionAlertEnabled"
         static let pollPausedUntil = "pollPausedUntil"
         static let checkForUpdates = "checkForUpdates"
+        static let renewClaudeTokenWithCLI = "renewClaudeTokenWithCLI"
     }
 
     private let defaults: UserDefaults
@@ -127,6 +128,15 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.checkForUpdates) }
     }
 
+    /// Whether an expired Claude token is renewed by starting Claude Code for a
+    /// moment, instead of waiting for the user to run it. On by default: it does
+    /// what the user would otherwise have to do by hand, through the CLI's own
+    /// sign-in.
+    public var renewClaudeTokenWithCLI: Bool {
+        get { defaults.bool(forKey: Key.renewClaudeTokenWithCLI) }
+        set { defaults.set(newValue, forKey: Key.renewClaudeTokenWithCLI) }
+    }
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). `nil`/absent means not paused.
     public var pollPausedUntil: Date? {
@@ -169,7 +179,8 @@ public final class Settings {
             Key.showResetCountdown: true,
             Key.staleToleranceHours: 12,
             Key.depletionAlertEnabled: false,
-            Key.checkForUpdates: true
+            Key.checkForUpdates: true,
+            Key.renewClaudeTokenWithCLI: true
         ])
     }
 

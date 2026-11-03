@@ -32,7 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             historyStore: historyStore,
             snapshot: snapshot,
             lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
-            runningInstanceCount: runningInstanceCount()
+            runningInstanceCount: runningInstanceCount(),
+            claudeCLIRefreshAttempt: usageService.claudeCLIRefreshLastAttempt
         )
     }
 

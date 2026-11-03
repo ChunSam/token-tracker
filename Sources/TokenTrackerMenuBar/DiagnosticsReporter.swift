@@ -8,6 +8,7 @@ struct DiagnosticsReporter {
     let snapshot: UsageSnapshot?
     let lastSuccessfulRefreshAt: Date?
     let runningInstanceCount: Int
+    let claudeCLIRefreshAttempt: ClaudeCLIRefreshAttempt?
 
     func diagnosticsText() -> String {
         var lines: [String] = []
@@ -45,6 +46,11 @@ struct DiagnosticsReporter {
         lines.append("Claude credential last written: \(claudeSource.lastWrittenAt.map(isoString) ?? "unknown")")
         lines.append("Claude credential age: \(claudeSource.age().map(UsageForecaster.durationText) ?? "unknown")")
         lines.append("Claude credentials file exists: \(fileExists(at: Self.claudeCredentialsURL))")
+        // Whether the app may start Claude Code to renew a lapsed token, which CLI it
+        // would start, and how the last try went.
+        lines.append("Claude CLI renewal: \(settings.renewClaudeTokenWithCLI ? "on" : "off")")
+        lines.append("Claude CLI: \(ClaudeCLIRefresh.locate() ?? "not found")")
+        lines.append("Claude CLI last renewal: \(claudeCLIRefreshAttempt.map { "\(isoString($0.attemptedAt)) \($0.outcome.rawValue)" } ?? "none")")
         // Whether the bridge is installed at all, and how old its measurement is.
         // "File present but measured 9h ago" is the whole diagnosis for a user who
         // set it up and then stopped running the CLI.

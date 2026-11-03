@@ -106,6 +106,9 @@ final class PreferencesModel: ObservableObject {
     @Published var checkForUpdates: Bool {
         didSet { settings.checkForUpdates = checkForUpdates; onGeneralChange() }
     }
+    @Published var renewClaudeTokenWithCLI: Bool {
+        didSet { settings.renewClaudeTokenWithCLI = renewClaudeTokenWithCLI; onGeneralChange() }
+    }
 
     var localizer: Localizer {
         Localizer(language: language)
@@ -137,11 +140,12 @@ final class PreferencesModel: ObservableObject {
         staleToleranceHours = settings.staleToleranceHours
         historyRetentionDays = settings.historyRetentionDays
         checkForUpdates = settings.checkForUpdates
+        renewClaudeTokenWithCLI = settings.renewClaudeTokenWithCLI
     }
 }
 
 private struct PreferencesView: View {
-    static let fullHeight: CGFloat = 885
+    static let fullHeight: CGFloat = 915
 
     @ObservedObject var model: PreferencesModel
     let height: CGFloat
@@ -151,6 +155,8 @@ private struct PreferencesView: View {
         Form {
             Section(localizer.text(.providers)) {
                 Toggle("Claude", isOn: $model.claudeEnabled)
+                Toggle(localizer.text(.renewClaudeTokenWithCLI), isOn: $model.renewClaudeTokenWithCLI)
+                    .disabled(!model.claudeEnabled)
                 Toggle("Codex", isOn: $model.codexEnabled)
             }
 

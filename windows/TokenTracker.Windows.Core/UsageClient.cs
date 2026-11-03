@@ -15,6 +15,7 @@ public sealed class UsageClient
     private readonly ProviderRateLimitState claudeRateLimitState;
     private readonly ProviderRateLimitState codexRateLimitState;
     private readonly ClaudeStatusLineStore claudeStatusLineStore;
+    private readonly ClaudeCliRefresher? claudeCliRefresher;
     private readonly string? homeDirectory;
 
     public UsageClient(
@@ -23,7 +24,8 @@ public sealed class UsageClient
         string? homeDirectory = null,
         string? rateLimitStatePath = null,
         string? codexRateLimitStatePath = null,
-        string? claudeStatusLinePath = null)
+        string? claudeStatusLinePath = null,
+        ClaudeCliRefresher? claudeCliRefresher = null)
     {
         // 10s, matching the per-request budget the Claude call already used. The old
         // 5s ceiling applied to both, so on a slow link Codex timed out first purely
@@ -36,7 +38,11 @@ public sealed class UsageClient
         this.codexRateLimitState = new ProviderRateLimitState(
             new ProviderRateLimitStore(codexRateLimitStatePath ?? AppPaths.CodexRateLimitStatePath));
         this.claudeStatusLineStore = new ClaudeStatusLineStore(claudeStatusLinePath);
+        this.claudeCliRefresher = claudeCliRefresher;
     }
+
+    /// The last time Claude Code was started to renew the token, for diagnostics.
+    public ClaudeCliRefreshAttempt? ClaudeCliRefreshLastAttempt => claudeCliRefresher?.LastAttempt;
 
     public async Task<UsageSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
     {
@@ -110,16 +116,17 @@ public sealed class UsageClient
         }
     }
 
+    public Task<ProviderUsage> FetchClaudeAsync(CancellationToken cancellationToken = default) =>
+        FetchClaudeAsync(renewExpiredToken: false, cancellationToken);
+
     /// <summary>
     /// The API endpoint first, because only that is a measurement taken now. The
-    /// status-line bridge is the fallback for the state this app cannot fix on
-    /// its own: the stored token has lapsed and only running the CLI refreshes
-    /// it, so without the bridge Claude usage simply stops until the user signs
-    /// in again.
+    /// status-line bridge is the fallback for when the stored token has lapsed
+    /// and Claude Code could not renew it — or was not asked to.
     /// </summary>
-    public async Task<ProviderUsage> FetchClaudeAsync(CancellationToken cancellationToken = default)
+    public async Task<ProviderUsage> FetchClaudeAsync(bool renewExpiredToken, CancellationToken cancellationToken = default)
     {
-        var api = await FetchClaudeFromApiAsync(cancellationToken);
+        var api = await FetchClaudeFromApiAsync(renewExpiredToken, cancellationToken);
         if (api.IsAvailable)
         {
             return api;
@@ -128,7 +135,7 @@ public sealed class UsageClient
         return ClaudeStatusLineBridge.Usage(claudeStatusLineStore.Read(), api.Error) ?? api;
     }
 
-    private async Task<ProviderUsage> FetchClaudeFromApiAsync(CancellationToken cancellationToken)
+    private async Task<ProviderUsage> FetchClaudeFromApiAsync(bool renewExpiredToken, CancellationToken cancellationToken)
     {
         ClaudeCredential credential;
         try
@@ -138,6 +145,23 @@ public sealed class UsageClient
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return ProviderUsage.Unavailable(Provider.Claude, ex.Message);
+        }
+
+        // The stored token has lapsed: have Claude Code renew the store before
+        // reporting it, and read it again only if it moved.
+        if (renewExpiredToken &&
+            CredentialExpiry.IsExpired(credential.ExpiresAt) &&
+            claudeCliRefresher is not null &&
+            await claudeCliRefresher.RefreshIfDueAsync(DateTimeOffset.Now, cancellationToken))
+        {
+            try
+            {
+                credential = credentialReader.ReadClaudeCredential(homeDirectory);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return ProviderUsage.Unavailable(Provider.Claude, ex.Message);
+            }
         }
 
         // The stored token has lapsed. Spending a request on it would return an

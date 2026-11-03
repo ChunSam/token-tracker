@@ -1197,6 +1197,72 @@ File.WriteAllText(updateSettingsPath, "{\"RefreshIntervalSeconds\":300}");
 Expect(new SettingsStore(updateSettingsPath).Load().CheckForUpdates, "a settings file from before the update check lands on the default");
 Directory.Delete(Path.GetDirectoryName(updateSettingsPath)!, recursive: true);
 
+// Renewing a lapsed Claude token through Claude Code: when to try again, and what
+// the CLI is started with. Mirrors Sources/TokenTrackerSmokeTests/ClaudeCLIRefreshTests.swift.
+var renewalAttemptAt = new DateTimeOffset(2027, 1, 15, 8, 0, 0, TimeSpan.Zero);
+var renewedAttempt = new ClaudeCliRefreshAttempt(renewalAttemptAt, ClaudeCliRefreshOutcome.Refreshed);
+var unchangedAttempt = new ClaudeCliRefreshAttempt(renewalAttemptAt, ClaudeCliRefreshOutcome.Unchanged);
+var notFoundAttempt = new ClaudeCliRefreshAttempt(renewalAttemptAt, ClaudeCliRefreshOutcome.CliNotFound);
+Expect(ClaudeCliRefresh.IsDue(null, renewalAttemptAt), "the first renewal is due at once");
+ExpectEqual(ClaudeCliRefresh.NextAttempt(renewedAttempt), renewalAttemptAt.AddMinutes(5), "a renewal waits five minutes before another");
+ExpectEqual(ClaudeCliRefresh.NextAttempt(unchangedAttempt), renewalAttemptAt.AddMinutes(30), "a renewal that changed nothing waits half an hour");
+ExpectEqual(ClaudeCliRefresh.NextAttempt(notFoundAttempt), renewalAttemptAt.AddMinutes(30), "a missing CLI is looked for again in half an hour");
+Expect(!ClaudeCliRefresh.IsDue(unchangedAttempt, renewalAttemptAt.AddSeconds(1799)), "a failed renewal is not retried early");
+Expect(ClaudeCliRefresh.IsDue(unchangedAttempt, renewalAttemptAt.AddSeconds(1800)), "a failed renewal is retried on time");
+
+Expect(
+    ClaudeCliRefresh.Arguments.SequenceEqual(new[] { "--strict-mcp-config", "--settings", "{\"remoteControlAtStartup\":false,\"disableAllHooks\":true}" }),
+    "the launch turns off hooks, MCP servers and Remote Control");
+
+var cliEnvironment = ClaudeCliRefresh.LaunchEnvironment(
+    new Dictionary<string, string>
+    {
+        ["Path"] = @"C:\Windows\System32",
+        ["USERPROFILE"] = @"C:\Users\x",
+        ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:1",
+        ["ClaudeCode"] = "1",
+        ["CLAUDE_CODE_OAUTH_TOKEN"] = "token",
+        ["CLAUDE_CONFIG_DIR"] = @"D:\elsewhere"
+    },
+    @"C:\Users\x\.local\bin");
+ExpectEqual(cliEnvironment["PATH"], @"C:\Users\x\.local\bin" + Path.PathSeparator + @"C:\Windows\System32", "the CLI's own directory leads PATH, whatever its case");
+ExpectEqual(cliEnvironment.Keys.Count(key => key.Equals("PATH", StringComparison.OrdinalIgnoreCase)), 1, "PATH is set once");
+ExpectEqual(cliEnvironment["USERPROFILE"], @"C:\Users\x", "the rest of the environment is kept");
+Expect(
+    cliEnvironment.Keys.All(key =>
+        !key.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase) &&
+        !key.StartsWith("CLAUDE", StringComparison.OrdinalIgnoreCase)),
+    "nothing points the CLI at other credentials or another config");
+ExpectEqual(cliEnvironment["DISABLE_AUTOUPDATER"], "1", "a renewal never updates the CLI");
+ExpectEqual(cliEnvironment["TERM"], "xterm-256color", "the terminal gets a type");
+ExpectEqual(
+    ClaudeCliRefresh.LaunchEnvironment(new Dictionary<string, string> { ["TERM"] = "dumb" }, @"C:\b")["TERM"],
+    "dumb",
+    "a terminal type already set is kept");
+ExpectEqual(
+    ClaudeCliRefresh.LaunchEnvironment(new Dictionary<string, string>(), @"C:\b")["PATH"],
+    @"C:\b",
+    "no PATH becomes the CLI's directory alone");
+
+var cliCandidates = ClaudeCliRefresh.CandidatePaths(
+    @"C:\Users\x",
+    string.Join(Path.PathSeparator, @"C:\Tools", "\"C:\\Program Files\\Claude\"", "", @"c:\tools"));
+Expect(
+    cliCandidates.SequenceEqual(new[]
+    {
+        Path.Combine(@"C:\Users\x", ".local", "bin", "claude.exe"),
+        Path.Combine(@"C:\Tools", "claude.exe"),
+        Path.Combine(@"C:\Program Files\Claude", "claude.exe")
+    }),
+    "the native install comes first, then PATH unquoted, each once");
+
+Expect(new AppSettings().RenewClaudeTokenWithCli, "Claude token renewal is on by default");
+var renewalSettingsPath = Path.Combine(Path.GetTempPath(), "token-tracker-renewal-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+Directory.CreateDirectory(Path.GetDirectoryName(renewalSettingsPath)!);
+File.WriteAllText(renewalSettingsPath, "{\"RefreshIntervalSeconds\":300}");
+Expect(new SettingsStore(renewalSettingsPath).Load().RenewClaudeTokenWithCli, "a settings file from before renewal lands on the default");
+Directory.Delete(Path.GetDirectoryName(renewalSettingsPath)!, recursive: true);
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
 static string StatusLinePayload(

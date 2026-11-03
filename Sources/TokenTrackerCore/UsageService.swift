@@ -11,9 +11,14 @@ public final class UsageService {
         self.init(
             settings: settings,
             cacheStore: CacheStore(),
-            claudeClient: ClaudeUsageClient(),
+            claudeClient: ClaudeUsageClient(cliRefresher: ClaudeCLIRefresher()),
             codexClient: CodexUsageClient()
         )
+    }
+
+    /// The last time Claude Code was started to renew the token, for diagnostics.
+    public var claudeCLIRefreshLastAttempt: ClaudeCLIRefreshAttempt? {
+        claudeClient.cliRefresher?.lastAttempt
     }
 
     init(settings: Settings, cacheStore: CacheStore, claudeClient: ClaudeUsageClient, codexClient: CodexUsageClient) {
@@ -26,11 +31,12 @@ public final class UsageService {
     public func refresh() async -> UsageSnapshot {
         let claudeEnabled = settings.claudeEnabled
         let codexEnabled = settings.codexEnabled
+        let renewClaudeToken = settings.renewClaudeTokenWithCLI
         let claudeClient = self.claudeClient
         let codexClient = self.codexClient
 
         async let claudeResult: ProviderUsage = claudeEnabled
-            ? claudeClient.fetch()
+            ? claudeClient.fetch(renewingExpiredToken: renewClaudeToken)
             : ProviderUsage.unavailable(.claude, error: "Disabled")
         async let codexResult: ProviderUsage = codexEnabled
             ? codexClient.fetch()

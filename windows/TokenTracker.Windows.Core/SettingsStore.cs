@@ -39,6 +39,12 @@ public sealed class AppSettings
     /// key, so it lands on the default.
     public bool CheckForUpdates { get; set; } = true;
 
+    /// Whether an expired Claude token is renewed by starting Claude Code for a
+    /// moment, instead of waiting for the user to run it. On by default: it does
+    /// what the user would otherwise have to do by hand, through the CLI's own
+    /// sign-in. A settings file written before this existed lands on the default.
+    public bool RenewClaudeTokenWithCli { get; set; } = true;
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). <c>null</c> means not paused.
     public DateTimeOffset? PollPausedUntil { get; set; }

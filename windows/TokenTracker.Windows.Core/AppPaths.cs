@@ -29,6 +29,12 @@ public static class AppPaths
     public static string ClaudeStatusLinePath =>
         Path.Combine(AppDataDirectory, "claude-statusline.json");
 
+    /// Where Claude Code is started to renew its token. Nothing ever answers its
+    /// trust prompt here, so a launch stops at that prompt instead of running
+    /// hooks, plugins or a session.
+    public static string ClaudeCliRefreshDirectory =>
+        Path.Combine(AppDataDirectory, "claude-cli-refresh");
+
     public static string CodexAuthPath(string? homeDirectory = null) =>
         Path.Combine(homeDirectory ?? HomeDirectory, ".codex", "auth.json");
 

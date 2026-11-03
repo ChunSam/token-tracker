@@ -33,6 +33,13 @@ enum AppPaths {
         cacheDirectory.appendingPathComponent("claude-statusline.json")
     }
 
+    /// Where Claude Code is started to renew its token. Nothing ever answers its
+    /// trust prompt here, so a launch stops at that prompt instead of running
+    /// hooks, plugins or a session.
+    static var claudeCLIRefreshDirectory: URL {
+        cacheDirectory.appendingPathComponent("claude-cli-refresh", isDirectory: true)
+    }
+
     static var codexAuth: URL {
         home.appendingPathComponent(".codex/auth.json")
     }

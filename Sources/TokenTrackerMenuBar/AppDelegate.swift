@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var nextUpdateCheckAt: Date?
     private var updateCheckTask: Task<Void, Never>?
     private var availableUpdateVersion: String?
+    private let costService = AdminCostService()
+    private var costStates: [Provider: CostState] = [:]
+    private var costTask: Task<Void, Never>?
     private var localizer: Localizer {
         Localizer(language: settings.language)
     }
@@ -33,7 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             snapshot: snapshot,
             lastSuccessfulRefreshAt: lastSuccessfulRefreshAt,
             runningInstanceCount: runningInstanceCount(),
-            claudeCLIRefreshAttempt: usageService.claudeCLIRefreshLastAttempt
+            claudeCLIRefreshAttempt: usageService.claudeCLIRefreshLastAttempt,
+            costStates: costStates
         )
     }
 
@@ -147,6 +151,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateStatusTitle()
             configurePanel()
             checkForUpdatesIfDue()
+            refreshCostsIfDue()
+        }
+    }
+
+    /// Rides the refresh timer, so a pause holds it too; `CostFetchPolicy` keeps
+    /// each provider to its own slower schedule. Nothing draws the result yet:
+    /// diagnostics is the only reader.
+    private func refreshCostsIfDue() {
+        guard costTask == nil else { return }
+        let enabled: [Provider: Bool] = [.claude: settings.claudeCostEnabled, .codex: settings.codexCostEnabled]
+        costTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            costStates = await costService.refreshIfDue(enabled: enabled)
+            costTask = nil
         }
     }
 

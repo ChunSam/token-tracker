@@ -59,6 +59,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
    값은 추세·예측·스파크라인에 반영되지 않는다(폴링마다 같은 측정을 새 시각으로 다시 기록해 "사용이
    멈췄다"고 예측에 거짓말을 하게 된다). 카운트다운은 캐시 값에는 붙지 않지만 상태줄 값에는 붙는다
    — 리셋이 지난 창은 읽을 때 버리므로 그 시간은 실제 창을 가리킨다. 이 불변식을 깨지 않는다.
+4. **`AdminCostService`** — 사용량 갱신 끝에 붙어 돌지만 자체 주기(`CostFetchPolicy`, 10분)를 따른다. 토글이
+   꺼진 제공자는 Admin 키를 읽지도 않는다. 키는 키체인/DPAPI에만 두고, 진단·로그에는 끝 4자리만 쓴다.
 
 표시 규칙: 기본은 5시간 잔량, **7일 잔량이 10% 이하면 7일 값**을 대신 보여주고 강조색을 쓴다
 (`DisplayFormatter.displayWindow` / `isSevenDayWarning`). 카운트다운은 그 값이 나온 창의 리셋을

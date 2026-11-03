@@ -24,6 +24,18 @@ public static class AppPaths
     public static string CodexRateLimitStatePath =>
         Path.Combine(AppDataDirectory, "codex-rate-limit.json");
 
+    /// The Admin APIs limit per organization, apart from the usage endpoints, so
+    /// their cooldowns are kept apart too.
+    public static string AdminCostRateLimitStatePath(Provider provider) =>
+        Path.Combine(AppDataDirectory, provider.ToId() + "-cost-rate-limit.json");
+
+    public static string CostCachePath =>
+        Path.Combine(AppDataDirectory, "cost-cache.json");
+
+    /// Both Admin keys, encrypted with DPAPI for the signed-in user.
+    public static string AdminKeysPath =>
+        Path.Combine(AppDataDirectory, "admin-keys.dat");
+
     /// Written by scripts/claude-statusline-bridge.ps1, read here. Lives beside
     /// the app's own caches, under the user's own roaming profile.
     public static string ClaudeStatusLinePath =>

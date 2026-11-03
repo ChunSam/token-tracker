@@ -45,6 +45,13 @@ public sealed class AppSettings
     /// sign-in. A settings file written before this existed lands on the default.
     public bool RenewClaudeTokenWithCli { get; set; } = true;
 
+    /// Whether to fetch the Anthropic organization's month of cost with its Admin
+    /// key. Off by default: it needs a key the user has to create and store first.
+    public bool ClaudeCostEnabled { get; set; }
+
+    /// The same for the OpenAI organization behind Codex.
+    public bool CodexCostEnabled { get; set; }
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). <c>null</c> means not paused.
     public DateTimeOffset? PollPausedUntil { get; set; }

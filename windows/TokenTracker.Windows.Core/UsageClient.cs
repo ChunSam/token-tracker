@@ -233,7 +233,7 @@ public sealed class UsageClient
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
 
-    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    internal static TimeSpan? RetryAfter(HttpResponseMessage response)
     {
         var retryAfter = response.Headers.RetryAfter;
         if (retryAfter?.Delta is { } delta)

@@ -5,4 +5,9 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DPAPI, for the Admin API keys. Windows-only at run time; every call is guarded. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
 </Project>

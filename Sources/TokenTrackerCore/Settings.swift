@@ -20,6 +20,8 @@ public final class Settings {
         static let pollPausedUntil = "pollPausedUntil"
         static let checkForUpdates = "checkForUpdates"
         static let renewClaudeTokenWithCLI = "renewClaudeTokenWithCLI"
+        static let claudeCostEnabled = "claudeCostEnabled"
+        static let codexCostEnabled = "codexCostEnabled"
     }
 
     private let defaults: UserDefaults
@@ -137,6 +139,19 @@ public final class Settings {
         set { defaults.set(newValue, forKey: Key.renewClaudeTokenWithCLI) }
     }
 
+    /// Whether to fetch the Anthropic organization's month of cost with its Admin
+    /// key. Off by default: it needs a key the user has to create and store first.
+    public var claudeCostEnabled: Bool {
+        get { defaults.bool(forKey: Key.claudeCostEnabled) }
+        set { defaults.set(newValue, forKey: Key.claudeCostEnabled) }
+    }
+
+    /// The same for the OpenAI organization behind Codex.
+    public var codexCostEnabled: Bool {
+        get { defaults.bool(forKey: Key.codexCostEnabled) }
+        set { defaults.set(newValue, forKey: Key.codexCostEnabled) }
+    }
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). `nil`/absent means not paused.
     public var pollPausedUntil: Date? {
@@ -180,7 +195,9 @@ public final class Settings {
             Key.staleToleranceHours: 12,
             Key.depletionAlertEnabled: false,
             Key.checkForUpdates: true,
-            Key.renewClaudeTokenWithCLI: true
+            Key.renewClaudeTokenWithCLI: true,
+            Key.claudeCostEnabled: false,
+            Key.codexCostEnabled: false
         ])
     }
 

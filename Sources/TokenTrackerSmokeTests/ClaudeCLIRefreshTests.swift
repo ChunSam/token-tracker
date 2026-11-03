@@ -122,12 +122,12 @@ private func stubCLI(in directory: URL, named name: String, body: String) throws
     return url.path
 }
 
-private final class ResultBox<T>: @unchecked Sendable {
+final class ResultBox<T>: @unchecked Sendable {
     var value: T?
 }
 
 /// The smoke tests are a synchronous script; this runs one async call to the end.
-private func waitFor<T: Sendable>(_ operation: @escaping @Sendable () async -> T) -> T {
+func waitFor<T: Sendable>(_ operation: @escaping @Sendable () async -> T) -> T {
     let box = ResultBox<T>()
     let done = DispatchSemaphore(value: 0)
     Task.detached {

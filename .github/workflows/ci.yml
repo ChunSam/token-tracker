@@ -51,7 +51,7 @@ jobs:
           # Not named `status`: that is read-only in zsh, so the snippet stays
           # runnable by hand outside the bash this step gets.
           missing=0
-          for script in scripts/build_app.sh scripts/claude-statusline-bridge.sh; do
+          for script in scripts/build_app.sh scripts/claude-statusline-bridge.sh scripts/utm-windows-ps.sh; do
             if [ ! -x "$script" ]; then
               echo "$script is documented as run directly but is not executable" >&2
               missing=1

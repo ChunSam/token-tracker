@@ -315,13 +315,38 @@ let alertCandidates = UsageAlertEvaluator.candidates(
     settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
     now: now
 )
-expectEqual(alertCandidates.map(\.id), ["claude-5h-low", "claude-7d-low", "claude-5h-reset-\(Int(now.addingTimeInterval(300).timeIntervalSince1970))"], "alert evaluator emits low usage and reset alerts")
+expectEqual(alertCandidates.map(\.id), ["claude-5h-low", "claude-7d-low"], "a low window gets its low alert and no reset warning: the refill is good news")
 let disabledAlertCandidates = UsageAlertEvaluator.candidates(
     snapshot: alertSnapshot,
     settings: UsageAlertSettings(notificationsEnabled: false, fiveHourThreshold: 20, sevenDayThreshold: 10, resetWarningMinutes: 10),
     now: now
 )
 expectEqual(disabledAlertCandidates.count, 0, "disabled notifications emit no alerts")
+
+// Reset warnings: only for a measured window with more left than its low threshold,
+// since what it has not used by the reset is gone.
+func resetAlertBodies(unused5h: Int?, source: UsageSource = .api, threshold: Int = 20, language: AppLanguage = .english) -> [String] {
+    let snapshot = UsageSnapshot(
+        claude: ProviderUsage(provider: .claude, remainingPercent5h: unused5h, remainingPercent7d: 90, resetAt5h: now.addingTimeInterval(300), resetAt7d: now.addingTimeInterval(259_200), source: source, error: nil, plan: nil, model: nil, updatedAt: now),
+        codex: .unavailable(.codex, error: "Disabled"),
+        updatedAt: now
+    )
+    return UsageAlertEvaluator.candidates(
+        snapshot: snapshot,
+        settings: UsageAlertSettings(notificationsEnabled: true, fiveHourThreshold: threshold, sevenDayThreshold: 10, resetWarningMinutes: 10),
+        now: now,
+        localizer: Localizer(language: language)
+    ).filter { $0.id.contains("-reset-") }.map(\.body)
+}
+expectEqual(resetAlertBodies(unused5h: 60), ["Claude 5h resets in 5m with 60% unused"], "a reset with plenty left is worth a warning")
+expectEqual(resetAlertBodies(unused5h: 60, language: .korean), ["Claude 5h 5m 후 리셋 — 60% 남음"], "the reset warning reads in Korean")
+expectEqual(resetAlertBodies(unused5h: 20), [], "a window at its low threshold gets no reset warning")
+expectEqual(resetAlertBodies(unused5h: 21), ["Claude 5h resets in 5m with 21% unused"], "one point above the threshold is warned about")
+expectEqual(resetAlertBodies(unused5h: 1, threshold: 0), ["Claude 5h resets in 5m with 1% unused"], "with the low alert off, anything left is worth a warning")
+expectEqual(resetAlertBodies(unused5h: 0, threshold: 0), [], "nothing left is nothing to lose")
+expectEqual(resetAlertBodies(unused5h: nil), [], "a window with no number gets no reset warning")
+expectEqual(resetAlertBodies(unused5h: 60, source: .staleCache), [], "a cached number may have been spent since")
+expectEqual(resetAlertBodies(unused5h: 60, source: .statusLine), ["Claude 5h resets in 5m with 60% unused"], "a status-line reading is a measurement")
 
 func stalledSnapshot(ageSeconds: TimeInterval, source: UsageSource) -> UsageSnapshot {
     UsageSnapshot(
@@ -538,7 +563,6 @@ expectEqual(
         "Claude last measured 1h30m ago",
         "Claude 5h 19% <= 20%",
         "Claude 7d 9% <= 10%",
-        "Claude 5h reset in 5m",
         "Claude 5h: ~2h 0m → 0% (before reset)"
     ],
     "English alert bodies are unchanged"
@@ -549,7 +573,6 @@ expectEqual(
         "Claude 마지막 측정 1h30m 전",
         "Claude 5h 19% <= 20%",
         "Claude 7d 9% <= 10%",
-        "Claude 5h 5m 후 리셋",
         "Claude 5h: ~2h 0m → 0% (리셋 전)"
     ],
     "Korean alert bodies are translated; the symbol-only low-balance bodies stay as they are"

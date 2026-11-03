@@ -46,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !terminateIfDuplicateInstance() else { return }
         NSApp.setActivationPolicy(.accessory)
+        installEditMenu()
         statusItemRenderer.setPlaceholder(mode: settings.displayMode, labelStyle: settings.providerLabelStyle)
         statusItemRenderer.setClickAction(target: self, action: #selector(toggleStatusPanel(_:)))
         configurePanel()
@@ -60,6 +61,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.notificationsEnabled {
             notificationCoordinator.requestAuthorization()
         }
+    }
+
+    /// A menu bar app shows no menu bar of its own, but text fields still take ⌘V,
+    /// ⌘C, ⌘X, ⌘A and ⌘Z from the main menu's key equivalents. Without an Edit menu
+    /// none of them did anything, so an Admin key could not be pasted into its field.
+    private func installEditMenu() {
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+            .keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        editItem.submenu = edit
+        let main = NSMenu()
+        main.addItem(editItem)
+        NSApp.mainMenu = main
     }
 
     func applicationWillTerminate(_ notification: Notification) {

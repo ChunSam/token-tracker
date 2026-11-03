@@ -26,13 +26,13 @@ func runCostTests() throws {
     expectEqual(
         CostPeriod.dayStart(now: at("2026-11-02T12:00:00Z"), timeZone: newYork)
             .timeIntervalSince(CostPeriod.dayStart(now: at("2026-11-01T12:00:00Z"), timeZone: newYork)),
-        25 * 3600,
+        TimeInterval(25 * 3600),
         "the day daylight time ends has 25 hours"
     )
     expectEqual(
         CostPeriod.dayStart(now: at("2026-03-09T12:00:00Z"), timeZone: newYork)
             .timeIntervalSince(CostPeriod.dayStart(now: at("2026-03-08T12:00:00Z"), timeZone: newYork)),
-        23 * 3600,
+        TimeInterval(23 * 3600),
         "the day daylight time starts has 23 hours"
     )
     expectEqual(CostPeriod.monthKey(now: at("2026-11-30T16:00:00Z"), timeZone: seoul), "2026-12", "Seoul is already in December")
@@ -44,13 +44,19 @@ func runCostTests() throws {
         let first = at(start)
         var rows: [[String: Any]] = []
         for hour in 0..<hours {
+            // Typed pieces rather than one nested literal: heterogeneous literals
+            // are slow to type-check on CI's compiler.
             let begin = first.addingTimeInterval(TimeInterval(hour * 3600))
-            rows.append([
+            let amount: String = hour == hours - 1 ? lastCents : cents
+            let cost: [String: Any] = ["currency": "USD", "amount": amount, "list_amount": cents, "requests": 3]
+            let group: [String: Any] = ["model": NSNull()]
+            let row: [String: Any] = [
                 "starting_at": ISO8601DateFormatter().string(from: begin),
                 "ending_at": ISO8601DateFormatter().string(from: begin.addingTimeInterval(3600)),
-                "group": ["model": NSNull()],
-                "cost": ["currency": "USD", "amount": hour == hours - 1 ? lastCents : cents, "list_amount": cents, "requests": 3]
-            ])
+                "group": group,
+                "cost": cost
+            ]
+            rows.append(row)
         }
         var page: [String: Any] = ["data": rows, "has_more": false, "next_page": NSNull()]
         page["data_refreshed_at"] = refreshed.map { $0 as Any } ?? NSNull()
@@ -78,9 +84,16 @@ func runCostTests() throws {
     var tiny: [[String: Any]] = []
     for hour in 0..<744 {
         let begin = at("2026-10-01T00:00:00Z").addingTimeInterval(TimeInterval(hour * 3600))
-        tiny.append(["starting_at": ISO8601DateFormatter().string(from: begin), "ending_at": ISO8601DateFormatter().string(from: begin.addingTimeInterval(3600)), "cost": ["currency": "USD", "amount": "0.100000"]])
+        let cost: [String: Any] = ["currency": "USD", "amount": "0.100000"]
+        let row: [String: Any] = [
+            "starting_at": ISO8601DateFormatter().string(from: begin),
+            "ending_at": ISO8601DateFormatter().string(from: begin.addingTimeInterval(3600)),
+            "cost": cost
+        ]
+        tiny.append(row)
     }
-    let tinyPage = AnthropicCostParser.page(["data": tiny, "has_more": false, "data_refreshed_at": "2026-11-01T00:00:00Z"])!
+    let tinyJSON: [String: Any] = ["data": tiny, "has_more": false, "data_refreshed_at": "2026-11-01T00:00:00Z"]
+    let tinyPage = AnthropicCostParser.page(tinyJSON)!
     let tinyReport = CostAggregator.report(buckets: tinyPage.buckets, freshness: tinyPage.freshness, now: at("2026-10-31T23:59:59Z"), timeZone: utc)
     expectEqual(tinyReport.monthToDate?.value, dollars("0.744"), "744 tenths of a cent add up to exactly $0.744")
 

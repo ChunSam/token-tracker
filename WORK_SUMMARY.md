@@ -232,6 +232,8 @@ Core (`Sources/TokenTrackerCore/`)
 - `UsagePace.swift` — 균등 사용선 대비 페이스와 메뉴 줄
 - `UpdateCheck.swift` — 최신 릴리스 조회·버전 비교·확인 주기
 - `ClaudeCLIRefresh.swift` — 만료된 Claude 토큰을 CLI 실행으로 갱신(재시도 간격·실행 인자·PTY 실행기)
+- `Cost.swift` — 금액 표시 Core(아직 화면 연결 전): 로컬 시간대 기간 경계, Anthropic·OpenAI 비용 파서, 구독
+  추가 사용량·크레딧, 표시 조건, 금액 형식, 예산, 조회 주기. 설계는 `docs/cost-display-design.md`
 - `PauseController.swift` / `InstanceArbiter.swift` — 일시중지, 중복 실행 판정
 - `Settings.swift` / `Localization.swift` / `Paths.swift` — UserDefaults, 한/영 문자열, 파일 경로
 

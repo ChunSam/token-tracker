@@ -1285,7 +1285,184 @@ File.WriteAllText(renewalSettingsPath, "{\"RefreshIntervalSeconds\":300}");
 Expect(new SettingsStore(renewalSettingsPath).Load().RenewClaudeTokenWithCli, "a settings file from before renewal lands on the default");
 Directory.Delete(Path.GetDirectoryName(renewalSettingsPath)!, recursive: true);
 
+RunCostTests();
+
 Console.WriteLine("TokenTracker.Windows.Tests passed");
+
+// Money display: local-time boundaries in several zones, both Admin API parsers,
+// the subscription fields, and the rule that keeps money off a subscription-only
+// user's screen. Mirrors Sources/TokenTrackerSmokeTests/CostTests.swift.
+static void RunCostTests()
+{
+    var seoul = TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul");
+    var newYork = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+    var kolkata = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
+    var utc = TimeZoneInfo.Utc;
+    static DateTimeOffset At(string text) => DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+    static decimal Dollars(string text) => decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+    static string Iso(DateTimeOffset date) => date.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    // Boundaries follow the zone the device is in, whichever it is.
+    var now = At("2026-11-03T05:00:00Z");
+    ExpectEqual(CostPeriod.DayStart(now, seoul), At("2026-11-02T15:00:00Z"), "Seoul's day starts at its own midnight");
+    ExpectEqual(CostPeriod.MonthStart(now, seoul), At("2026-10-31T15:00:00Z"), "Seoul's month starts at its own midnight on the 1st");
+    ExpectEqual(CostPeriod.DayStart(now, newYork), At("2026-11-03T05:00:00Z"), "An instant exactly at local midnight starts that day");
+    ExpectEqual(CostPeriod.MonthStart(now, newYork), At("2026-11-01T04:00:00Z"), "New York's month started under daylight time");
+    ExpectEqual(CostPeriod.DayStart(now, kolkata), At("2026-11-02T18:30:00Z"), "A half-hour zone keeps its half hour");
+    ExpectEqual(CostPeriod.DayStart(now, utc), At("2026-11-03T00:00:00Z"), "UTC is one zone among others");
+    ExpectEqual(
+        CostPeriod.DayStart(At("2026-11-02T12:00:00Z"), newYork) - CostPeriod.DayStart(At("2026-11-01T12:00:00Z"), newYork),
+        TimeSpan.FromHours(25),
+        "The day daylight time ends has 25 hours");
+    ExpectEqual(
+        CostPeriod.DayStart(At("2026-03-09T12:00:00Z"), newYork) - CostPeriod.DayStart(At("2026-03-08T12:00:00Z"), newYork),
+        TimeSpan.FromHours(23),
+        "The day daylight time starts has 23 hours");
+    ExpectEqual(CostPeriod.MonthKey(At("2026-11-30T16:00:00Z"), seoul), "2026-12", "Seoul is already in December");
+    ExpectEqual(CostPeriod.MonthKey(At("2026-11-30T16:00:00Z"), utc), "2026-11", "UTC is still in November");
+    ExpectEqual(CostPeriod.RequestRange(now, seoul).Start, At("2026-10-31T15:00:00Z"), "A fetch asks from the local 1st");
+
+    // Anthropic Analytics: hourly buckets, cents as decimal strings.
+    static string AnthropicHourly(int hours, string start, string cents, string lastCents, string? refreshed)
+    {
+        var first = At(start);
+        var rows = new List<string>();
+        for (var hour = 0; hour < hours; hour++)
+        {
+            var begin = first.AddHours(hour);
+            var amount = hour == hours - 1 ? lastCents : cents;
+            rows.Add("{\"starting_at\":\"" + Iso(begin) + "\",\"ending_at\":\"" + Iso(begin.AddHours(1)) +
+                "\",\"group\":{\"model\":null},\"cost\":{\"currency\":\"USD\",\"amount\":\"" + amount +
+                "\",\"list_amount\":\"" + cents + "\",\"requests\":3}}");
+        }
+
+        var refreshedJson = refreshed is null ? "null" : "\"" + refreshed + "\"";
+        return "{\"data\":[" + string.Join(",", rows) + "],\"has_more\":false,\"next_page\":null,\"data_refreshed_at\":" + refreshedJson + "}";
+    }
+
+    var hourly = AnthropicCostParser.Page(AnthropicHourly(16, "2026-11-02T13:00:00Z", "100.000000", "33.333333", "2026-11-03T04:30:00Z"))!;
+    ExpectEqual(hourly.Buckets.Count, 16, "Every hourly row becomes a bucket");
+    ExpectEqual(hourly.Freshness, CostFreshness.At(At("2026-11-03T04:30:00Z")), "The refresh time is kept");
+    Expect(hourly.NextPage is null, "A last page has no next page");
+    var seoulReport = CostAggregator.Report(hourly.Buckets, hourly.Freshness, now, seoul);
+    ExpectEqual(seoulReport.MonthToDate?.Value, Dollars("15.33333333"), "Cents add up exactly across the month");
+    ExpectEqual(seoulReport.Today?.Value, Dollars("13.33333333"), "Seoul's today starts at 15:00 UTC");
+    ExpectEqual(CostAggregator.Report(hourly.Buckets, hourly.Freshness, now, utc).Today?.Value, Dollars("4.33333333"), "UTC's today starts at 00:00 UTC");
+    ExpectEqual(CostAggregator.Report(hourly.Buckets, hourly.Freshness, now, kolkata).Today?.Value, Dollars("10.33333333"), "A half-hour zone takes the hour it starts in");
+    var stale = CostAggregator.Report(hourly.Buckets, CostFreshness.At(At("2026-11-02T14:00:00Z")), now, seoul);
+    Expect(stale.Today is null, "A day the data has not reached yet is not tallied, not zero");
+    ExpectEqual(stale.MonthToDate?.Value, Dollars("15.33333333"), "The month still adds up what there is");
+    var empty = AnthropicCostParser.Page("{\"data\":[],\"has_more\":false,\"next_page\":null,\"data_refreshed_at\":null}")!;
+    ExpectEqual(empty.Freshness, CostFreshness.NotTallied, "No refresh time means nothing is tallied");
+    var untallied = CostAggregator.Report(empty.Buckets, empty.Freshness, now, seoul);
+    Expect(untallied.MonthToDate is null && untallied.Today is null, "Nothing tallied shows no amounts at all");
+
+    var tinyPage = AnthropicCostParser.Page(AnthropicHourly(744, "2026-10-01T00:00:00Z", "0.100000", "0.100000", "2026-11-01T00:00:00Z"))!;
+    ExpectEqual(
+        CostAggregator.Report(tinyPage.Buckets, tinyPage.Freshness, At("2026-10-31T23:59:59Z"), utc).MonthToDate?.Value,
+        Dollars("0.744"),
+        "744 tenths of a cent add up to exactly $0.744");
+
+    var models = AnthropicCostParser.Page("""
+        {"data":[
+          {"starting_at":"2026-11-01T00:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-sonnet-5-5"},"cost":{"currency":"USD","amount":"412.500000"}},
+          {"starting_at":"2026-11-01T00:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-opus-5-5"},"cost":{"currency":"USD","amount":"1120.000000"}},
+          {"starting_at":"2026-11-01T00:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":null},"cost":{"currency":"USD","amount":"12.000000"}}
+        ],"has_more":true,"next_page":"page_2","data_refreshed_at":"2026-11-03T04:30:00Z"}
+        """)!;
+    ExpectEqual(models.NextPage, "page_2", "A page with more says where to go next");
+    ExpectEqual(
+        string.Join(",", CostLineItem.Top(models.Items).Select(item => item.Name)),
+        "claude-opus-5-5,claude-sonnet-5-5",
+        "Models rank by spend; a row with no model is not one");
+    ExpectEqual(CostLineItem.Top(models.Items)[0].Amount.Value, Dollars("11.2"), "A model's cents become dollars");
+    Expect(AnthropicCostParser.Page("{\"error\":{\"type\":\"permission_error\"}}") is null, "An error body is not a page");
+
+    // OpenAI: day buckets in dollars, under "results" or "result".
+    var utcDays = OpenAICostParser.Page("""
+        {"object":"page","data":[
+          {"object":"bucket","start_time":1793404800,"end_time":1793491200,"results":[{"object":"organization.costs.result","amount":{"value":5.0,"currency":"usd"},"line_item":"gpt-6, input"}]},
+          {"object":"bucket","start_time":1793491200,"end_time":1793577600,"results":[{"amount":{"value":1.1,"currency":"usd"},"line_item":"gpt-6, input"},{"amount":{"value":0.06,"currency":"usd"},"line_item":"web search"}]},
+          {"object":"bucket","start_time":1793577600,"end_time":1793664000,"result":[{"amount":{"value":2.2,"currency":"usd"},"line_item":"gpt-6, output"}]},
+          {"object":"bucket","start_time":1793664000,"end_time":1793750400,"results":[{"amount":{"value":0.3,"currency":"usd"},"line_item":"gpt-6, output"}]}
+        ],"has_more":false,"next_page":null}
+        """)!;
+    ExpectEqual(utcDays.Buckets.Count, 4, "Every day bucket is read, whichever name its list has");
+    ExpectEqual(utcDays.Buckets[1].Amount, new CostAmount(Dollars("1.16"), "USD"), "A bucket's results add up, in upper-case currency");
+    var openAIInSeoul = CostAggregator.Report(utcDays.Buckets, utcDays.Freshness, now, seoul);
+    Expect(openAIInSeoul.Today is null, "A UTC day bucket cannot say what Seoul spent today");
+    ExpectEqual(openAIInSeoul.MonthToDate?.Value, Dollars("8.66"), "The month counts every bucket that reaches into it");
+    var openAIInUtc = CostAggregator.Report(utcDays.Buckets, utcDays.Freshness, now, utc);
+    ExpectEqual(openAIInUtc.Today?.Value, Dollars("0.3"), "UTC day buckets give UTC its today");
+    ExpectEqual(openAIInUtc.MonthToDate?.Value, Dollars("3.66"), "A bucket that ends where the month starts is last month's");
+    var localDays = OpenAICostParser.Page("""
+        {"data":[
+          {"start_time":1793458800,"end_time":1793545200,"results":[{"amount":{"value":1.0,"currency":"usd"}}]},
+          {"start_time":1793545200,"end_time":1793631600,"results":[{"amount":{"value":2.0,"currency":"usd"}}]},
+          {"start_time":1793631600,"end_time":1793718000,"results":[{"amount":{"value":0.25,"currency":"usd"}}]}
+        ],"has_more":false}
+        """)!;
+    var openAILocal = CostAggregator.Report(localDays.Buckets, localDays.Freshness, now, seoul);
+    ExpectEqual(openAILocal.Today?.Value, Dollars("0.25"), "Buckets cut at Seoul's midnight give Seoul its today");
+    ExpectEqual(openAILocal.MonthToDate?.Value, Dollars("3.25"), "And its month");
+    ExpectEqual(
+        string.Join(",", CostLineItem.Top(utcDays.Items).Select(item => item.Name)),
+        "gpt-6, input,gpt-6, output,web search",
+        "Line items merge across buckets");
+
+    // Subscription money appears only for accounts that pay it.
+    const string proAccount = """
+        {"extra_usage":{"is_enabled":false,"monthly_limit":null,"used_credits":null,"utilization":null,"currency":null,"decimal_places":null,"user_disabled":true},
+         "spend":{"used":{"amount_minor":0,"currency":"USD","exponent":2},"limit":null,"percent":0,"severity":"normal","enabled":false}}
+        """;
+    Expect(SubscriptionCostParser.ClaudeExtra(proAccount) is null, "A subscription with extra usage off shows no money");
+    var extraOn = SubscriptionCostParser.ClaudeExtra("""
+        {"spend":{"enabled":true,"used":{"amount_minor":186,"currency":"USD","exponent":2},"limit":{"amount_minor":500,"currency":"USD","exponent":2},"severity":"normal"}}
+        """);
+    ExpectEqual(extraOn?.Used.Value, Dollars("1.86"), "Spend states its unit: 186 minor units at exponent 2");
+    ExpectEqual(extraOn?.Limit?.Value, Dollars("5"), "The limit reads the same way");
+    Expect(SubscriptionCostParser.ClaudeExtra("{\"extra_usage\":{\"is_enabled\":true,\"used_credits\":186}}") is null, "Extra usage without a spend amount is not guessed at");
+    Expect(SubscriptionCostParser.ClaudeExtra("{\"spend\":{\"enabled\":true,\"used\":{\"amount_minor\":5,\"currency\":\"USD\",\"exponent\":9}}}") is null, "An implausible exponent reads as off");
+    Expect(SubscriptionCostParser.ClaudeExtra("{\"five_hour\":{\"utilization\":10}}") is null, "No spend fields at all reads as off");
+    Expect(SubscriptionCostParser.CodexCredits("{\"credits\":{\"has_credits\":false,\"balance\":\"0\"}}") is null, "No credits shows nothing");
+    ExpectEqual(SubscriptionCostParser.CodexCredits("{\"credits\":{\"has_credits\":true,\"balance\":\"18.40\"}}"), Dollars("18.4"), "A credit balance reads exactly");
+    Expect(SubscriptionCostParser.CodexCredits("{\"credits\":{\"has_credits\":true,\"balance\":\"lots\"}}") is null, "A balance that is not a number shows nothing");
+
+    Expect(!CostVisibility.Shows(false, false, false), "A subscription-only user sees no money");
+    Expect(CostVisibility.Shows(true, false, false), "Extra usage on shows money");
+    Expect(!CostVisibility.Shows(false, true, false), "API cost needs a key");
+    Expect(!CostVisibility.Shows(false, false, true), "A stored key alone does not switch it on");
+    Expect(CostVisibility.Shows(false, true, true), "API cost with a key shows money");
+    Expect(!CostVisibility.MenuBarShowsCost(true, true), "The tray keeps percentages while limits are shown");
+    Expect(CostVisibility.MenuBarShowsCost(false, true), "An API-only provider puts its spend in the tray");
+    Expect(!CostVisibility.MenuBarShowsCost(false, false), "Nothing to show is nothing shown");
+
+    static string Usd(string text) => CostFormatter.Text(new CostAmount(Dollars(text)));
+    ExpectEqual(Usd("0"), "$0.00", "Zero is two places");
+    ExpectEqual(Usd("0.004"), "<$0.01", "Under a cent is not zero");
+    ExpectEqual(Usd("12.345"), "$12.35", "Halves round away from zero");
+    ExpectEqual(Usd("999.99"), "$999.99", "Under a thousand stays in cents");
+    ExpectEqual(Usd("1234.5"), "$1.2K", "Thousands shorten");
+    ExpectEqual(Usd("1250"), "$1.3K", "And round away from zero");
+    ExpectEqual(Usd("3400000"), "$3.4M", "Millions shorten");
+    ExpectEqual(Usd("-2.5"), "-$2.50", "A refund keeps its sign");
+    ExpectEqual(CostFormatter.Text(new CostAmount(Dollars("12.3"), "eur")), "12.30 EUR", "Another currency is named");
+    ExpectEqual(CostFormatter.Credits(Dollars("18.4")), "18.40", "Credits are a number, not dollars");
+
+    ExpectEqual(CostBudget.Percent(Dollars("79.99"), 100m), 79, "Percent rounds down");
+    ExpectEqual(string.Join(",", CostBudget.ReachedThresholds(80m, 100m)), "80", "80% reached");
+    ExpectEqual(string.Join(",", CostBudget.ReachedThresholds(100m, 100m)), "80,100", "100% reached");
+    ExpectEqual(string.Join(",", CostBudget.ReachedThresholds(150m, 100m)), "80,100", "Past the budget still reports both");
+    Expect(CostBudget.Percent(50m, 0m) is null && CostBudget.ReachedThresholds(50m, 0m).Count == 0, "A zero budget is off");
+    ExpectEqual(CostBudget.AlertId(Provider.Claude, 80, At("2026-11-30T16:00:00Z"), seoul), "claude-cost-80-2026-12", "An alert belongs to the local month");
+    ExpectEqual(CostBudget.AlertId(Provider.Codex, 100, At("2026-11-30T16:00:00Z"), utc), "codex-cost-100-2026-11", "Which depends on the zone");
+
+    ExpectEqual(CostFetchPolicy.NextFetch(now, true), now.AddMinutes(10), "A good fetch waits ten minutes");
+    ExpectEqual(CostFetchPolicy.NextFetch(now, false), now.AddMinutes(5), "A failed fetch is retried in five");
+    Expect(CostFetchPolicy.IsDue(null, now), "The first fetch is due at once");
+    Expect(!CostFetchPolicy.IsDue(now.AddSeconds(1), now), "A fetch is not due early");
+    Expect(CostFetchPolicy.IsDue(now, now), "A fetch is due on time");
+}
 
 static string StatusLinePayload(
     DateTimeOffset? measuredAt,

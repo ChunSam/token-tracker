@@ -25,7 +25,7 @@ internal sealed class SettingsForm : Form
         localizer = new Localizer(settings.Language);
 
         Text = "Token Tracker";
-        Width = 430;
+        Width = 470;
         Height = 520;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -50,17 +50,29 @@ internal sealed class SettingsForm : Form
 
     private void BuildContent()
     {
-        var layout = new TableLayoutPanel
+        // The panel scrolls and the table grows to its content. A TableLayoutPanel
+        // that scrolls itself undercounts its height, so its last row and bottom
+        // padding sat out of reach at the end of the scroll.
+        var scroller = new Panel
         {
             Dock = DockStyle.Fill,
-            AutoScroll = true,
+            AutoScroll = true
+        };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = 0,
             Padding = new Padding(16)
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        // Labels take what the longest needs and checkboxes the rest; a fixed label
+        // column left the longer checkbox texts clipped.
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Controls.Add(layout);
+        scroller.Controls.Add(layout);
+        Controls.Add(scroller);
 
         AddHeader(layout, localizer.Text(L10nKey.Providers));
         AddProviderCheckbox(layout, "Claude", settings.ClaudeEnabled, value => settings.ClaudeEnabled = value);

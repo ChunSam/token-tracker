@@ -175,7 +175,8 @@ public struct Localizer {
         .adminKeyDelete: "Delete Key",
         .adminKeyCancel: "Cancel",
         .adminKeyInvalid: "This isn't an Admin key. Admin keys look like {prefix}…",
-        .adminKeySaveFailed: "The key couldn't be saved."
+        .adminKeySaveFailed: "The key couldn't be saved.",
+        .costSectionTitle: "{organization} API cost"
     ]
 
     private let korean: [L10nKey: String] = [
@@ -318,7 +319,8 @@ public struct Localizer {
         .adminKeyDelete: "키 삭제",
         .adminKeyCancel: "취소",
         .adminKeyInvalid: "Admin 키가 아닙니다. Admin 키는 {prefix}… 형식입니다.",
-        .adminKeySaveFailed: "키를 저장하지 못했습니다."
+        .adminKeySaveFailed: "키를 저장하지 못했습니다.",
+        .costSectionTitle: "{organization} API 비용"
     ]
 }
 
@@ -463,4 +465,5 @@ public enum L10nKey: String {
     case adminKeyCancel
     case adminKeyInvalid
     case adminKeySaveFailed
+    case costSectionTitle
 }

@@ -385,7 +385,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
         if (costOnly)
         {
-            AddCostLines(provider.DropDownItems, cost!, costOnly: true);
+            AddCostLines(provider.DropDownItems, usage.Provider, cost!, costOnly: true);
             menu.Items.Add(provider);
             return;
         }
@@ -437,11 +437,6 @@ internal sealed class TrayAppContext : ApplicationContext
             AddDisabled(provider.DropDownItems, $"{subscriptionCost.Label}: {subscriptionCost.Value}");
         }
 
-        if (cost is not null)
-        {
-            AddCostLines(provider.DropDownItems, cost, costOnly: false);
-        }
-
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
         if (!string.IsNullOrWhiteSpace(issue.TechnicalDetail))
@@ -454,21 +449,37 @@ internal sealed class TrayAppContext : ApplicationContext
             AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Plan)}: {usage.Plan}");
         }
 
+        // Last, after everything about the subscription, as on the macOS card.
+        if (cost is not null)
+        {
+            AddCostLines(provider.DropDownItems, usage.Provider, cost, costOnly: false);
+        }
+
         menu.Items.Add(provider);
     }
 
-    /// The organization's month of API cost. On a submenu of its own the status
-    /// leads; under the limits it follows the amount, and only when not fine.
-    private void AddCostLines(ToolStripItemCollection items, AdminCostView cost, bool costOnly)
+    /// The organization's month of API cost, set apart under its own heading: the
+    /// organization's bill is a different thing from the subscription above it. On
+    /// a submenu of its own the status leads; under the limits it follows the
+    /// amount, and only when not fine.
+    private void AddCostLines(ToolStripItemCollection items, Provider provider, AdminCostView cost, bool costOnly)
     {
         var status = $"{Localizer.Text(L10nKey.Status)}: {cost.StatusTitle}";
         if (costOnly)
         {
             AddDisabled(items, status);
         }
+        else
+        {
+            items.Add(new ToolStripSeparator());
+        }
 
-        AddDisabled(items, $"{cost.MonthLabel}: {cost.MonthValue}");
-        foreach (var line in new[] { cost.BudgetText, cost.Detail, cost.AsOf })
+        var title = Localizer.Text(L10nKey.CostSectionTitle)
+            .Replace("{organization}", AdminKeyText.Organization(provider), StringComparison.Ordinal);
+        AddDisabled(items, cost.AsOf is null ? title : title + " · " + cost.AsOf);
+
+        AddDisabled(items, $"  {cost.MonthLabel}: {cost.MonthValue}");
+        foreach (var line in new[] { cost.BudgetText, cost.Detail })
         {
             if (line is not null)
             {

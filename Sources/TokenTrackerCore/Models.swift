@@ -46,8 +46,12 @@ public struct ProviderUsage: Codable, Equatable, Sendable {
     public var plan: String?
     public var model: String?
     public var updatedAt: Date
+    /// Claude extra usage, when the account has it on. `nil` keeps money off screen.
+    public var extraUsage: ClaudeExtraUsage?
+    /// Codex credit balance, when the account holds credits. In credits, not dollars.
+    public var creditBalance: Decimal?
 
-    public init(provider: Provider, remainingPercent5h: Int?, remainingPercent7d: Int?, resetAt5h: Date?, resetAt7d: Date?, source: UsageSource, error: String?, plan: String?, model: String?, updatedAt: Date) {
+    public init(provider: Provider, remainingPercent5h: Int?, remainingPercent7d: Int?, resetAt5h: Date?, resetAt7d: Date?, source: UsageSource, error: String?, plan: String?, model: String?, updatedAt: Date, extraUsage: ClaudeExtraUsage? = nil, creditBalance: Decimal? = nil) {
         self.provider = provider
         self.remainingPercent5h = remainingPercent5h
         self.remainingPercent7d = remainingPercent7d
@@ -58,6 +62,8 @@ public struct ProviderUsage: Codable, Equatable, Sendable {
         self.plan = plan
         self.model = model
         self.updatedAt = updatedAt
+        self.extraUsage = extraUsage
+        self.creditBalance = creditBalance
     }
 
     public var isAvailable: Bool {

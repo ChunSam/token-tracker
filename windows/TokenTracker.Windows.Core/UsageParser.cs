@@ -25,7 +25,8 @@ public static class UsageParser
             null,
             TryGetString(root, "plan_type"),
             null,
-            updatedAt ?? DateTimeOffset.Now);
+            updatedAt ?? DateTimeOffset.Now,
+            CreditBalance: SubscriptionCostParser.CodexCredits(json));
     }
 
     private static CodexRateWindow? ToCodexWindow(JsonElement element)
@@ -66,7 +67,8 @@ public static class UsageParser
             null,
             ReadPlan(root) ?? fallbackPlan,
             null,
-            updatedAt ?? DateTimeOffset.Now);
+            updatedAt ?? DateTimeOffset.Now,
+            ExtraUsage: SubscriptionCostParser.ClaudeExtra(json));
     }
 
     private static int? ClaudeRemainingPercent(JsonElement window)

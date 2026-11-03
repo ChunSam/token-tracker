@@ -361,6 +361,11 @@ internal sealed class TrayAppContext : ApplicationContext
         var sevenDayReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent7d, usage.ResetAt7d, Localizer, usage.IsAvailable);
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {fiveHourReset}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {sevenDayReset}");
+        if (SubscriptionCostText.Line(usage, Localizer) is { } cost)
+        {
+            AddDisabled(provider.DropDownItems, $"{cost.Label}: {cost.Value}");
+        }
+
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
 
         if (!string.IsNullOrWhiteSpace(issue.TechnicalDetail))

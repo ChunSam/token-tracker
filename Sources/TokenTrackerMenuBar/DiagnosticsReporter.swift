@@ -98,6 +98,7 @@ struct DiagnosticsReporter {
 
     private func diagnosticsLines(for usage: ProviderUsage) -> [String] {
         let issue = UsageIssueFormatter.issue(for: usage, localizer: Localizer(language: .english))
+        let cost = SubscriptionCostText.line(for: usage, localizer: Localizer(language: .english))
         return [
             "\(usage.provider.displayName) source: \(usage.source.rawValue)",
             "\(usage.provider.displayName) status: \(issue.kind.rawValue)",
@@ -106,6 +107,7 @@ struct DiagnosticsReporter {
             "\(usage.provider.displayName) 5h reset: \(isoStringOrDash(usage.resetAt5h))",
             "\(usage.provider.displayName) 7d reset: \(isoStringOrDash(usage.resetAt7d))",
             "\(usage.provider.displayName) plan: \(usage.plan ?? "--")",
+            "\(usage.provider.displayName) money past plan: \(cost.map { "\($0.label) \($0.value)" } ?? "off")",
             "\(usage.provider.displayName) technical error: \(issue.technicalDetail ?? "--")"
         ]
     }

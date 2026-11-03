@@ -73,7 +73,8 @@ public enum CodexUsageParser {
             error: nil,
             plan: object["plan_type"] as? String,
             model: nil,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            creditBalance: SubscriptionCostParser.codexCredits(object)
         )
     }
 

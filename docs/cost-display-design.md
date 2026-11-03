@@ -296,14 +296,19 @@ Codex   [plus]                                  ● 정상
   `HTTPClient` 주입).
 
 실제 검증에는 Admin 키가 필요하다. 개발자 계정에 Anthropic 조직과 OpenAI 조직의 Admin 키를 각각 만들어
-테스트하고, 키는 키체인/DPAPI에만 넣는다. 1단계 Claude 추가 사용량은 켜진 계정을 볼 수 없으면 파서
-테스트까지만 하고, 화면에는 실제 값을 본 뒤에 노출한다.
+테스트하고, 키는 키체인/DPAPI에만 넣는다.
+
+1단계 Claude 추가 사용량은 켜진 계정의 응답을 아직 보지 못했다. 그래도 화면에 연결했다(2026-11-03): 금액을
+읽는 `spend.used`의 형태(`amount_minor`·`currency`·`exponent`)는 꺼진 계정의 실측 응답에도 있고, 켜짐 판정
+필드나 금액 형태가 다르면 파서가 `nil`을 돌려 아무것도 표시하지 않는 쪽으로 실패한다. 켜진 계정에서 금액이
+틀리게 보이면 진단 정보의 `Claude money past plan` 줄로 확인한다. Codex는 2026-11-03 Plus 계정 실측 응답이
+`credits.has_credits: false`, `balance: "0"`이라 표시하지 않는 경우다.
 
 ## 구현 순서 (PR 단위)
 
 1. Core: `CostAmount`·파서·포매터·시간대 경계·표시 조건·예산 알림 + 양쪽 진리표 (UI 없음).
 2. 1단계: Codex 크레딧 잔액, Claude 추가 사용량. 둘 다 표시 조건 뒤에 있으므로, 이 개발 계정(둘 다 꺼짐)에서는
-   화면이 바뀌지 않는 것을 확인한다.
+   화면이 바뀌지 않는 것을 확인한다. 1단계 알림(`spend.severity`, `overage_limit_reached`)은 5번과 같이 한다.
 3. 2단계 수집: Admin 키 저장(macOS 키체인, Windows DPAPI), 클라이언트 두 개, 주기·캐시·백오프, 진단 줄.
 4. 2단계 화면: 설정(토글·키 시트·예산), 팝업 카드, 메뉴바 규칙, Windows 메뉴·툴팁.
 5. 예산 알림, 문서(README·WORK_SUMMARY), 릴리스.

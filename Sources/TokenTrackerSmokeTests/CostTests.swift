@@ -190,4 +190,58 @@ func runCostTests() throws {
     expect(CostFetchPolicy.isDue(nextFetchAt: nil, now: now), "the first fetch is due at once")
     expect(!CostFetchPolicy.isDue(nextFetchAt: now.addingTimeInterval(1), now: now), "a fetch is not due early")
     expect(CostFetchPolicy.isDue(nextFetchAt: now, now: now), "a fetch is due on time")
+
+    // Stage 1: the usage responses carry the money onto the card, and only for
+    // accounts that pay it. The off cases are the responses measured on 2026-11-03.
+    let english = Localizer(language: .english)
+    let korean = Localizer(language: .korean)
+    let proUsage = try ClaudeUsageParser.parse(json(#"""
+        {"five_hour":{"utilization":20},"seven_day":{"utilization":40},
+         "extra_usage":{"is_enabled":false,"monthly_limit":null,"used_credits":null,"utilization":null,"currency":null,"decimal_places":null,"user_disabled":true},
+         "spend":{"used":{"amount_minor":0,"currency":"USD","exponent":2},"limit":null,"percent":0,"severity":"normal","enabled":false}}
+        """#), updatedAt: now)
+    expect(proUsage.extraUsage == nil, "the measured Pro response carries no money")
+    expect(SubscriptionCostText.line(for: proUsage, localizer: english) == nil, "so its card stays as it was")
+    let payingUsage = try ClaudeUsageParser.parse(json(#"""
+        {"five_hour":{"utilization":20},
+         "spend":{"enabled":true,"used":{"amount_minor":186,"currency":"USD","exponent":2},"limit":{"amount_minor":500,"currency":"USD","exponent":2},"severity":"normal"}}
+        """#), updatedAt: now)
+    let extraLine = SubscriptionCostText.line(for: payingUsage, localizer: korean)
+    expectEqual(extraLine?.label, "추가 사용량", "extra usage is named in the user's language")
+    expectEqual(extraLine?.value, "$1.86 / $5.00", "spent against the limit")
+    expectEqual(extraLine?.percent, 37, "and the share of the limit, rounded down")
+    var noLimit = payingUsage
+    noLimit.extraUsage = ClaudeExtraUsage(used: CostAmount(value: dollars("1.86")), limit: nil, severity: nil)
+    expectEqual(SubscriptionCostText.line(for: noLimit, localizer: english)?.value, "$1.86", "without a limit, just the amount")
+    expect(SubscriptionCostText.line(for: noLimit, localizer: english)?.percent == nil, "and no bar")
+    var otherCurrency = payingUsage
+    otherCurrency.extraUsage = ClaudeExtraUsage(used: CostAmount(value: 2), limit: CostAmount(value: 5, currency: "EUR"), severity: nil)
+    expectEqual(SubscriptionCostText.line(for: otherCurrency, localizer: english)?.value, "$2.00", "a limit in another currency is not set against the amount")
+
+    let codexPlus = CodexUsageParser.parse(object: json(#"""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":false,"unlimited":false,"overage_limit_reached":false,"balance":"0"}}
+        """#), updatedAt: now)!
+    expect(codexPlus.creditBalance == nil, "the measured Plus response without credits carries no money")
+    expect(SubscriptionCostText.line(for: codexPlus, localizer: english) == nil, "so its card stays as it was")
+    let codexWithCredits = CodexUsageParser.parse(object: json(#"""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":true,"balance":"18.4"}}
+        """#), updatedAt: now)!
+    let creditLine = SubscriptionCostText.line(for: codexWithCredits, localizer: english)
+    expectEqual(creditLine?.label, "Credit balance", "a credit balance is labelled as one")
+    expectEqual(creditLine?.value, "18.40", "in credits, not dollars")
+    expect(creditLine?.percent == nil, "a balance has no bar")
+
+    // The money rides the snapshot cache, so a failed poll keeps showing it, but
+    // not the history, which would copy the same balance on every poll.
+    let encoded = try JSONEncoder().encode(payingUsage)
+    expectEqual(try JSONDecoder().decode(ProviderUsage.self, from: encoded), payingUsage, "extra usage survives the cache")
+    var oldCache = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+    oldCache.removeValue(forKey: "extraUsage")
+    let oldUsage = try JSONDecoder().decode(ProviderUsage.self, from: JSONSerialization.data(withJSONObject: oldCache))
+    expect(oldUsage.extraUsage == nil && oldUsage.creditBalance == nil, "a cache written before money existed still loads")
+    let recorded = UsageHistoryPolicy.measurementsOnly(UsageSnapshot(claude: payingUsage, codex: codexWithCredits, updatedAt: now))
+    expect(recorded.claude.extraUsage == nil && recorded.codex.creditBalance == nil, "history keeps no money")
+    expectEqual(recorded.claude.remainingPercent5h, payingUsage.remainingPercent5h, "but keeps the measurement")
 }

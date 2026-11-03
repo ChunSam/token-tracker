@@ -387,6 +387,40 @@ public static class SubscriptionCostParser
     }
 }
 
+/// One line of money on a provider's card or submenu, from what its subscription
+/// usage response carried.
+/// <param name="Value"><c>$1.86 / $5.00</c>, <c>$1.86</c> without a limit, or a credit balance such as <c>18.40</c>.</param>
+/// <param name="Percent">Whole percent of the extra usage limit spent, for a bar. Null without a limit.</param>
+public sealed record SubscriptionCostLine(string Label, string Value, int? Percent);
+
+public static class SubscriptionCostText
+{
+    /// Null unless the account pays past its plan, so a subscription-only submenu
+    /// stays exactly as it was.
+    public static SubscriptionCostLine? Line(ProviderUsage usage, Localizer localizer)
+    {
+        if (usage.ExtraUsage is { } extra)
+        {
+            var value = CostFormatter.Text(extra.Used);
+            int? percent = null;
+            if (extra.Limit is { } limit && limit.Currency == extra.Used.Currency)
+            {
+                value += " / " + CostFormatter.Text(limit);
+                percent = CostBudget.Percent(extra.Used.Value, limit.Value);
+            }
+
+            return new SubscriptionCostLine(localizer.Text(L10nKey.CostExtraUsage), value, percent);
+        }
+
+        if (usage.CreditBalance is { } balance)
+        {
+            return new SubscriptionCostLine(localizer.Text(L10nKey.CostCreditBalance), CostFormatter.Credits(balance), null);
+        }
+
+        return null;
+    }
+}
+
 /// Whether a provider gets any money on screen: popup, menu, tray or alert. Every
 /// one of them asks this, so a subscription-only user with extra usage off sees
 /// no trace of the feature.

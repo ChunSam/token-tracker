@@ -25,7 +25,8 @@ package enum ClaudeUsageParser {
             error: nil,
             plan: plan(from: object) ?? fallbackPlan,
             model: nil,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            extraUsage: SubscriptionCostParser.claudeExtraUsage(object)
         )
     }
 

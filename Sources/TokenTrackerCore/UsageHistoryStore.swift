@@ -89,8 +89,11 @@ public enum UsageHistoryPolicy {
     }
 
     private static func measurementOnly(_ usage: ProviderUsage) -> ProviderUsage {
-        guard usage.source != .api else { return usage }
+        // Money is not part of the record: every poll would copy the same balance.
         var copy = usage
+        copy.extraUsage = nil
+        copy.creditBalance = nil
+        guard usage.source != .api else { return copy }
         copy.remainingPercent5h = nil
         copy.remainingPercent7d = nil
         return copy

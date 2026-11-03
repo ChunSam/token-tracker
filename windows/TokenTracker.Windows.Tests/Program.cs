@@ -1462,6 +1462,69 @@ static void RunCostTests()
     Expect(CostFetchPolicy.IsDue(null, now), "The first fetch is due at once");
     Expect(!CostFetchPolicy.IsDue(now.AddSeconds(1), now), "A fetch is not due early");
     Expect(CostFetchPolicy.IsDue(now, now), "A fetch is due on time");
+
+    // Stage 1: the usage responses carry the money onto the submenu, and only for
+    // accounts that pay it. The off cases are the responses measured on 2026-11-03.
+    var english = new Localizer(AppLanguage.English);
+    var korean = new Localizer(AppLanguage.Korean);
+    var proUsage = UsageParser.ParseClaudeUsage("""
+        {"five_hour":{"utilization":20},"seven_day":{"utilization":40},
+         "extra_usage":{"is_enabled":false,"monthly_limit":null,"used_credits":null,"utilization":null,"currency":null,"decimal_places":null,"user_disabled":true},
+         "spend":{"used":{"amount_minor":0,"currency":"USD","exponent":2},"limit":null,"percent":0,"severity":"normal","enabled":false}}
+        """, now);
+    Expect(proUsage.ExtraUsage is null, "The measured Pro response carries no money");
+    Expect(SubscriptionCostText.Line(proUsage, english) is null, "So its submenu stays as it was");
+    var payingUsage = UsageParser.ParseClaudeUsage("""
+        {"five_hour":{"utilization":20},
+         "spend":{"enabled":true,"used":{"amount_minor":186,"currency":"USD","exponent":2},"limit":{"amount_minor":500,"currency":"USD","exponent":2},"severity":"normal"}}
+        """, now);
+    var extraLine = SubscriptionCostText.Line(payingUsage, korean);
+    ExpectEqual(extraLine?.Label, "추가 사용량", "Extra usage is named in the user's language");
+    ExpectEqual(extraLine?.Value, "$1.86 / $5.00", "Spent against the limit");
+    ExpectEqual(extraLine?.Percent, 37, "And the share of the limit, rounded down");
+    var noLimit = payingUsage with { ExtraUsage = new ClaudeExtraUsage(new CostAmount(Dollars("1.86")), null, null) };
+    ExpectEqual(SubscriptionCostText.Line(noLimit, english)?.Value, "$1.86", "Without a limit, just the amount");
+    Expect(SubscriptionCostText.Line(noLimit, english)?.Percent is null, "And no bar");
+    var otherCurrency = payingUsage with { ExtraUsage = new ClaudeExtraUsage(new CostAmount(2m), new CostAmount(5m, "EUR"), null) };
+    ExpectEqual(SubscriptionCostText.Line(otherCurrency, english)?.Value, "$2.00", "A limit in another currency is not set against the amount");
+
+    var codexPlus = UsageParser.ParseCodexUsage("""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":false,"unlimited":false,"overage_limit_reached":false,"balance":"0"}}
+        """, now);
+    Expect(codexPlus.CreditBalance is null, "The measured Plus response without credits carries no money");
+    Expect(SubscriptionCostText.Line(codexPlus, english) is null, "So its submenu stays as it was");
+    var codexWithCredits = UsageParser.ParseCodexUsage("""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":true,"balance":"18.4"}}
+        """, now);
+    var creditLine = SubscriptionCostText.Line(codexWithCredits, english);
+    ExpectEqual(creditLine?.Label, "Credit balance", "A credit balance is labelled as one");
+    ExpectEqual(creditLine?.Value, "18.40", "In credits, not dollars");
+    Expect(creditLine?.Percent is null, "A balance has no bar");
+
+    // The money rides the snapshot cache, so a failed poll keeps showing it, but
+    // not the history, which would copy the same balance on every poll. The cache
+    // compares against the real clock, so these snapshots are stamped with it.
+    var costCachePath = Path.Combine(Path.GetTempPath(), "token-tracker-cost-" + Guid.NewGuid().ToString("N"), "usage-cache.json");
+    var costCache = new CacheStore(costCachePath);
+    costCache.Save(new UsageSnapshot(payingUsage, codexWithCredits, DateTimeOffset.Now));
+    var cached = costCache.Load(TimeSpan.FromHours(1));
+    ExpectEqual(cached?.Claude.ExtraUsage, payingUsage.ExtraUsage, "Extra usage survives the cache");
+    ExpectEqual(cached?.Codex.CreditBalance, Dollars("18.4"), "So does a credit balance");
+    const string cacheBeforeMoney = """
+        {"Version":1,"Snapshot":{
+          "Claude":{"Provider":"Claude","RemainingPercent5h":80,"RemainingPercent7d":60,"ResetAt5h":null,"ResetAt7d":null,"Source":"Api","Error":null,"Plan":"pro","Model":null,"UpdatedAt":"STAMP"},
+          "Codex":{"Provider":"Codex","RemainingPercent5h":90,"RemainingPercent7d":95,"ResetAt5h":null,"ResetAt7d":null,"Source":"Api","Error":null,"Plan":"plus","Model":null,"UpdatedAt":"STAMP"},
+          "UpdatedAt":"STAMP"}}
+        """;
+    File.WriteAllText(costCachePath, cacheBeforeMoney.Replace("STAMP", DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture)));
+    var oldCache = costCache.Load(TimeSpan.FromHours(1));
+    Expect(oldCache is not null, "A cache written before money existed still loads");
+    Expect(oldCache!.Claude.ExtraUsage is null && oldCache.Codex.CreditBalance is null, "And reads as no money");
+    var recorded = UsageHistoryPolicy.MeasurementsOnly(new UsageSnapshot(payingUsage, codexWithCredits, now));
+    Expect(recorded.Claude.ExtraUsage is null && recorded.Codex.CreditBalance is null, "History keeps no money");
+    ExpectEqual(recorded.Claude.RemainingPercent5h, payingUsage.RemainingPercent5h, "But keeps the measurement");
 }
 
 static string StatusLinePayload(

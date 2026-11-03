@@ -6,7 +6,7 @@ import Foundation
 /// An amount of money. `Decimal`, never `Double`: Anthropic reports cents as
 /// decimal strings, and adding up a month of hourly buckets in binary floating
 /// point drifts by whole cents.
-public struct CostAmount: Equatable, Sendable {
+public struct CostAmount: Codable, Equatable, Sendable {
     public let value: Decimal
     /// Upper-case ISO 4217 code. Both providers bill in USD.
     public let currency: String
@@ -249,11 +249,17 @@ public enum OpenAICostParser {
 }
 
 /// Claude extra usage: what the account has spent past its plan limits.
-public struct ClaudeExtraUsage: Equatable, Sendable {
+public struct ClaudeExtraUsage: Codable, Equatable, Sendable {
     public let used: CostAmount
     public let limit: CostAmount?
     /// The provider's own word for how close the limit is, such as `normal`.
     public let severity: String?
+
+    public init(used: CostAmount, limit: CostAmount?, severity: String?) {
+        self.used = used
+        self.limit = limit
+        self.severity = severity
+    }
 }
 
 /// Money the subscription usage responses already carry. Each reading is `nil`
@@ -291,6 +297,36 @@ public enum SubscriptionCostParser {
         var divisor: Decimal = 1
         for _ in 0..<exponent { divisor *= 10 }
         return CostAmount(value: minor / divisor, currency: (money["currency"] as? String) ?? "USD")
+    }
+}
+
+/// One line of money on a provider's card or submenu, from what its subscription
+/// usage response carried.
+public struct SubscriptionCostLine: Equatable, Sendable {
+    public let label: String
+    /// `$1.86 / $5.00`, `$1.86` without a limit, or a credit balance such as `18.40`.
+    public let value: String
+    /// Whole percent of the extra usage limit spent, for a bar. `nil` without a limit.
+    public let percent: Int?
+}
+
+public enum SubscriptionCostText {
+    /// `nil` unless the account pays past its plan, so a subscription-only card
+    /// stays exactly as it was.
+    public static func line(for usage: ProviderUsage, localizer: Localizer) -> SubscriptionCostLine? {
+        if let extra = usage.extraUsage {
+            var value = CostFormatter.text(extra.used)
+            var percent: Int?
+            if let limit = extra.limit, limit.currency == extra.used.currency {
+                value += " / " + CostFormatter.text(limit)
+                percent = CostBudget.percent(spent: extra.used.value, budget: limit.value)
+            }
+            return SubscriptionCostLine(label: localizer.text(.costExtraUsage), value: value, percent: percent)
+        }
+        if let balance = usage.creditBalance {
+            return SubscriptionCostLine(label: localizer.text(.costCreditBalance), value: CostFormatter.credits(balance), percent: nil)
+        }
+        return nil
     }
 }
 

@@ -109,10 +109,15 @@ private struct ProviderCard: View {
 
     private var localizer: Localizer { context.localizer }
 
+    /// API cost for this provider, when switched on with a key.
+    private var adminCost: AdminCostView? { context.adminCosts[usage.provider] }
+
     var body: some View {
         let issue = UsageIssueFormatter.issue(for: usage, localizer: localizer)
+        // Subscription limits off and API cost on: the card is the cost alone.
+        let costOnly = issue.kind == .disabled && adminCost != nil
         VStack(alignment: .leading, spacing: 10) {
-            header(issue)
+            header(issue, costOnly: costOnly)
             if issue.kind != .disabled {
                 if usage.isAvailable {
                     windowRow(
@@ -131,6 +136,13 @@ private struct ProviderCard: View {
                 if let cost = SubscriptionCostText.line(for: usage, localizer: localizer) {
                     CostRow(line: cost)
                 }
+            }
+            if let adminCost {
+                // Under the limits, the cost's own state goes in a note; on a card
+                // of its own, the header badge says it.
+                AdminCostSection(view: adminCost, showsStatus: !costOnly)
+            }
+            if issue.kind != .disabled {
                 notes(issue)
             }
         }
@@ -140,25 +152,27 @@ private struct ProviderCard: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.primary.opacity(0.045))
         )
-        .opacity(issue.kind == .disabled ? 0.55 : 1)
+        .opacity(issue.kind == .disabled && !costOnly ? 0.55 : 1)
     }
 
-    private func header(_ issue: UsageIssue) -> some View {
+    private func header(_ issue: UsageIssue, costOnly: Bool) -> some View {
         HStack(spacing: 6) {
             ProviderGlyph(provider: usage.provider)
             Text(usage.provider.displayName)
                 .font(.system(size: 13, weight: .semibold))
-            if let plan = usage.plan, !plan.isEmpty {
-                Text(plan)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+            if costOnly {
+                PlanCapsule(text: "API")
+            } else if let plan = usage.plan, !plan.isEmpty {
+                PlanCapsule(text: plan)
             }
             Spacer(minLength: 8)
-            StatusBadge(kind: issue.kind, title: issue.title)
-                .help(issue.detail)
+            if costOnly, let adminCost {
+                StatusBadge(color: adminCost.status.color, title: adminCost.statusTitle)
+                    .help(adminCost.failureMessage ?? adminCost.statusTitle)
+            } else {
+                StatusBadge(kind: issue.kind, title: issue.title)
+                    .help(issue.detail)
+            }
         }
     }
 
@@ -339,6 +353,90 @@ private struct CostRow: View {
     }
 }
 
+/// The organization's month of API cost: the amount, the budget bar, today and the
+/// largest models, and how far the data reaches. Laid out like a window row so the
+/// amount lines up under the percentages.
+private struct AdminCostSection: View {
+    let view: AdminCostView
+    let showsStatus: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(view.monthLabel)
+                    .font(.system(size: 12, weight: .medium))
+                if let budgetText = view.budgetText {
+                    Text(budgetText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Text(view.monthValue)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(tint == .accentColor ? .primary : tint)
+            }
+            if let percent = view.budgetPercent {
+                UsageBar(fraction: Double(percent) / 100, tint: tint)
+            }
+            if view.detail != nil || view.asOf != nil {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let detail = view.detail {
+                        Text(detail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if let asOf = view.asOf {
+                        Text(asOf)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            if showsStatus, view.status != .ok {
+                NoteRow(systemImage: "dollarsign.circle", text: view.statusTitle, tint: view.status.color == .red ? .red : .secondary)
+                    .help(view.failureMessage ?? view.statusTitle)
+            }
+        }
+    }
+
+    /// Orange from 80% of the budget and red at it, the budget alert thresholds.
+    private var tint: Color {
+        guard let percent = view.budgetPercent else { return .accentColor }
+        if percent >= 100 { return .red }
+        if percent >= 80 { return .orange }
+        return .accentColor
+    }
+}
+
+private extension AdminCostView.Status {
+    var color: Color {
+        switch self {
+        case .ok: .green
+        case .loading: .secondary
+        case .cached, .rateLimited: .orange
+        case .keyRejected, .failed: .red
+        }
+    }
+}
+
+private struct PlanCapsule: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.primary.opacity(0.08)))
+    }
+}
+
 private struct UsageBar: View {
     let fraction: Double
     let tint: Color
@@ -366,8 +464,17 @@ private struct UsageBar: View {
 }
 
 private struct StatusBadge: View {
-    let kind: UsageIssueKind
+    let color: Color
     let title: String
+
+    init(color: Color, title: String) {
+        self.color = color
+        self.title = title
+    }
+
+    init(kind: UsageIssueKind, title: String) {
+        self.init(color: Self.color(for: kind), title: title)
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -381,7 +488,7 @@ private struct StatusBadge: View {
         }
     }
 
-    private var color: Color {
+    private static func color(for kind: UsageIssueKind) -> Color {
         switch kind {
         case .ok: .green
         case .statusLine: .blue

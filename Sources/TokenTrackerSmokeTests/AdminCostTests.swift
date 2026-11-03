@@ -124,7 +124,8 @@ func runAdminCostTests() throws {
     expectEqual(codexCost.monthToDate?.value, dollars("2.5"), "OpenAI's days add up to the month")
     expectEqual(codexCost.today?.value, dollars("0.5"), "and a day cut at local midnight is today")
     expect(codexCost.dataRefreshedAt == nil, "OpenAI has no watermark to report")
-    expectEqual(codexCost.topItems.map(\.name), ["gpt-6, input", "gpt-6, output"], "line items merge across days")
+    expectEqual(codexCost.topItems.map(\.name), ["gpt-6"], "a model's line items add up under the model")
+    expectEqual(codexCost.topItems.first?.amount.value, dollars("2.5"), "across every day")
     expectEqual(
         waitFor { await openAI.fetch(key: "sk-admin-abcdefgh5678", now: now, timeZone: seoul) },
         .failure(CostFetchFailure(kind: .keyRejected, message: "HTTP 401 from OpenAI Admin API")),
@@ -218,6 +219,127 @@ func runAdminCostTests() throws {
     expectEqual(waitFor { await serviceFake.requests.count }, 4, "a new key is fetched at once, whatever the schedule")
     expect(rejected.failure?.kind == .keyRejected && rejected.cost == nil, "and another key's reading is not passed off as its own")
     expectEqual(rejected.keySuffix, "…9999", "the new key is the one named")
+}
+
+/// What the API cost puts on screen: the card's lines, the menu bar's money, and
+/// the rule that keeps a provider showing limits on its percentage. Mirrors the
+/// cost display section of windows/TokenTracker.Windows.Tests/Program.cs.
+func runCostDisplayTests() throws {
+    let seoul = TimeZone(identifier: "Asia/Seoul")!
+    func at(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
+    func dollars(_ text: String) -> Decimal { Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))! }
+    func usd(_ text: String) -> CostAmount { CostAmount(value: dollars(text)) }
+    let english = Localizer(language: .english)
+    let korean = Localizer(language: .korean)
+    let now = at("2026-11-03T05:00:00Z")
+    let cost = ProviderCost(
+        provider: .claude,
+        monthToDate: usd("2513.345"),
+        today: usd("13.345"),
+        topItems: [
+            CostLineItem(name: "claude-opus-5-5", amount: usd("2000")),
+            CostLineItem(name: "claude-sonnet-5-5", amount: usd("513.345")),
+            CostLineItem(name: "claude-haiku-5-5", amount: usd("0.5"))
+        ],
+        dataRefreshedAt: at("2026-11-03T04:00:00Z"),
+        measuredAt: now
+    )
+    func state(enabled: Bool = true, key: String? = "…1234", cost: ProviderCost? = nil, failure: CostFetchFailure? = nil) -> CostState {
+        var state = CostState()
+        state.enabled = enabled
+        state.keySuffix = key
+        state.cost = cost
+        state.failure = failure
+        return state
+    }
+
+    expect(AdminCostText.view(state: state(enabled: false, cost: cost), budget: 0, now: now, timeZone: seoul, localizer: korean) == nil, "switched off, there is no cost to show")
+    expect(AdminCostText.view(state: state(key: nil), budget: 0, now: now, timeZone: seoul, localizer: korean) == nil, "and without a key, neither")
+
+    let loading = AdminCostText.view(state: state(), budget: 100, now: now, timeZone: seoul, localizer: korean)!
+    expectEqual(loading.status, .loading, "switched on with a key and no answer yet is loading")
+    expectEqual(loading.statusTitle, "불러오는 중", "in the user's language")
+    expect(loading.monthValue == "--" && loading.detail == nil && loading.budgetText == nil && loading.asOf == nil, "with nothing to show yet")
+
+    let ok = AdminCostText.view(state: state(cost: cost), budget: 5000, now: now, timeZone: seoul, localizer: korean)!
+    expectEqual(ok.status, .ok, "a fresh reading is fine")
+    expectEqual(ok.statusTitle, "정상", "and says so")
+    expectEqual(ok.monthLabel, "이번 달 사용", "the month is this month's use")
+    expectEqual(ok.monthValue, "$2.5K", "in the cost format")
+    expectEqual(ok.budgetPercent, 50, "against the budget, rounded down")
+    expectEqual(ok.budgetText, "예산 $5.0K 중 50%", "the budget line names the budget")
+    expect(!ok.isBudgetWarning, "half a budget is no warning")
+    expectEqual(ok.detail, "오늘 $13.35 · Opus 5.5 79% · Sonnet 5.5 20%", "today, then the two largest models' shares")
+    expectEqual(ok.asOf, "13:00 기준", "and how far the data reaches, in Seoul's time")
+
+    let english84 = AdminCostText.view(state: state(cost: cost), budget: 3000, now: now, timeZone: seoul, localizer: english)!
+    expectEqual(english84.budgetText, "83% of $3.0K budget", "the budget line in English")
+    expect(english84.isBudgetWarning, "80% of a budget is a warning")
+    let yesterday = ProviderCost(provider: .claude, monthToDate: cost.monthToDate, today: nil, topItems: [], dataRefreshedAt: at("2026-11-02T13:10:00Z"), measuredAt: now)
+    let lagging = AdminCostText.view(state: state(cost: yesterday), budget: 0, now: now, timeZone: seoul, localizer: english)!
+    expectEqual(lagging.asOf, "as of Nov 2 22:10", "data from another day names the day")
+    expectEqual(lagging.detail, "Today not tallied yet", "and today is not tallied, not zero")
+    expectEqual(AdminCostText.view(state: state(cost: yesterday), budget: 0, now: now, timeZone: seoul, localizer: korean)?.asOf, "11월 2일 22:10 기준", "in Korean too")
+    let untallied = ProviderCost(provider: .claude, monthToDate: nil, today: nil, topItems: [], dataRefreshedAt: nil, measuredAt: now)
+    let empty = AdminCostText.view(state: state(cost: untallied), budget: 100, now: now, timeZone: seoul, localizer: korean)!
+    expect(empty.monthValue == "집계 전" && empty.detail == nil && empty.budgetPercent == nil, "an untallied month shows no amount and no bar")
+
+    let failedFetch = CostFetchFailure(kind: .failed, message: "HTTP 500 from Anthropic Admin API")
+    let cached = AdminCostText.view(state: state(cost: cost, failure: failedFetch), budget: 0, now: now, timeZone: seoul, localizer: korean)!
+    expect(cached.status == .cached && cached.statusTitle == "캐시 데이터 사용 중", "a failed fetch over a reading is the cache")
+    expectEqual(cached.failureMessage, "HTTP 500 from Anthropic Admin API", "and keeps why for a tooltip")
+    let rejected = CostFetchFailure(kind: .keyRejected, message: "HTTP 401 from Anthropic Admin API")
+    expectEqual(AdminCostText.view(state: state(cost: cost, failure: rejected), budget: 0, now: now, timeZone: seoul, localizer: korean)?.status, .keyRejected, "a rejected key outranks the cache")
+    expectEqual(AdminCostText.view(state: state(failure: rejected), budget: 0, now: now, timeZone: seoul, localizer: korean)?.statusTitle, "Admin 키 거부됨", "and is named")
+    expectEqual(AdminCostText.view(state: state(failure: CostFetchFailure(kind: .rateLimited, message: "HTTP 429")), budget: 0, now: now, timeZone: seoul, localizer: korean)?.status, .rateLimited, "a rate limit with no reading")
+    expectEqual(AdminCostText.view(state: state(failure: failedFetch), budget: 0, now: now, timeZone: seoul, localizer: korean)?.statusTitle, "비용을 가져오지 못함", "any other failure with no reading")
+
+    expectEqual(CostItemName.display("claude-opus-5-5"), "Opus 5.5", "a model reads as family and version")
+    expectEqual(CostItemName.display("claude-sonnet-4-5-20250929"), "Sonnet 4.5", "without its date stamp")
+    expectEqual(CostItemName.display("claude-3-5-haiku-20241022"), "Haiku 3.5", "whichever order the version comes in")
+    expectEqual(CostItemName.display("gpt-6"), "gpt-6", "other names stay as they are")
+    expectEqual(CostItemName.lineItemGroup("gpt-6, input"), "gpt-6", "an OpenAI line item belongs to its model")
+    expectEqual(CostItemName.lineItemGroup("web search"), "web search", "one with no model stays whole")
+
+    expectEqual(CostFormatter.compact(usd("42.18")), "$42", "the menu bar drops cents from $10")
+    expectEqual(CostFormatter.compact(usd("42.5")), "$43", "rounding half away from zero")
+    expectEqual(CostFormatter.compact(usd("3.07")), "$3.07", "but keeps them below, so a small spend is not $0")
+    expectEqual(CostFormatter.compact(usd("1234")), "$1.2K", "and shortens thousands")
+
+    expect(AdminKeyText.looksLikeAdminKey("sk-ant-admin01-abcdefgh", for: .claude), "an Anthropic Admin key")
+    expect(!AdminKeyText.looksLikeAdminKey("sk-ant-api03-abcdefgh", for: .claude), "an ordinary Anthropic API key cannot read cost")
+    expect(AdminKeyText.looksLikeAdminKey(" sk-admin-abcdefgh\n", for: .codex), "an OpenAI Admin key, pasted with whitespace")
+    expect(!AdminKeyText.looksLikeAdminKey("sk-proj-abcdefgh", for: .codex), "an OpenAI project key cannot read cost")
+
+    // The menu bar: only a provider tracked by API cost alone shows money.
+    let small = ProviderCost(provider: .claude, monthToDate: usd("42.18"), today: nil, topItems: [], dataRefreshedAt: nil, measuredAt: now)
+    let states: [Provider: CostState] = [.claude: state(cost: small), .codex: state(cost: small)]
+    let entries = CostMenuBar.entries(subscriptionShown: [.claude: false, .codex: true], states: states, budgets: [.claude: 50])
+    expectEqual(entries, [.claude: MenuBarCost(text: "$42", isWarning: true)], "Claude shows its spend, past 80% of its budget; Codex keeps its percentage")
+    expectEqual(
+        CostMenuBar.entries(subscriptionShown: [.claude: false, .codex: false], states: [.claude: state()], budgets: [:]),
+        [.claude: MenuBarCost(text: "--", isWarning: false)],
+        "before the first reading the spend is a placeholder"
+    )
+    expect(CostMenuBar.entries(subscriptionShown: [.claude: false], states: [.claude: state(key: nil)], budgets: [:]).isEmpty, "no key, no money in the menu bar")
+    expect(!CostMenuBar.trayShowsDollar(subscriptionShown: [.claude: false, .codex: true], entries: entries), "the tray keeps a percentage while any limit is shown")
+    expect(CostMenuBar.trayShowsDollar(subscriptionShown: [.claude: false, .codex: false], entries: entries), "and draws $ when only money is left")
+    expect(!CostMenuBar.trayShowsDollar(subscriptionShown: [.claude: false, .codex: false], entries: [:]), "but not with nothing to show")
+
+    let snapshot = UsageSnapshot(
+        claude: .unavailable(.claude, error: "Disabled"),
+        codex: ProviderUsage(provider: .codex, remainingPercent5h: nil, remainingPercent7d: 91, resetAt5h: nil, resetAt7d: nil, source: .api, error: nil, plan: "plus", model: nil, updatedAt: now),
+        updatedAt: now
+    )
+    let claudeSpend: [Provider: MenuBarCost] = [.claude: MenuBarCost(text: "$42", isWarning: false)]
+    expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .both, costs: claudeSpend), "Cdx 91% · Cl $42", "both: Codex's percentage beside Claude's spend")
+    expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .claudeOnly, costs: claudeSpend), "Cl $42", "Claude alone")
+    expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .claudeOnly, labelStyle: .icon, costs: claudeSpend), "Claude $42", "with the logo label")
+    expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .lowestRemaining, costs: claudeSpend), "AI 91%", "the lowest-remaining mode keeps its percentage")
+    let noLimits = UsageSnapshot(claude: .unavailable(.claude, error: "Disabled"), codex: .unavailable(.codex, error: "Disabled"), updatedAt: now)
+    let bothSpend: [Provider: MenuBarCost] = [.claude: MenuBarCost(text: "$42", isWarning: false), .codex: MenuBarCost(text: "$8.00", isWarning: false)]
+    expectEqual(DisplayFormatter.statusTitle(snapshot: noLimits, mode: .lowestRemaining, costs: bothSpend), "Cl $42 · Cdx $8.00", "and lists the spend when no provider has a percentage")
+    expectEqual(DisplayFormatter.statusTitle(snapshot: snapshot, mode: .both), "Cdx 91% · Cl --", "without costs the title is as it was")
 }
 
 /// Answers each request with the next queued reply, and keeps what was asked.

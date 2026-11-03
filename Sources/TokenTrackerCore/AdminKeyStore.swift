@@ -30,6 +30,27 @@ public enum AdminKeyText {
     public static func suffix(_ key: String) -> String {
         key.count > 8 ? "…" + String(key.suffix(4)) : "…"
     }
+
+    /// Whose console the key comes from.
+    public static func organization(_ provider: Provider) -> String {
+        switch provider {
+        case .claude: "Anthropic"
+        case .codex: "OpenAI"
+        }
+    }
+
+    /// How an Admin key starts. An ordinary API key (`sk-ant-api…`, `sk-proj-…`)
+    /// cannot read cost, and pasting one is the likely mistake.
+    public static func prefix(_ provider: Provider) -> String {
+        switch provider {
+        case .claude: "sk-ant-admin"
+        case .codex: "sk-admin-"
+        }
+    }
+
+    public static func looksLikeAdminKey(_ key: String, for provider: Provider) -> Bool {
+        key.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(prefix(provider))
+    }
 }
 
 #if canImport(Security)

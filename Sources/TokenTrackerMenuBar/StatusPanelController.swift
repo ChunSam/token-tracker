@@ -33,6 +33,8 @@ struct StatusPanelContext {
     let runningInstanceCount: Int
     /// A newer release than this build, when the daily check found one.
     let availableUpdateVersion: String?
+    /// The API cost section per provider; absent where API cost is off or keyless.
+    let adminCosts: [Provider: AdminCostView]
 }
 
 @MainActor

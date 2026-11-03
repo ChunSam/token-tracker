@@ -25,6 +25,7 @@ try runClaudeStatusLineTests()
 try runClaudeCLIRefreshTests()
 try runCostTests()
 try runAdminCostTests()
+try runCostDisplayTests()
 
 let now = Date()
 let snapshot = UsageSnapshot(

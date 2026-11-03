@@ -154,7 +154,28 @@ public struct Localizer {
         .claudeOnly: "Claude only",
         .officialLogos: "Official logos",
         .costExtraUsage: "Extra usage",
-        .costCreditBalance: "Credit balance"
+        .costCreditBalance: "Credit balance",
+        .costThisMonth: "This month",
+        .costToday: "Today",
+        .costAsOf: "as of {time}",
+        .costNotYetTallied: "not tallied yet",
+        .costBudget: "{percent}% of {limit} budget",
+        .costLoading: "Loading",
+        .costAdminKeyRejected: "Admin key rejected",
+        .costFetchFailed: "Couldn't get cost",
+        .subscriptionLimits: "Subscription limits",
+        .apiCost: "API cost (Admin API)",
+        .adminKeyButton: "Admin Key…",
+        .monthlyBudget: "Monthly budget (USD, 0 is off)",
+        .adminKeyTitle: "{organization} Admin Key",
+        .adminKeyGuidance: "Create a key just for this app in your organization's console and paste it here. It is stored encrypted on this computer only. Give an Anthropic key an expiry date.",
+        .adminKeyStored: "Stored key: {suffix}",
+        .adminKeyNone: "No key stored",
+        .adminKeySave: "Save",
+        .adminKeyDelete: "Delete Key",
+        .adminKeyCancel: "Cancel",
+        .adminKeyInvalid: "This isn't an Admin key. It starts with {prefix}.",
+        .adminKeySaveFailed: "The key couldn't be saved."
     ]
 
     private let korean: [L10nKey: String] = [
@@ -276,7 +297,28 @@ public struct Localizer {
         .claudeOnly: "Claude만",
         .officialLogos: "공식 로고",
         .costExtraUsage: "추가 사용량",
-        .costCreditBalance: "크레딧 잔액"
+        .costCreditBalance: "크레딧 잔액",
+        .costThisMonth: "이번 달 사용",
+        .costToday: "오늘",
+        .costAsOf: "{time} 기준",
+        .costNotYetTallied: "집계 전",
+        .costBudget: "예산 {limit} 중 {percent}%",
+        .costLoading: "불러오는 중",
+        .costAdminKeyRejected: "Admin 키 거부됨",
+        .costFetchFailed: "비용을 가져오지 못함",
+        .subscriptionLimits: "구독 한도",
+        .apiCost: "API 비용 (Admin API)",
+        .adminKeyButton: "Admin 키…",
+        .monthlyBudget: "월 예산 (USD, 0이면 끔)",
+        .adminKeyTitle: "{organization} Admin 키",
+        .adminKeyGuidance: "조직 Console에서 이 앱 전용 Admin 키를 새로 만들어 붙여넣으세요. 키는 이 컴퓨터에만 암호화해 저장됩니다. Anthropic 키는 만료일을 걸어 두세요.",
+        .adminKeyStored: "저장된 키: {suffix}",
+        .adminKeyNone: "저장된 키 없음",
+        .adminKeySave: "저장",
+        .adminKeyDelete: "키 삭제",
+        .adminKeyCancel: "취소",
+        .adminKeyInvalid: "Admin 키가 아닙니다. Admin 키는 {prefix}로 시작합니다.",
+        .adminKeySaveFailed: "키를 저장하지 못했습니다."
     ]
 }
 
@@ -400,4 +442,25 @@ public enum L10nKey: String {
     case officialLogos
     case costExtraUsage
     case costCreditBalance
+    case costThisMonth
+    case costToday
+    case costAsOf
+    case costNotYetTallied
+    case costBudget
+    case costLoading
+    case costAdminKeyRejected
+    case costFetchFailed
+    case subscriptionLimits
+    case apiCost
+    case adminKeyButton
+    case monthlyBudget
+    case adminKeyTitle
+    case adminKeyGuidance
+    case adminKeyStored
+    case adminKeyNone
+    case adminKeySave
+    case adminKeyDelete
+    case adminKeyCancel
+    case adminKeyInvalid
+    case adminKeySaveFailed
 }

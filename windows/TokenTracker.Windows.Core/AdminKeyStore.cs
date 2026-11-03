@@ -28,6 +28,18 @@ public static class AdminKeyText
     /// key. Named for the organization the key belongs to, not the CLI.
     internal static string Account(Provider provider) =>
         provider == Provider.Claude ? "anthropic-admin" : "openai-admin";
+
+    /// Whose console the key comes from.
+    public static string Organization(Provider provider) =>
+        provider == Provider.Claude ? "Anthropic" : "OpenAI";
+
+    /// How an Admin key starts. An ordinary API key (<c>sk-ant-api…</c>,
+    /// <c>sk-proj-…</c>) cannot read cost, and pasting one is the likely mistake.
+    public static string Prefix(Provider provider) =>
+        provider == Provider.Claude ? "sk-ant-admin" : "sk-admin-";
+
+    public static bool LooksLikeAdminKey(string key, Provider provider) =>
+        key.Trim().StartsWith(Prefix(provider), StringComparison.Ordinal);
 }
 
 /// <summary>

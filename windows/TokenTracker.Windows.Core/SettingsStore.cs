@@ -52,6 +52,12 @@ public sealed class AppSettings
     /// The same for the OpenAI organization behind Codex.
     public bool CodexCostEnabled { get; set; }
 
+    /// The Anthropic organization's monthly budget in whole US dollars. Zero is off.
+    public int ClaudeMonthlyBudget { get; set; }
+
+    /// The same for the OpenAI organization behind Codex.
+    public int CodexMonthlyBudget { get; set; }
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). <c>null</c> means not paused.
     public DateTimeOffset? PollPausedUntil { get; set; }

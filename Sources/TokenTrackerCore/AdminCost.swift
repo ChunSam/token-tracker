@@ -211,7 +211,9 @@ public struct AdminCostClient: Sendable {
 
         // Anthropic splits by model in a query of its own, worth asking only once
         // the month has something in it.
-        var items = totals.items
+        // OpenAI splits each model into input, output and so on; they add up
+        // under the model.
+        var items = totals.items.map { CostLineItem(name: CostItemName.lineItemGroup($0.name), amount: $0.amount) }
         if provider == .claude {
             items = []
             if report.monthToDate != nil {

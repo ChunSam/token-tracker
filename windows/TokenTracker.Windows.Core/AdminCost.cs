@@ -200,7 +200,11 @@ public sealed class AdminCostClient
 
         // Anthropic splits by model in a query of its own, worth asking only once
         // the month has something in it.
-        var items = totals.Items;
+        // OpenAI splits each model into input, output and so on; they add up
+        // under the model.
+        IReadOnlyList<CostLineItem> items = totals.Items
+            .Select(item => new CostLineItem(CostItemName.LineItemGroup(item.Name), item.Amount))
+            .ToList();
         if (Provider == Provider.Claude)
         {
             items = Array.Empty<CostLineItem>();

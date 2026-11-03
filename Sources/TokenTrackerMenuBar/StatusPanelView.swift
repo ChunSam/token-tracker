@@ -137,13 +137,20 @@ private struct ProviderCard: View {
                     CostRow(line: cost)
                 }
             }
-            if let adminCost {
-                // Under the limits, the cost's own state goes in a note; on a card
-                // of its own, the header badge says it.
-                AdminCostSection(view: adminCost, showsStatus: !costOnly)
-            }
             if issue.kind != .disabled {
                 notes(issue)
+            }
+            if let adminCost {
+                // Last, after the limits and their notes: the organization's bill is
+                // a different thing from the subscription above it. Under the limits
+                // the cost's own state goes in a note; on a card of its own, the
+                // header badge says it.
+                AdminCostSection(
+                    title: localizer.text(.costSectionTitle)
+                        .replacingOccurrences(of: "{organization}", with: AdminKeyText.organization(usage.provider)),
+                    view: adminCost,
+                    showsStatus: !costOnly
+                )
             }
         }
         .padding(12)
@@ -354,14 +361,30 @@ private struct CostRow: View {
 }
 
 /// The organization's month of API cost: the amount, the budget bar, today and the
-/// largest models, and how far the data reaches. Laid out like a window row so the
-/// amount lines up under the percentages.
+/// largest models, and how far the data reaches. A box of its own with a titled
+/// header, because laid out like a window row it read as part of the limits.
 private struct AdminCostSection: View {
+    let title: String
     let view: AdminCostView
     let showsStatus: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.green)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if let asOf = view.asOf {
+                    Text(asOf)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(view.monthLabel)
                     .font(.system(size: 12, weight: .medium))
@@ -373,35 +396,34 @@ private struct AdminCostSection: View {
                 }
                 Spacer(minLength: 8)
                 Text(view.monthValue)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(tint == .accentColor ? .primary : tint)
             }
             if let percent = view.budgetPercent {
                 UsageBar(fraction: Double(percent) / 100, tint: tint)
             }
-            if view.detail != nil || view.asOf != nil {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if let detail = view.detail {
-                        Text(detail)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    if let asOf = view.asOf {
-                        Text(asOf)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
+            if let detail = view.detail {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if showsStatus, view.status != .ok {
-                NoteRow(systemImage: "dollarsign.circle", text: view.statusTitle, tint: view.status.color == .red ? .red : .secondary)
+                NoteRow(systemImage: "exclamationmark.circle", text: view.statusTitle, tint: view.status.color == .red ? .red : .secondary)
                     .help(view.failureMessage ?? view.statusTitle)
             }
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08))
+        )
     }
 
     /// Orange from 80% of the budget and red at it, the budget alert thresholds.

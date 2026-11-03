@@ -22,6 +22,7 @@ macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용�
 - 라이트/다크 모드 메뉴 색상 대응
 - Codex / Claude 연결 실패 시 잔량을 `--`로 표시
 - 저장된 액세스 토큰 만료를 미리 감지해 다시 로그인하라고 안내
+- Claude 토큰이 만료되면 Claude Code를 잠깐 실행해 갱신 (설정에서 끄기 가능)
 - 오류 원인별 상태/복구 안내와 진단 정보 복사
 - 낮은 잔량, 리셋 임박, 수집 중단, 다시 사용 가능 macOS/Windows 알림
 - 창마다 균등 사용선 대비 페이스(빠름·적정·여유) 표시
@@ -116,6 +117,28 @@ Claude의 5시간 창은 **첫 사용 때 열립니다.** 창이 없는 동안 A
 Token Tracker는 각 CLI가 저장해 둔 액세스 토큰을 읽기만 하고, 직접 갱신하지 않습니다.
 따라서 CLI를 한동안 쓰지 않아 토큰이 만료되면 잔량을 새로 가져올 수 없습니다.
 
+### Claude 토큰 자동 갱신
+
+Claude 토큰이 만료돼 있으면 Token Tracker가 설치된 Claude Code(`claude`)를 잠깐 실행합니다.
+Claude Code는 시작하자마자 저장된 토큰을 스스로 갱신하므로, 그 뒤 다시 읽으면 잔량을 가져올 수
+있습니다. 터미널에서 `claude`를 한 번 실행하는 것과 같은 일이고, 데스크톱 앱만 쓰는 경우에도
+토큰이 유지됩니다. 설정의 `Claude Code로 토큰 자동 갱신`으로 끌 수 있습니다(기본 켬).
+
+- 앱이 리프레시 토큰을 직접 쓰지 않습니다. 리프레시 토큰은 한 번 쓰면 바뀌므로 앱이 쓰면 CLI가
+  로그아웃되고, Anthropic 약관도 서드파티 앱이 Claude 자격 증명을 다루는 것을 금합니다. 수정되지
+  않은 CLI가 자기 방식대로 갱신할 뿐입니다.
+- 실행은 Claude Code가 신뢰한 적 없는 앱 전용 폴더에서 하고, 훅·MCP 서버·Remote Control을 끄는
+  옵션을 붙입니다. 그래서 신뢰 확인 화면에서 멈추며 훅, 플러그인, 세션 기록이 생기지 않습니다.
+  모델 요청도 하지 않아 사용량을 쓰지 않습니다. 화면에는 아무것도 뜨지 않습니다.
+- 갱신에 성공하면 5분, 저장소가 그대로였거나 CLI를 못 찾으면 30분 동안 다시 시도하지 않습니다.
+  저장소가 그대로라면 리프레시 토큰까지 만료된 것이니 터미널에서 `claude` 실행 후 `/login`이
+  필요합니다.
+- macOS는 `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`, PATH 순으로
+  `claude`를 찾습니다. Windows는 `%USERPROFILE%\.local\bin\claude.exe`와 PATH의 `claude.exe`만
+  씁니다(npm 설치의 `.cmd`는 쓰지 않음).
+- `진단 정보 복사`에 `Claude CLI renewal`(설정), `Claude CLI`(찾은 경로), `Claude CLI last renewal`
+  (마지막 시도 시각과 결과)이 들어갑니다.
+
 Claude 토큰의 만료 여부는 저장된 `expiresAt`을 기준으로 판단합니다. 앱이 읽는 인증 저장소에 유효한 토큰이 있어야 하므로 다른 클라이언트에서 로그인하는 것만으로 복구된다고 보장할 수는 없습니다. Claude Code 자체도 로그인을 더 이상 갱신할 수 없으면 `/login`이 필요합니다. [공식 인증 문서](https://code.claude.com/docs/en/authentication#renew-an-expiring-login)
 
 토큰이 만료되고 인증 저장소도 오랫동안 갱신되지 않았다면, 팝업(Windows는 메뉴)의 Claude 항목에 `자격 증명이 2d 3h째 갱신되지 않음`처럼 경과 시간이 함께 표시됩니다. 이 경우 터미널의 Claude Code에서 로그인 상태를 확인합니다.
@@ -142,8 +165,9 @@ Claude나 Codex의 상태가 `Saved token expired` / `저장된 토큰 만료`�
 codex login
 ```
 
-Claude는 `claude`를 한 번 실행하면 됩니다. 액세스 토큰은 약 8시간, 리프레시 토큰은 약 4주를 살기
-때문에 실행만으로 CLI가 저장된 토큰을 갱신합니다 — 대개 재로그인은 필요하지 않습니다. 그래도
+Claude는 자동 갱신이 켜져 있으면 대개 직접 할 일이 없습니다. 꺼 두었거나 갱신이 실패했다면
+`claude`를 한 번 실행하면 됩니다. 액세스 토큰은 약 8시간, 리프레시 토큰은 약 4주를 살기 때문에
+실행만으로 CLI가 저장된 토큰을 갱신합니다 — 대개 재로그인은 필요하지 않습니다. 그래도
 `저장된 토큰 만료`가 남으면 그 안에서 `/login`을 입력합니다.
 
 - Claude 토큰은 macOS 키체인(`Claude Code-credentials`) 또는 `~/.claude/.credentials.json`에서 읽습니다.

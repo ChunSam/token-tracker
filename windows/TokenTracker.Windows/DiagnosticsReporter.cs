@@ -12,6 +12,7 @@ internal sealed class DiagnosticsReporter
     private readonly DateTimeOffset? lastSuccessfulRefreshAt;
     private readonly int runningInstanceCount;
     private readonly ClaudeCliRefreshAttempt? claudeCliRefreshAttempt;
+    private readonly IReadOnlyDictionary<Provider, CostState> costStates;
 
     public DiagnosticsReporter(
         AppSettings settings,
@@ -19,7 +20,8 @@ internal sealed class DiagnosticsReporter
         UsageSnapshot? snapshot,
         DateTimeOffset? lastSuccessfulRefreshAt,
         int runningInstanceCount,
-        ClaudeCliRefreshAttempt? claudeCliRefreshAttempt)
+        ClaudeCliRefreshAttempt? claudeCliRefreshAttempt,
+        IReadOnlyDictionary<Provider, CostState> costStates)
     {
         this.settings = settings;
         this.historyStore = historyStore;
@@ -27,6 +29,7 @@ internal sealed class DiagnosticsReporter
         this.lastSuccessfulRefreshAt = lastSuccessfulRefreshAt;
         this.runningInstanceCount = runningInstanceCount;
         this.claudeCliRefreshAttempt = claudeCliRefreshAttempt;
+        this.costStates = costStates;
     }
 
     public string DiagnosticsText()
@@ -85,6 +88,11 @@ internal sealed class DiagnosticsReporter
         lines.Add($"Claude CLI: {ClaudeCliRefresh.Locate() ?? "not found"}");
         lines.Add($"Claude CLI last renewal: {lastRenewal}");
         lines.Add($"Codex auth file exists: {File.Exists(CodexAuthPath)}");
+        foreach (var provider in new[] { Provider.Claude, Provider.Codex })
+        {
+            var costState = costStates.TryGetValue(provider, out var state) ? state : new CostState();
+            lines.AddRange(CostDiagnostics.Lines(provider, costState));
+        }
 
         // Whether the bridge is installed at all, and how old its measurement is.
         // "File present but measured 9h ago" is the whole diagnosis for a user who

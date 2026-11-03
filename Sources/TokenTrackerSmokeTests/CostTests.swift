@@ -76,6 +76,8 @@ func runCostTests() throws {
     let stale = CostAggregator.report(buckets: hourly.buckets, freshness: .refreshedAt(at("2026-11-02T14:00:00Z")), now: now, timeZone: seoul)
     expect(stale.today == nil, "a day the data has not reached yet is not tallied, not zero")
     expectEqual(stale.monthToDate?.value, dollars("15.33333333"), "the month still adds up what there is")
+    let beforeMonth = CostAggregator.report(buckets: [], freshness: .refreshedAt(at("2026-10-31T12:00:00Z")), now: now, timeZone: seoul)
+    expect(beforeMonth.monthToDate == nil && beforeMonth.today == nil, "a watermark from before the 1st has tallied none of this month")
     let empty = AnthropicCostParser.page(json(#"{"data":[],"has_more":false,"next_page":null,"data_refreshed_at":null}"#))!
     expectEqual(empty.freshness, .notTallied, "no refresh time means nothing is tallied")
     let untallied = CostAggregator.report(buckets: empty.buckets, freshness: empty.freshness, now: now, timeZone: seoul)

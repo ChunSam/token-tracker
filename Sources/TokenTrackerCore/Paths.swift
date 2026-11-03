@@ -27,6 +27,16 @@ enum AppPaths {
         cacheDirectory.appendingPathComponent("codex-rate-limit.json")
     }
 
+    /// The Admin APIs limit per organization, apart from the usage endpoints, so
+    /// their cooldowns are kept apart too.
+    static func adminCostRateLimit(_ provider: Provider) -> URL {
+        cacheDirectory.appendingPathComponent("\(provider.rawValue)-cost-rate-limit.json")
+    }
+
+    static var costCache: URL {
+        cacheDirectory.appendingPathComponent("cost-cache.json")
+    }
+
     /// Written by `scripts/claude-statusline-bridge.sh`, read here. Lives beside
     /// the app's own caches so it inherits the owner-only directory.
     static var claudeStatusLine: URL {

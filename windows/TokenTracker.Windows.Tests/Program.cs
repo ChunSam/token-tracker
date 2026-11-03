@@ -1286,6 +1286,7 @@ Expect(new SettingsStore(renewalSettingsPath).Load().RenewClaudeTokenWithCli, "a
 Directory.Delete(Path.GetDirectoryName(renewalSettingsPath)!, recursive: true);
 
 RunCostTests();
+RunAdminCostTests();
 
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
@@ -1352,6 +1353,8 @@ static void RunCostTests()
     var stale = CostAggregator.Report(hourly.Buckets, CostFreshness.At(At("2026-11-02T14:00:00Z")), now, seoul);
     Expect(stale.Today is null, "A day the data has not reached yet is not tallied, not zero");
     ExpectEqual(stale.MonthToDate?.Value, Dollars("15.33333333"), "The month still adds up what there is");
+    var beforeMonth = CostAggregator.Report(Array.Empty<CostBucket>(), CostFreshness.At(At("2026-10-31T12:00:00Z")), now, seoul);
+    Expect(beforeMonth.MonthToDate is null && beforeMonth.Today is null, "A watermark from before the 1st has tallied none of this month");
     var empty = AnthropicCostParser.Page("{\"data\":[],\"has_more\":false,\"next_page\":null,\"data_refreshed_at\":null}")!;
     ExpectEqual(empty.Freshness, CostFreshness.NotTallied, "No refresh time means nothing is tallied");
     var untallied = CostAggregator.Report(empty.Buckets, empty.Freshness, now, seoul);
@@ -1525,6 +1528,217 @@ static void RunCostTests()
     var recorded = UsageHistoryPolicy.MeasurementsOnly(new UsageSnapshot(payingUsage, codexWithCredits, now));
     Expect(recorded.Claude.ExtraUsage is null && recorded.Codex.CreditBalance is null, "History keeps no money");
     ExpectEqual(recorded.Claude.RemainingPercent5h, payingUsage.RemainingPercent5h, "But keeps the measurement");
+}
+
+// Admin API cost collection: what each API is asked, how pages and failures come
+// back, and the schedule and cache that hold a reading between fetches. Mirrors
+// Sources/TokenTrackerSmokeTests/AdminCostTests.swift.
+static void RunAdminCostTests()
+{
+    var seoul = TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul");
+    var utc = TimeZoneInfo.Utc;
+    static DateTimeOffset At(string text) => DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+    static decimal Dollars(string text) => decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+    static HttpResponseMessage Reply(HttpStatusCode status, string body) => new(status) { Content = new StringContent(body) };
+    static string Lines(IEnumerable<string> lines) => string.Join("\n", lines);
+    // 14:00 on the 3rd in Seoul, whose month began at 15:00 UTC on October 31.
+    var now = At("2026-11-03T05:00:00Z");
+    var (start, end) = CostPeriod.RequestRange(now, seoul);
+    var directory = Path.Combine(Path.GetTempPath(), "token-tracker-admin-cost-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        ExpectEqual(
+            AdminCostRequest.AnthropicHourly(start, end, null)?.AbsoluteUri,
+            "https://api.anthropic.com/v1/organizations/analytics/cost?starting_at=2026-10-31T15:00:00Z&ending_at=2026-11-03T05:00:00Z&time_bucket_width=1h&limit=1000",
+            "Anthropic is asked for hourly buckets from the local 1st");
+        ExpectEqual(
+            AdminCostRequest.AnthropicByModel(start, end, "page_a+b/c")?.AbsoluteUri,
+            "https://api.anthropic.com/v1/organizations/analytics/cost?starting_at=2026-10-31T15:00:00Z&ending_at=2026-11-03T05:00:00Z&group_by%5B%5D=model&limit=100&page=page_a%2Bb%2Fc",
+            "The model split names its group in brackets, and a cursor goes escaped");
+        ExpectEqual(
+            AdminCostRequest.OpenAI(start, end, null)?.AbsoluteUri,
+            "https://api.openai.com/v1/organization/costs?start_time=1793458800&end_time=1793682000&bucket_width=1d&group_by%5B%5D=line_item&limit=31",
+            "OpenAI is asked for days by line item from the local 1st");
+        var (firstHourStart, firstHourEnd) = CostPeriod.RequestRange(At("2026-11-01T00:40:00Z"), utc);
+        Expect(AdminCostRequest.AnthropicHourly(firstHourStart, firstHourEnd, null) is null, "The first hour of a month has nothing to ask Anthropic yet");
+        Expect(AdminCostRequest.OpenAI(firstHourStart, firstHourEnd, null) is not null, "OpenAI takes any range that is not empty");
+        var claudeHeaders = AdminCostRequest.Headers(Provider.Claude, "sk-ant-admin01-key").ToDictionary(header => header.Name, header => header.Value);
+        ExpectEqual(claudeHeaders["x-api-key"], "sk-ant-admin01-key", "Anthropic takes the key in x-api-key");
+        ExpectEqual(claudeHeaders["anthropic-beta"], "analytics-usage-cost-2026-08-24", "And the Analytics beta header");
+        ExpectEqual(
+            AdminCostRequest.Headers(Provider.Codex, "sk-admin-key").Single(header => header.Name == "Authorization").Value,
+            "Bearer sk-admin-key",
+            "OpenAI takes a bearer token");
+
+        ExpectEqual(AdminKeyText.Suffix("sk-ant-admin01-abcdefgh1234"), "…1234", "A key shows its last four characters");
+        ExpectEqual(AdminKeyText.Suffix("short"), "…", "A key too short to be real shows nothing of itself");
+
+        // Anthropic: hourly totals over two pages, then the model split.
+        var anthropicHandler = new QueueHttpMessageHandler(
+            Reply(HttpStatusCode.OK, """
+                {"data":[
+                  {"starting_at":"2026-11-01T03:00:00Z","ending_at":"2026-11-01T04:00:00Z","group":{},"cost":{"currency":"USD","amount":"250000.000000"}},
+                  {"starting_at":"2026-11-02T15:00:00Z","ending_at":"2026-11-02T16:00:00Z","group":{},"cost":{"currency":"USD","amount":"1234.500000"}}
+                ],"has_more":true,"next_page":"page_2","data_refreshed_at":"2026-11-03T04:00:00Z"}
+                """),
+            Reply(HttpStatusCode.OK, """
+                {"data":[
+                  {"starting_at":"2026-11-03T01:00:00Z","ending_at":"2026-11-03T02:00:00Z","group":{},"cost":{"currency":"USD","amount":"100.000000"}}
+                ],"has_more":false,"next_page":null,"data_refreshed_at":"2026-11-03T04:00:00Z"}
+                """),
+            Reply(HttpStatusCode.OK, """
+                {"data":[
+                  {"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-opus-5-5"},"cost":{"currency":"USD","amount":"200000.000000"}},
+                  {"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-sonnet-5-5"},"cost":{"currency":"USD","amount":"51334.500000"}},
+                  {"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":null},"cost":{"currency":"USD","amount":"0.000000"}},
+                  {"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-haiku-5-5"},"cost":{"currency":"USD","amount":"50.000000"}},
+                  {"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-fable-5-1"},"cost":{"currency":"USD","amount":"10.000000"}}
+                ],"has_more":false,"next_page":null,"data_refreshed_at":"2026-11-03T04:00:00Z"}
+                """));
+        var anthropic = new AdminCostClient(Provider.Claude, new HttpClient(anthropicHandler), Path.Combine(directory, "claude-cost-rate-limit.json"));
+        var claudeResult = anthropic.FetchAsync("sk-ant-admin01-abcdefgh1234", now, seoul).GetAwaiter().GetResult();
+        var claudeCost = claudeResult.Cost ?? throw new InvalidOperationException("Anthropic's month is read: " + claudeResult.Failure);
+        ExpectEqual(claudeCost.MonthToDate?.Value, Dollars("2513.345"), "Every page's hours add up to the month");
+        ExpectEqual(claudeCost.Today?.Value, Dollars("13.345"), "Today is Seoul's, from its midnight");
+        ExpectEqual(claudeCost.DataRefreshedAt, At("2026-11-03T04:00:00Z"), "The reading says how far the data reaches");
+        ExpectEqual(
+            string.Join(",", claudeCost.TopItems.Select(item => item.Name)),
+            "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5",
+            "The three largest models");
+        ExpectEqual(anthropicHandler.Requests.Count, 3, "Two pages of hours and one of models");
+        Expect(anthropicHandler.Requests[1].Uri.EndsWith("&page=page_2", StringComparison.Ordinal), "The second page carries the cursor");
+        ExpectEqual(anthropicHandler.Requests[0].Headers["x-api-key"], "sk-ant-admin01-abcdefgh1234", "The key goes in its header");
+
+        var untalliedHandler = new QueueHttpMessageHandler(
+            Reply(HttpStatusCode.OK, """{"data":[],"has_more":false,"next_page":null,"data_refreshed_at":null}"""));
+        var untallied = new AdminCostClient(Provider.Claude, new HttpClient(untalliedHandler), Path.Combine(directory, "untallied-rate-limit.json"));
+        var untalliedResult = untallied.FetchAsync("sk-ant-admin01-abcdefgh1234", now, seoul).GetAwaiter().GetResult();
+        var untalliedCost = untalliedResult.Cost ?? throw new InvalidOperationException("An untallied month is still a reading: " + untalliedResult.Failure);
+        Expect(untalliedCost.MonthToDate is null && untalliedCost.Today is null, "Nothing tallied is no amount, not zero");
+        ExpectEqual(untalliedHandler.CallCount, 1, "And leaves no model split to ask for");
+
+        // OpenAI: days cut at Seoul's midnight, by line item.
+        var limitedReply = Reply(HttpStatusCode.TooManyRequests, "{}");
+        limitedReply.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
+        var openAIHandler = new QueueHttpMessageHandler(
+            Reply(HttpStatusCode.OK, """
+                {"object":"page","data":[
+                  {"object":"bucket","start_time":1793458800,"end_time":1793545200,"results":[
+                    {"amount":{"value":1.25,"currency":"usd"},"line_item":"gpt-6, input"},
+                    {"amount":{"value":0.75,"currency":"usd"},"line_item":"gpt-6, output"}]},
+                  {"object":"bucket","start_time":1793631600,"end_time":1793718000,"results":[
+                    {"amount":{"value":0.5,"currency":"usd"},"line_item":"gpt-6, input"}]}
+                ],"has_more":false,"next_page":null}
+                """),
+            Reply(HttpStatusCode.Unauthorized, """{"error":{"message":"Invalid API key"}}"""),
+            limitedReply);
+        var openAI = new AdminCostClient(Provider.Codex, new HttpClient(openAIHandler), Path.Combine(directory, "codex-cost-rate-limit.json"));
+        var codexResult = openAI.FetchAsync("sk-admin-abcdefgh5678", now, seoul).GetAwaiter().GetResult();
+        var codexCost = codexResult.Cost ?? throw new InvalidOperationException("OpenAI's month is read: " + codexResult.Failure);
+        ExpectEqual(codexCost.MonthToDate?.Value, Dollars("2.5"), "OpenAI's days add up to the month");
+        ExpectEqual(codexCost.Today?.Value, Dollars("0.5"), "And a day cut at local midnight is today");
+        Expect(codexCost.DataRefreshedAt is null, "OpenAI has no watermark to report");
+        ExpectEqual(string.Join(",", codexCost.TopItems.Select(item => item.Name)), "gpt-6, input,gpt-6, output", "Line items merge across days");
+        ExpectEqual(
+            openAI.FetchAsync("sk-admin-abcdefgh5678", now, seoul).GetAwaiter().GetResult(),
+            CostFetchResult.Failed(CostFetchFailureKind.KeyRejected, "HTTP 401 from OpenAI Admin API"),
+            "A 401 is a rejected key");
+        var limited = openAI.FetchAsync("sk-admin-abcdefgh5678", now, seoul).GetAwaiter().GetResult();
+        Expect(limited.Failure?.Kind == CostFetchFailureKind.RateLimited, "A 429 is a rate limit: " + limited);
+        var again = openAI.FetchAsync("sk-admin-abcdefgh5678", now, seoul).GetAwaiter().GetResult();
+        Expect(again.Failure?.Kind == CostFetchFailureKind.RateLimited, "The cooldown holds: " + again);
+        ExpectEqual(openAIHandler.CallCount, 3, "And is waited out without asking again");
+        var otherKey = openAI.FetchAsync("sk-admin-otherkey9999", now, seoul).GetAwaiter().GetResult();
+        Expect(otherKey.Failure?.Kind == CostFetchFailureKind.Failed, "Another key is not held to this key's cooldown: " + otherKey);
+        ExpectEqual(openAIHandler.CallCount, 4, "So it asks");
+
+        // A reading holds for the rest of its local month; today, for the rest of its day.
+        ExpectEqual(CostCachePolicy.Usable(claudeCost, At("2026-11-03T14:59:00Z"), seoul), claudeCost, "Later the same Seoul day, all of it holds");
+        var nextDay = CostCachePolicy.Usable(claudeCost, At("2026-11-03T15:30:00Z"), seoul);
+        Expect(nextDay?.Today is null && nextDay?.MonthToDate == claudeCost.MonthToDate, "The next day keeps the month but not today");
+        Expect(CostCachePolicy.Usable(claudeCost, At("2026-11-30T15:30:00Z"), seoul) is null, "A new local month keeps nothing");
+
+        // The service: a key is read only when switched on, fetches keep their own
+        // schedule, and the last good reading carries through failures.
+        var keys = new MemoryAdminKeys();
+        var cachePath = Path.Combine(directory, "cost-cache.json");
+        var serviceHandler = new QueueHttpMessageHandler(
+            Reply(HttpStatusCode.OK, """{"data":[{"starting_at":"2026-11-03T01:00:00Z","ending_at":"2026-11-03T02:00:00Z","group":{},"cost":{"currency":"USD","amount":"4200.000000"}}],"has_more":false,"data_refreshed_at":"2026-11-03T04:00:00Z"}"""),
+            Reply(HttpStatusCode.OK, """{"data":[{"starting_at":"2026-10-31T15:00:00Z","ending_at":"2026-11-03T05:00:00Z","group":{"model":"claude-opus-5-5"},"cost":{"currency":"USD","amount":"4200.000000"}}],"has_more":false,"data_refreshed_at":"2026-11-03T04:00:00Z"}"""),
+            Reply(HttpStatusCode.InternalServerError, "{}"),
+            Reply(HttpStatusCode.Unauthorized, "{}"));
+        AdminCostService Service(QueueHttpMessageHandler handler) => new(
+            keys,
+            new Dictionary<Provider, AdminCostClient>
+            {
+                [Provider.Claude] = new AdminCostClient(Provider.Claude, new HttpClient(handler), Path.Combine(directory, "service-rate-limit.json"))
+            },
+            new CostCacheStore(cachePath));
+        var claudeOn = new Dictionary<Provider, bool> { [Provider.Claude] = true };
+        var costs = Service(serviceHandler);
+        var off = costs.RefreshIfDueAsync(new Dictionary<Provider, bool>(), now, seoul).GetAwaiter().GetResult();
+        Expect(!off[Provider.Claude].Enabled && keys.Reads == 0, "Switched off, the key is never read");
+        ExpectEqual(Lines(CostDiagnostics.Lines(Provider.Claude, off[Provider.Claude])), "Claude API cost: off", "Diagnostics says it is off");
+        var noKey = costs.RefreshIfDueAsync(claudeOn, now, seoul).GetAwaiter().GetResult();
+        Expect(noKey[Provider.Claude].Enabled && noKey[Provider.Claude].KeySuffix is null, "Switched on without a key, there is nothing to fetch");
+        ExpectEqual(Lines(CostDiagnostics.Lines(Provider.Claude, noKey[Provider.Claude])), "Claude API cost: on, no Admin key", "Diagnostics says the key is missing");
+        ExpectEqual(serviceHandler.CallCount, 0, "So nothing is asked");
+
+        keys.Save(Provider.Claude, "sk-ant-admin01-abcdefgh1234");
+        var fetched = costs.RefreshIfDueAsync(claudeOn, now, seoul).GetAwaiter().GetResult()[Provider.Claude];
+        ExpectEqual(fetched.Cost?.MonthToDate?.Value, Dollars("42"), "With a key the month is fetched");
+        ExpectEqual(fetched.NextFetchAt, now.AddSeconds(600), "And the next fetch waits ten minutes");
+        ExpectEqual(
+            Lines(CostDiagnostics.Lines(Provider.Claude, fetched)),
+            Lines(new[]
+            {
+                "Claude API cost: on, key …1234",
+                "Claude API cost month: $42.00",
+                "Claude API cost today: $42.00",
+                "Claude API cost complete up to: 2026-11-03T04:00:00Z",
+                "Claude API cost top: claude-opus-5-5 $42.00",
+                "Claude API cost measured: 2026-11-03T05:00:00Z",
+                "Claude API cost last fetch: 2026-11-03T05:00:00Z ok"
+            }),
+            "Diagnostics lists the reading, and never the key");
+        costs.RefreshIfDueAsync(claudeOn, now.AddSeconds(60), seoul).GetAwaiter().GetResult();
+        ExpectEqual(serviceHandler.CallCount, 2, "A fetch is not repeated before its turn");
+        var failed = costs.RefreshIfDueAsync(claudeOn, now.AddSeconds(601), seoul).GetAwaiter().GetResult()[Provider.Claude];
+        Expect(failed.Failure?.Kind == CostFetchFailureKind.Failed && failed.IsCached, "A failed fetch keeps the last reading, marked as cached");
+        ExpectEqual(failed.Cost?.MonthToDate?.Value, Dollars("42"), "The reading is the last good one");
+        ExpectEqual(failed.NextFetchAt, now.AddSeconds(901), "And is retried in five minutes");
+
+        var relaunched = Service(new QueueHttpMessageHandler(Reply(HttpStatusCode.ServiceUnavailable, "{}")))
+            .RefreshIfDueAsync(claudeOn, now.AddSeconds(700), seoul).GetAwaiter().GetResult()[Provider.Claude];
+        Expect(relaunched.IsCached && relaunched.Cost?.MonthToDate?.Value == Dollars("42"), "A relaunch that cannot fetch shows the saved reading");
+
+        keys.Save(Provider.Claude, "sk-ant-admin01-otherkey9999");
+        var rejected = costs.RefreshIfDueAsync(claudeOn, now.AddSeconds(602), seoul).GetAwaiter().GetResult()[Provider.Claude];
+        ExpectEqual(serviceHandler.CallCount, 4, "A new key is fetched at once, whatever the schedule");
+        Expect(rejected.Failure?.Kind == CostFetchFailureKind.KeyRejected && rejected.Cost is null, "And another key's reading is not passed off as its own");
+        ExpectEqual(rejected.KeySuffix, "…9999", "The new key is the one named");
+
+        // DPAPI: the keys survive a new store, and the file does not hold them in the clear.
+        if (OperatingSystem.IsWindows())
+        {
+            var keyPath = Path.Combine(directory, "admin-keys.dat");
+            var dpapi = new DpapiAdminKeyStore(keyPath);
+            Expect(dpapi.Key(Provider.Claude) is null, "No key file is no key");
+            Expect(dpapi.Save(Provider.Claude, " sk-ant-admin01-abcdefgh1234\n"), "A key is saved");
+            Expect(dpapi.Save(Provider.Codex, "sk-admin-abcdefgh5678"), "Each provider has its own key");
+            ExpectEqual(new DpapiAdminKeyStore(keyPath).Key(Provider.Claude), "sk-ant-admin01-abcdefgh1234", "And reads back trimmed");
+            Expect(!System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(keyPath)).Contains("abcdefgh", StringComparison.Ordinal), "The file does not hold a key in the clear");
+            dpapi.Delete(Provider.Claude);
+            Expect(dpapi.Key(Provider.Claude) is null && dpapi.Key(Provider.Codex) == "sk-admin-abcdefgh5678", "Deleting one key keeps the other");
+            dpapi.Delete(Provider.Codex);
+            Expect(!File.Exists(keyPath), "Deleting the last key removes the file");
+        }
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
 }
 
 static string StatusLinePayload(
@@ -1799,6 +2013,9 @@ sealed class QueueHttpMessageHandler : HttpMessageHandler
 
     public int CallCount { get; private set; }
 
+    /// What was asked, kept as text: the client disposes each request once sent.
+    public List<(string Uri, Dictionary<string, string> Headers)> Requests { get; } = new();
+
     public QueueHttpMessageHandler(params HttpResponseMessage[] responses)
     {
         this.responses = new Queue<HttpResponseMessage>(responses);
@@ -1807,6 +2024,9 @@ sealed class QueueHttpMessageHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         CallCount++;
+        Requests.Add((
+            request.RequestUri?.AbsoluteUri ?? "",
+            request.Headers.ToDictionary(header => header.Key, header => string.Join(",", header.Value), StringComparer.OrdinalIgnoreCase)));
         if (responses.Count == 0)
         {
             throw new InvalidOperationException("No queued HTTP response");
@@ -1814,4 +2034,26 @@ sealed class QueueHttpMessageHandler : HttpMessageHandler
 
         return Task.FromResult(responses.Dequeue());
     }
+}
+
+/// The DPAPI stand-in. Counts reads, so a test can tell the key was never touched.
+sealed class MemoryAdminKeys : IAdminKeyStore
+{
+    private readonly Dictionary<Provider, string> keys = new();
+
+    public int Reads { get; private set; }
+
+    public string? Key(Provider provider)
+    {
+        Reads++;
+        return keys.TryGetValue(provider, out var key) ? key : null;
+    }
+
+    public bool Save(Provider provider, string key)
+    {
+        keys[provider] = key;
+        return true;
+    }
+
+    public void Delete(Provider provider) => keys.Remove(provider);
 }

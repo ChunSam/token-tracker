@@ -18,7 +18,7 @@ public struct CostAmount: Codable, Equatable, Sendable {
 }
 
 /// One slice of the month's spend, such as a model.
-public struct CostLineItem: Equatable, Sendable {
+public struct CostLineItem: Codable, Equatable, Sendable {
     public let name: String
     public let amount: CostAmount
 
@@ -155,7 +155,12 @@ public enum CostAggregator {
                 }
             }
         }
-        let monthToDate = CostAmount(value: monthTotal, currency: currency)
+        // A watermark from before the 1st covers none of this month: not tallied,
+        // rather than a month of nothing.
+        var monthToDate: CostAmount? = CostAmount(value: monthTotal, currency: currency)
+        if case .refreshedAt(let refreshed) = freshness, refreshed <= monthStart {
+            monthToDate = nil
+        }
 
         var today: CostAmount?
         let tallied: Bool
@@ -409,8 +414,8 @@ public enum CostBudget {
 }
 
 /// When to ask an Admin API again. Anthropic's Analytics data moves every few
-/// hours and both providers ask for at most one call a minute, so ten minutes
-/// loses nothing.
+/// hours, and its 60 requests a minute are shared by everything the organization
+/// runs against the API, so ten minutes loses nothing.
 public enum CostFetchPolicy {
     public static let interval: TimeInterval = 600
     public static let retryInterval: TimeInterval = 300

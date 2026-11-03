@@ -24,6 +24,9 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly UsageClient usageClient = new(claudeCliRefresher: new ClaudeCliRefresher());
     private readonly ProviderLogoStore providerLogos = new();
     private readonly HashSet<string> deliveredAlertIds = new(StringComparer.Ordinal);
+    private readonly AdminCostService costService = new();
+    private IReadOnlyDictionary<Provider, CostState> costStates = new Dictionary<Provider, CostState>();
+    private bool refreshingCosts;
 
     /// Each provider's last reading with numbers, for telling when a low window has
     /// refilled. Kept current while notifications are off, so turning them back on
@@ -170,6 +173,38 @@ internal sealed class TrayAppContext : ApplicationContext
         }
 
         await CheckForUpdatesIfDueAsync();
+        await RefreshCostsIfDueAsync();
+    }
+
+    /// Rides the refresh timer, so a pause holds it too; CostFetchPolicy keeps each
+    /// provider to its own slower schedule. Nothing draws the result yet:
+    /// diagnostics is the only reader.
+    private async Task RefreshCostsIfDueAsync()
+    {
+        // The usage refresh lets go of its own guard before this runs, so a manual
+        // refresh could start a second pass while the first is still fetching.
+        if (refreshingCosts)
+        {
+            return;
+        }
+
+        refreshingCosts = true;
+        try
+        {
+            var enabled = new Dictionary<Provider, bool>
+            {
+                [Provider.Claude] = settings.ClaudeCostEnabled,
+                [Provider.Codex] = settings.CodexCostEnabled
+            };
+            // TimeZoneInfo.Local is cached for the life of the process; the day and
+            // month boundaries have to follow the PC to a new zone.
+            TimeZoneInfo.ClearCachedData();
+            costStates = await costService.RefreshIfDueAsync(enabled, DateTimeOffset.Now, TimeZoneInfo.Local);
+        }
+        finally
+        {
+            refreshingCosts = false;
+        }
     }
 
     /// Rides the refresh timer; UpdateCheck.IsDue keeps it to once a day, or once an
@@ -474,7 +509,7 @@ internal sealed class TrayAppContext : ApplicationContext
     }
 
     private DiagnosticsReporter Diagnostics() =>
-        new(settings, historyStore, snapshot, lastSuccessfulRefreshAt, RunningInstanceCount(), usageClient.ClaudeCliRefreshLastAttempt);
+        new(settings, historyStore, snapshot, lastSuccessfulRefreshAt, RunningInstanceCount(), usageClient.ClaudeCliRefreshLastAttempt, costStates);
 
     private void ShowSettings()
     {

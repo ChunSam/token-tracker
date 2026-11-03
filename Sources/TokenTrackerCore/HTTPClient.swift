@@ -3,7 +3,17 @@ import Foundation
 import FoundationNetworking
 #endif
 
-struct HTTPClient: Sendable {
+package struct HTTPClient: Sendable {
+    package typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+    private let transport: Transport
+
+    /// The smoke tests pass a transport that answers from a queue; the app uses
+    /// the shared session.
+    package init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }) {
+        self.transport = transport
+    }
+
     func getJSON(url: URL, headers: [String: String], timeout: TimeInterval = 5, serviceName: String? = nil) async throws -> Any {
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
@@ -14,7 +24,7 @@ struct HTTPClient: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await transport(request)
         } catch let error as URLError where error.code == .timedOut {
             throw UsageError.timedOut(service: serviceName)
         } catch {

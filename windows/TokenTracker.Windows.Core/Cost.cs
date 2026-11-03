@@ -153,9 +153,14 @@ public static class CostAggregator
         var dayStart = CostPeriod.DayStart(now, timeZone);
         var currency = buckets.Count > 0 ? buckets[0].Amount.Currency : "USD";
 
-        var monthToDate = new CostAmount(
-            buckets.Where(bucket => Overlaps(bucket, monthStart, now)).Sum(bucket => bucket.Amount.Value),
-            currency);
+        // A watermark from before the 1st covers none of this month: not tallied,
+        // rather than a month of nothing.
+        var monthTallied = freshness.Kind != CostFreshnessKind.RefreshedAt || freshness.RefreshedAt > monthStart;
+        var monthToDate = monthTallied
+            ? new CostAmount(
+                buckets.Where(bucket => Overlaps(bucket, monthStart, now)).Sum(bucket => bucket.Amount.Value),
+                currency)
+            : null;
 
         var todays = buckets.Where(bucket => Overlaps(bucket, dayStart, now)).ToList();
         var straddles = todays.Any(bucket => dayStart - bucket.Start > BoundaryTolerance);
@@ -498,8 +503,8 @@ public static class CostBudget
 }
 
 /// When to ask an Admin API again. Anthropic's Analytics data moves every few
-/// hours and both providers ask for at most one call a minute, so ten minutes
-/// loses nothing.
+/// hours, and its 60 requests a minute are shared by everything the organization
+/// runs against the API, so ten minutes loses nothing.
 public static class CostFetchPolicy
 {
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(10);

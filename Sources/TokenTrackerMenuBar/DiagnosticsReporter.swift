@@ -9,6 +9,7 @@ struct DiagnosticsReporter {
     let lastSuccessfulRefreshAt: Date?
     let runningInstanceCount: Int
     let claudeCLIRefreshAttempt: ClaudeCLIRefreshAttempt?
+    let costStates: [Provider: CostState]
 
     func diagnosticsText() -> String {
         var lines: [String] = []
@@ -65,6 +66,9 @@ struct DiagnosticsReporter {
             lines.append("Claude status line record: none")
         }
         lines.append("Codex auth file exists: \(fileExists(at: Self.codexAuthURL))")
+        for provider in Provider.allCases {
+            lines.append(contentsOf: CostDiagnostics.lines(provider: provider, state: costStates[provider] ?? CostState()))
+        }
 
         if let snapshot {
             lines.append("Snapshot updated: \(isoString(snapshot.updatedAt))")

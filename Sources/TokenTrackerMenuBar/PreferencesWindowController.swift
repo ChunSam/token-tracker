@@ -176,16 +176,35 @@ final class PreferencesModel: ObservableObject {
     /// Asks for the provider's Admin key. The keychain is read only here, when the
     /// user opens this, and the key never leaves the alert except into the keychain.
     func editAdminKey(_ provider: Provider) {
-        if AdminKeyPrompt.run(provider: provider, store: adminKeys, localizer: localizer) {
+        switch AdminKeyPrompt.run(provider: provider, store: adminKeys, localizer: localizer) {
+        case .saved:
+            // Storing a key is asking for its cost. With the toggle left off it did
+            // nothing at all, and that second step was easy to miss.
+            let enabled = provider == .claude ? claudeCostEnabled : codexCostEnabled
+            if enabled {
+                onCostChange()
+            } else if provider == .claude {
+                claudeCostEnabled = true
+            } else {
+                codexCostEnabled = true
+            }
+        case .deleted:
             onCostChange()
+        case .unchanged:
+            break
         }
     }
 }
 
 @MainActor
 private enum AdminKeyPrompt {
-    /// `true` when a key was saved or deleted.
-    static func run(provider: Provider, store: KeychainAdminKeyStore, localizer: Localizer) -> Bool {
+    enum Outcome {
+        case saved
+        case deleted
+        case unchanged
+    }
+
+    static func run(provider: Provider, store: KeychainAdminKeyStore, localizer: Localizer) -> Outcome {
         let existing = store.key(for: provider)
         let alert = NSAlert()
         alert.messageText = localizer.text(.adminKeyTitle)
@@ -207,21 +226,21 @@ private enum AdminKeyPrompt {
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             let key = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty else { return false }
+            guard !key.isEmpty else { return .unchanged }
             guard AdminKeyText.looksLikeAdminKey(key, for: provider) else {
                 fail(localizer.text(.adminKeyInvalid).replacingOccurrences(of: "{prefix}", with: AdminKeyText.prefix(provider)))
-                return false
+                return .unchanged
             }
             guard store.save(key, for: provider) else {
                 fail(localizer.text(.adminKeySaveFailed))
-                return false
+                return .unchanged
             }
-            return true
+            return .saved
         case .alertThirdButtonReturn:
             store.delete(for: provider)
-            return true
+            return .deleted
         default:
-            return false
+            return .unchanged
         }
     }
 

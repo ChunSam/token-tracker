@@ -245,7 +245,7 @@ internal sealed class SettingsForm : Form
         int budget,
         Action<int> setBudget)
     {
-        AddCheckbox(layout, localizer.Text(L10nKey.ApiCost), enabled, async value =>
+        var toggle = AddCheckbox(layout, localizer.Text(L10nKey.ApiCost), enabled, async value =>
         {
             setEnabled(value);
             await onCostChange();
@@ -264,7 +264,15 @@ internal sealed class SettingsForm : Form
         };
         button.Click += async (_, _) =>
         {
-            if (AdminKeyDialog.Run(this, provider, adminKeys, localizer))
+            var change = AdminKeyDialog.Run(this, provider, adminKeys, localizer);
+            if (change == AdminKeyChange.Saved && !toggle.Checked)
+            {
+                // Storing a key is asking for its cost. With the box left unticked
+                // it did nothing at all, and that second step was easy to miss.
+                // Ticking it saves the setting and fetches, through CheckedChanged.
+                toggle.Checked = true;
+            }
+            else if (change != AdminKeyChange.None)
             {
                 await onCostChange();
             }
@@ -281,7 +289,7 @@ internal sealed class SettingsForm : Form
             await onProviderChange();
         });
 
-    private void AddCheckbox(TableLayoutPanel layout, string label, bool value, Action<bool> changed)
+    private CheckBox AddCheckbox(TableLayoutPanel layout, string label, bool value, Action<bool> changed)
     {
         var checkbox = new CheckBox
         {
@@ -295,6 +303,7 @@ internal sealed class SettingsForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(checkbox, 1, layout.RowCount);
         layout.RowCount++;
+        return checkbox;
     }
 
     private void AddCombo<T>(

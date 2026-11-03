@@ -130,8 +130,9 @@ Admin 키로 이번 달 사용 금액을 볼 수 있습니다. 구독 한도와 
      개인 계정에는 없고 조직이 있어야 합니다. 만료일을 걸어 두세요.
    - OpenAI: [Admin keys](https://platform.openai.com/settings/organization/admin-keys)에서 `sk-admin-…` 키.
      조직 Owner만 만들 수 있습니다. 프로젝트 키(`sk-proj-…`)로는 비용을 읽을 수 없습니다.
-2. 설정 창의 Claude 또는 Codex 칸에서 `API 비용 (Admin API)`를 켜고 `Admin 키…`에 붙여넣습니다. 키는 macOS
-   키체인(Windows는 DPAPI로 암호화한 파일)에만 저장되고, 진단 정보에는 끝 4자리만 나옵니다.
+2. 설정 창의 Claude 또는 Codex 칸에서 `Admin 키…`를 눌러 붙여넣고 저장합니다. 저장하면 그 칸의
+   `API 비용 (Admin API)`가 켜지고 바로 조회합니다. 키는 macOS 키체인(Windows는 DPAPI로 암호화한 파일)에만
+   저장되고, 진단 정보에는 끝 4자리만 나옵니다.
 3. 필요하면 `월 예산`(USD)을 넣습니다. 0이면 예산 막대가 없습니다.
 
 - 비용은 10분마다(실패하면 5분 뒤) 따로 조회합니다. 실패하면 같은 달 안에서는 마지막 값을 `캐시 데이터 사용 중`으로

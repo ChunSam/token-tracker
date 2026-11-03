@@ -41,6 +41,8 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
 `AppDelegate.startRefresh` / `TrayAppContext.RefreshAsync`가 주기적으로:
 
 1. **제공자 클라이언트** — 저장된 토큰을 *읽기만* 한다. 갱신은 각 CLI(`claude`, `codex`)만 한다.
+   Claude 토큰이 전부 만료면 `ClaudeCLIRefresher`가 수정 안 된 `claude`를 잠깐 띄워 CLI가 갱신하게
+   한다 — 리프레시 토큰은 일회용이라 앱이 쓰면 CLI가 로그아웃되고, 약관도 금한다. 직접 쓰지 않는다.
    그래서 요청 전에 만료를 먼저 판정하고(`CredentialExpiry`), 429는 지문에 묶인 쿨다운으로
    흡수한다(`RateLimitBackoff`/`RateLimitState`, 파일에 영속). 만료 토큰으로 요청하면 429가
    돌아와 백오프가 그것을 진짜 한도로 오해하므로, 만료면 요청 자체를 하지 않는다.

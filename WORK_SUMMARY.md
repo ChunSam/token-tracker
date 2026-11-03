@@ -117,9 +117,28 @@ Token tracker/
 설정의 `마지막 값 유지 기간`(기본 12시간). 캐시 값은 히스토리·추세·예측에 들어가지 않고 남은 시간도
 붙지 않는다.
 
-토큰 갱신은 각 CLI(`claude`, `codex`)만 한다. Token Tracker는 읽기만 한다. 특히 Claude는 데스크톱
-앱이 이 저장소를 갱신하지 않으므로 터미널에서 `claude`를 가끔 실행해야 한다 — README
-"사용량을 못 불러올 때" 참고.
+토큰 갱신은 각 CLI(`claude`, `codex`)만 한다. Token Tracker는 리프레시 토큰을 쓰지 않는다 —
+일회용이라 앱이 쓰면 CLI가 로그아웃되고(CodexBar #1161), 약관이 서드파티의 Claude 자격 증명 보유를
+금한다. 대신 Claude는 위 2번에서 후보가 전부 만료면 `ClaudeCLIRefresher`가 설치된 `claude`를 잠깐
+실행한다(설정 `renewClaudeTokenWithCLI`, 기본 켬). 데스크톱 앱은 이 저장소를 갱신하지 않으므로, 이게
+없으면 터미널에서 `claude`를 가끔 실행해야 했다.
+
+### Claude CLI 토큰 갱신
+
+측정(2026-11-03, CLI 2.1.314): 대화형으로 띄운 CLI는 시작 ~0.7초 만에, 첫 화면보다 먼저 만료 토큰을
+갱신한다. `claude auth status`는 갱신하지 않고, `claude -p`는 TTY 없이 토큰을 읽는 데까지 가지만
+갱신 여부는 미확인이며 `~/.claude.json`에 쓰고 내장 훅 모듈을 올린다. 그래서:
+
+- macOS는 PTY(`openpty`)로 띄운다. 작업 폴더는 신뢰된 적 없는 `claude-cli-refresh/`라 CLI가 신뢰
+  확인 화면에서 멈추고 훅·플러그인·세션에 닿지 않는다. 인자로 `--strict-mcp-config`와
+  `disableAllHooks`/`remoteControlAtStartup:false` 설정을 덧붙이고, 환경에서 `ANTHROPIC_*`·`CLAUDE*`를
+  빼고 `DISABLE_AUTOUPDATER=1`을 넣는다.
+- 저장소의 수정 시각(키체인 속성 또는 파일 mtime — 비밀값은 읽지 않음)이 바뀌면 갱신으로 본다.
+  1초 기다린 뒤 Enter로 신뢰 화면의 기본값 "No, exit"를 골라 스스로 나가게 하고, 안 나가면
+  SIGTERM, 그래도 남으면 SIGKILL. 시간 초과는 15초.
+- Windows는 PTY 대신 숨은 콘솔(`CreateNoWindow`, 리디렉션 없음)로 띄우고, 파일이 바뀌어 만료되지
+  않은 토큰으로 읽히면 갱신으로 본 뒤 프로세스 트리를 종료한다. 실제 PC에서는 아직 확인하지 못했다.
+- 재시도 간격은 성공 후 5분, 실패·CLI 없음 후 30분(`ClaudeCLIRefresh.nextAttempt`, 양쪽 1:1).
 
 ### Claude 상태줄 브리지
 
@@ -203,6 +222,7 @@ Core (`Sources/TokenTrackerCore/`)
 - `UsageAlertEvaluator.swift` — 알림 후보 계산(다시 사용 가능 포함)
 - `UsagePace.swift` — 균등 사용선 대비 페이스와 메뉴 줄
 - `UpdateCheck.swift` — 최신 릴리스 조회·버전 비교·확인 주기
+- `ClaudeCLIRefresh.swift` — 만료된 Claude 토큰을 CLI 실행으로 갱신(재시도 간격·실행 인자·PTY 실행기)
 - `PauseController.swift` / `InstanceArbiter.swift` — 일시중지, 중복 실행 판정
 - `Settings.swift` / `Localization.swift` / `Paths.swift` — UserDefaults, 한/영 문자열, 파일 경로
 
@@ -278,8 +298,10 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
   측정이 생기지 않고, 값은 정직하게 `캐시 데이터 사용 중`을 거쳐 `--`가 된다.
 - Claude 로컬 JSONL 로그는 토큰 사용량은 제공하지만 한도 대비 퍼센트는 제공하지 않으므로 fallback으로
   쓰지 않는다.
-- Claude 액세스 토큰(약 8시간)은 터미널 CLI만 갱신한다. 데스크톱 앱 위주로 쓰면 토큰이 만료돼
-  마지막 값만 남는다.
+- Claude 액세스 토큰(약 8시간)은 CLI만 갱신한다. 자동 갱신은 설치된 `claude`를 띄워 맡길 뿐이라,
+  CLI가 없거나 리프레시 토큰까지 만료되면 마지막 값만 남는다.
+- 자동 갱신은 "시작하자마자 갱신하고 신뢰 화면에서 멈춘다"는 CLI 2.1.314의 동작에 기대고 있다.
+  순서가 바뀌면 시도는 `unchanged`로 끝나고 진단 정보의 `Claude CLI last renewal`에 남는다.
 - 첫 Claude Keychain 접근 시 macOS 권한 허용 창이 뜰 수 있다.
 - 산출물은 unsigned `.app`이다. 다른 Mac에서 더블클릭으로 열려면 Developer ID 서명과 notarization이
   필요하다.

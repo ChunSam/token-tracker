@@ -174,7 +174,7 @@ public struct Localizer {
         .adminKeySave: "Save",
         .adminKeyDelete: "Delete Key",
         .adminKeyCancel: "Cancel",
-        .adminKeyInvalid: "This isn't an Admin key. It starts with {prefix}.",
+        .adminKeyInvalid: "This isn't an Admin key. Admin keys look like {prefix}…",
         .adminKeySaveFailed: "The key couldn't be saved."
     ]
 
@@ -317,7 +317,7 @@ public struct Localizer {
         .adminKeySave: "저장",
         .adminKeyDelete: "키 삭제",
         .adminKeyCancel: "취소",
-        .adminKeyInvalid: "Admin 키가 아닙니다. Admin 키는 {prefix}로 시작합니다.",
+        .adminKeyInvalid: "Admin 키가 아닙니다. Admin 키는 {prefix}… 형식입니다.",
         .adminKeySaveFailed: "키를 저장하지 못했습니다."
     ]
 }

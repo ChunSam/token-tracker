@@ -321,6 +321,8 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
 
 ## 다음 개선 후보
 
+- 금액 표시: 구독 추가 사용량·Codex 크레딧, Admin API 청구 비용(Claude·OpenAI) — 설계는
+  `docs/cost-display-design.md`
 - 로그인 항목 승인 상태를 System Settings로 바로 여는 버튼 추가
 - signed/notarized 배포 빌드 구성
 - Codex도 자격 증명 저장소 신선도를 메뉴에 표시 (지금은 Claude만)

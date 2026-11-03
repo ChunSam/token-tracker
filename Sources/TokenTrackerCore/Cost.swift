@@ -29,18 +29,25 @@ public struct CostLineItem: Equatable, Sendable {
 
     /// The largest items, after adding up those that share a name across pages.
     public static func top(_ items: [CostLineItem], limit: Int = 3) -> [CostLineItem] {
+        // Spelled out step by step: as one map/filter/sorted chain this timed out
+        // the type checker on CI's compiler.
         var totals: [String: Decimal] = [:]
         var currencies: [String: String] = [:]
         for item in items {
-            totals[item.name, default: 0] += item.amount.value
+            totals[item.name, default: Decimal(0)] += item.amount.value
             currencies[item.name] = item.amount.currency
         }
-        return totals
-            .map { CostLineItem(name: $0.key, amount: CostAmount(value: $0.value, currency: currencies[$0.key] ?? "USD")) }
-            .filter { $0.amount.value > 0 }
-            .sorted { $0.amount.value != $1.amount.value ? $0.amount.value > $1.amount.value : $0.name < $1.name }
-            .prefix(limit)
-            .map { $0 }
+        var merged: [CostLineItem] = []
+        for (name, value) in totals where value > 0 {
+            merged.append(CostLineItem(name: name, amount: CostAmount(value: value, currency: currencies[name] ?? "USD")))
+        }
+        merged.sort { (lhs: CostLineItem, rhs: CostLineItem) -> Bool in
+            if lhs.amount.value != rhs.amount.value {
+                return lhs.amount.value > rhs.amount.value
+            }
+            return lhs.name < rhs.name
+        }
+        return Array(merged.prefix(limit))
     }
 }
 
@@ -134,12 +141,23 @@ public enum CostAggregator {
         let dayStart = CostPeriod.dayStart(now: now, timeZone: timeZone)
         let currency = buckets.first?.amount.currency ?? "USD"
 
-        let month = buckets.filter { overlaps($0, from: monthStart, to: now) }
-        let monthToDate = CostAmount(value: month.reduce(0) { $0 + $1.amount.value }, currency: currency)
+        var monthTotal = Decimal(0)
+        var todayTotal = Decimal(0)
+        var straddles = false
+        for bucket in buckets {
+            if overlaps(bucket, from: monthStart, to: now) {
+                monthTotal += bucket.amount.value
+            }
+            if overlaps(bucket, from: dayStart, to: now) {
+                todayTotal += bucket.amount.value
+                if dayStart.timeIntervalSince(bucket.start) > boundaryTolerance {
+                    straddles = true
+                }
+            }
+        }
+        let monthToDate = CostAmount(value: monthTotal, currency: currency)
 
         var today: CostAmount?
-        let todays = buckets.filter { overlaps($0, from: dayStart, to: now) }
-        let straddles = todays.contains { dayStart.timeIntervalSince($0.start) > boundaryTolerance }
         let tallied: Bool
         if case .refreshedAt(let refreshed) = freshness {
             tallied = refreshed > dayStart
@@ -147,7 +165,7 @@ public enum CostAggregator {
             tallied = true
         }
         if tallied, !straddles {
-            today = CostAmount(value: todays.reduce(0) { $0 + $1.amount.value }, currency: currency)
+            today = CostAmount(value: todayTotal, currency: currency)
         }
         return CostReport(monthToDate: monthToDate, today: today, freshness: freshness)
     }

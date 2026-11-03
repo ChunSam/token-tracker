@@ -370,6 +370,16 @@ public enum CostFormatter {
         return amount.currency == "USD" ? "\(sign)$\(number)" : "\(sign)\(number) \(amount.currency)"
     }
 
+    /// The menu bar's short form: whole dollars from $10 (`$42`), cents below that
+    /// so a small spend does not read as `$0` (`$3.07`), and `$1.2K` from a thousand.
+    public static func compact(_ amount: CostAmount) -> String {
+        let magnitude = amount.value < 0 ? -amount.value : amount.value
+        guard magnitude >= 10, magnitude < 1000 else { return text(amount) }
+        let sign = amount.value < 0 ? "-" : ""
+        let number = fixed(magnitude, places: 0)
+        return amount.currency == "USD" ? "\(sign)$\(number)" : "\(sign)\(number) \(amount.currency)"
+    }
+
     /// A credit balance, which is not money: `18.40`.
     public static func credits(_ value: Decimal) -> String {
         fixed(value, places: 2)

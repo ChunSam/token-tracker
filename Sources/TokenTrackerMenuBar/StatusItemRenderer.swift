@@ -59,7 +59,8 @@ final class StatusItemRenderer {
         mode: DisplayMode,
         labelStyle: ProviderLabelStyle,
         showResetCountdown: Bool = false,
-        localizer: Localizer = Localizer(language: .english)
+        localizer: Localizer = Localizer(language: .english),
+        costs: [Provider: MenuBarCost] = [:]
     ) {
         if let snapshot {
             let textColor = statusTextColor
@@ -71,7 +72,8 @@ final class StatusItemRenderer {
                     baseColor: textColor,
                     warningColor: statusWarningColor,
                     showResetCountdown: showResetCountdown,
-                    localizer: localizer
+                    localizer: localizer,
+                    costs: costs
                 ),
                 iconTint: textColor,
                 mode: mode,
@@ -84,7 +86,8 @@ final class StatusItemRenderer {
                     mode: mode,
                     labelStyle: labelStyle,
                     showResetCountdown: showResetCountdown,
-                    localizer: localizer
+                    localizer: localizer,
+                    costs: costs
                 )
             )
         }
@@ -204,6 +207,8 @@ final class StatusItemRenderer {
         NSSize(width: ceil(size.width), height: ceil(size.height))
     }
 
+    /// Mirrors `DisplayFormatter.statusTitle`, drawn: a provider in `costs` shows its
+    /// month's spend where its percentage would be, without a countdown.
     private func statusSegments(
         snapshot: UsageSnapshot,
         mode: DisplayMode,
@@ -211,7 +216,8 @@ final class StatusItemRenderer {
         baseColor: NSColor,
         warningColor: NSColor,
         showResetCountdown: Bool,
-        localizer: Localizer
+        localizer: Localizer,
+        costs: [Provider: MenuBarCost]
     ) -> [StatusSegment] {
         // The countdown stays in the base colour even when the percentage beside it
         // is red: the warning colour marks a low 7d balance, and repeating it on the
@@ -225,51 +231,39 @@ final class StatusItemRenderer {
             return suffix.isEmpty ? [] : [.text(suffix, baseColor)]
         }
 
+        func providerSegments(_ provider: Provider) -> [StatusSegment] {
+            let label: StatusSegment = labelStyle == .icon
+                ? .icon(provider == .codex ? codexIcon : claudeIcon)
+                : .text("\(DisplayFormatter.providerLabel(provider, style: labelStyle)) ", baseColor)
+            if let cost = costs[provider] {
+                return [label, .text(cost.text, cost.isWarning ? warningColor : baseColor)]
+            }
+            let usage = snapshot.usage(for: provider)
+            return [label, percentSegment(usage, baseColor: baseColor, warningColor: warningColor)]
+                + countdownSegments(usage)
+        }
+
         switch mode {
         case .lowestRemaining:
             let usages = [snapshot.claude, snapshot.codex]
             let lowest = usages.compactMap { DisplayFormatter.displayPercent($0) }.min()
+            if lowest == nil, !costs.isEmpty {
+                let spending = Provider.allCases.filter { costs[$0] != nil }
+                return spending.enumerated().flatMap { index, provider in
+                    (index > 0 ? [StatusSegment.separator] : []) + providerSegments(provider)
+                }
+            }
             let color = usages.contains { usage in
                 DisplayFormatter.displayPercent(usage) == lowest && DisplayFormatter.isSevenDayWarning(usage)
             } ? warningColor : baseColor
             return [.text("AI ", baseColor), .text(DisplayFormatter.formatPercent(lowest), color)]
                 + countdownSegments(DisplayFormatter.lowestUsage(snapshot))
         case .both:
-            if labelStyle == .icon {
-                return [.icon(codexIcon), percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)]
-                    + countdownSegments(snapshot.codex)
-                    + [.separator, .icon(claudeIcon), percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)]
-                    + countdownSegments(snapshot.claude)
-            }
-            return [
-                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
-                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)
-            ]
-                + countdownSegments(snapshot.codex)
-                + [
-                    .separator,
-                    .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
-                    percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
-                ]
-                + countdownSegments(snapshot.claude)
+            return providerSegments(.codex) + [.separator] + providerSegments(.claude)
         case .codexOnly:
-            if labelStyle == .icon {
-                return [.icon(codexIcon), percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)]
-                    + countdownSegments(snapshot.codex)
-            }
-            return [
-                .text("\(DisplayFormatter.providerLabel(.codex, style: labelStyle)) ", baseColor),
-                percentSegment(snapshot.codex, baseColor: baseColor, warningColor: warningColor)
-            ] + countdownSegments(snapshot.codex)
+            return providerSegments(.codex)
         case .claudeOnly:
-            if labelStyle == .icon {
-                return [.icon(claudeIcon), percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)]
-                    + countdownSegments(snapshot.claude)
-            }
-            return [
-                .text("\(DisplayFormatter.providerLabel(.claude, style: labelStyle)) ", baseColor),
-                percentSegment(snapshot.claude, baseColor: baseColor, warningColor: warningColor)
-            ] + countdownSegments(snapshot.claude)
+            return providerSegments(.claude)
         }
     }
 

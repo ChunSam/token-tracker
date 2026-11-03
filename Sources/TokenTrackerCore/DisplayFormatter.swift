@@ -1,12 +1,17 @@
 import Foundation
 
 public struct DisplayFormatter {
+    /// `costs` holds the providers tracked by API cost alone (`CostMenuBar.entries`):
+    /// those show their month's spend where the percentage would be, with no
+    /// countdown. The lowest-remaining mode keeps its single percentage while any
+    /// provider has one, and lists the spend only when none does.
     public static func statusTitle(
         snapshot: UsageSnapshot?,
         mode: DisplayMode,
         labelStyle: ProviderLabelStyle = .abbreviation,
         showResetCountdown: Bool = false,
-        localizer: Localizer = Localizer(language: .english)
+        localizer: Localizer = Localizer(language: .english),
+        costs: [Provider: MenuBarCost] = [:]
     ) -> String {
         guard let snapshot else { return "AI --" }
 
@@ -14,20 +19,28 @@ public struct DisplayFormatter {
             resetCountdownSuffix(usage, showResetCountdown: showResetCountdown, localizer: localizer)
         }
 
+        func segment(_ provider: Provider) -> String {
+            let label = providerLabel(provider, style: labelStyle)
+            if let cost = costs[provider] {
+                return "\(label) \(cost.text)"
+            }
+            let usage = snapshot.usage(for: provider)
+            return "\(label) \(formatPercent(displayPercent(usage)))\(countdown(usage))"
+        }
+
         switch mode {
         case .lowestRemaining:
-            guard let lowest = lowestUsage(snapshot), let percent = displayPercent(lowest) else {
-                return "AI --"
+            if let lowest = lowestUsage(snapshot), let percent = displayPercent(lowest) {
+                return "AI \(percent)%\(countdown(lowest))"
             }
-            return "AI \(percent)%\(countdown(lowest))"
+            let spend = Provider.allCases.filter { costs[$0] != nil }.map(segment)
+            return spend.isEmpty ? "AI --" : spend.joined(separator: " · ")
         case .both:
-            let codex = "\(providerLabel(.codex, style: labelStyle)) \(formatPercent(displayPercent(snapshot.codex)))\(countdown(snapshot.codex))"
-            let claude = "\(providerLabel(.claude, style: labelStyle)) \(formatPercent(displayPercent(snapshot.claude)))\(countdown(snapshot.claude))"
-            return "\(codex) · \(claude)"
+            return "\(segment(.codex)) · \(segment(.claude))"
         case .codexOnly:
-            return "\(providerLabel(.codex, style: labelStyle)) \(formatPercent(displayPercent(snapshot.codex)))\(countdown(snapshot.codex))"
+            return segment(.codex)
         case .claudeOnly:
-            return "\(providerLabel(.claude, style: labelStyle)) \(formatPercent(displayPercent(snapshot.claude)))\(countdown(snapshot.claude))"
+            return segment(.claude)
         }
     }
 

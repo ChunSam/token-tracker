@@ -2,21 +2,53 @@ namespace TokenTracker.Windows.Core;
 
 public static class DisplayFormatter
 {
-    public static string StatusTitle(UsageSnapshot? snapshot, DisplayMode mode, ProviderLabelStyle labelStyle = ProviderLabelStyle.Abbreviation)
+    /// <paramref name="costs"/> holds the providers tracked by API cost alone
+    /// (CostMenuBar.Entries): those show their month's spend where the percentage
+    /// would be. The lowest-remaining mode keeps its single percentage while any
+    /// provider has one, and lists the spend only when none does.
+    public static string StatusTitle(
+        UsageSnapshot? snapshot,
+        DisplayMode mode,
+        ProviderLabelStyle labelStyle = ProviderLabelStyle.Abbreviation,
+        IReadOnlyDictionary<Provider, MenuBarCost>? costs = null)
     {
         if (snapshot is null)
         {
             return "AI --";
         }
 
-        return mode switch
+        var spend = costs ?? new Dictionary<Provider, MenuBarCost>();
+        string Segment(Provider provider)
         {
-            DisplayMode.LowestRemaining => FormatLowest(snapshot),
-            DisplayMode.Both => $"{ProviderLabel(Provider.Codex, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Codex))} · {ProviderLabel(Provider.Claude, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Claude))}",
-            DisplayMode.CodexOnly => $"{ProviderLabel(Provider.Codex, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Codex))}",
-            DisplayMode.ClaudeOnly => $"{ProviderLabel(Provider.Claude, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Claude))}",
-            _ => "AI --"
-        };
+            var label = ProviderLabel(provider, labelStyle);
+            if (spend.TryGetValue(provider, out var cost))
+            {
+                return label + " " + cost.Text;
+            }
+
+            var usage = provider == Provider.Claude ? snapshot.Claude : snapshot.Codex;
+            return label + " " + FormatPercent(DisplayPercent(usage));
+        }
+
+        switch (mode)
+        {
+            case DisplayMode.LowestRemaining:
+                var lowest = FormatLowest(snapshot);
+                if (lowest != "AI --" || spend.Count == 0)
+                {
+                    return lowest;
+                }
+
+                return string.Join(" · ", new[] { Provider.Claude, Provider.Codex }.Where(spend.ContainsKey).Select(Segment));
+            case DisplayMode.Both:
+                return Segment(Provider.Codex) + " · " + Segment(Provider.Claude);
+            case DisplayMode.CodexOnly:
+                return Segment(Provider.Codex);
+            case DisplayMode.ClaudeOnly:
+                return Segment(Provider.Claude);
+            default:
+                return "AI --";
+        }
     }
 
     public static string DetailLine(ProviderUsage usage) =>
@@ -203,21 +235,34 @@ public static class DisplayFormatter
         return " " + text;
     }
 
+    /// A provider in <paramref name="costs"/> is tracked by API cost alone and shows
+    /// its month's spend: <c>Claude $42 (This month)</c>.
     public static string Tooltip(
         UsageSnapshot? snapshot,
         ProviderLabelStyle labelStyle = ProviderLabelStyle.Icon,
         bool showResetCountdown = false,
-        Localizer? localizer = null)
+        Localizer? localizer = null,
+        IReadOnlyDictionary<Provider, MenuBarCost>? costs = null)
     {
         if (snapshot is null)
         {
             return "Token Tracker: loading";
         }
 
-        localizer ??= new Localizer(AppLanguage.English);
-        var codexCountdown = ResetCountdownSuffix(snapshot.Codex, showResetCountdown, localizer);
-        var claudeCountdown = ResetCountdownSuffix(snapshot.Claude, showResetCountdown, localizer);
-        return $"{ProviderLabel(Provider.Codex, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Codex))}{codexCountdown}, {ProviderLabel(Provider.Claude, labelStyle)} {FormatPercent(DisplayPercent(snapshot.Claude))}{claudeCountdown}";
+        var text = localizer ?? new Localizer(AppLanguage.English);
+        var spend = costs ?? new Dictionary<Provider, MenuBarCost>();
+        string Segment(Provider provider, ProviderUsage usage)
+        {
+            var label = ProviderLabel(provider, labelStyle);
+            if (spend.TryGetValue(provider, out var cost))
+            {
+                return label + " " + cost.Text + " (" + text.Text(L10nKey.CostThisMonth) + ")";
+            }
+
+            return label + " " + FormatPercent(DisplayPercent(usage)) + ResetCountdownSuffix(usage, showResetCountdown, text);
+        }
+
+        return Segment(Provider.Codex, snapshot.Codex) + ", " + Segment(Provider.Claude, snapshot.Claude);
     }
 
     public static int? TrayIconPercent(UsageSnapshot? snapshot, DisplayMode mode)

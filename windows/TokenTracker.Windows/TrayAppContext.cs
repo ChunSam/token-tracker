@@ -28,6 +28,9 @@ internal sealed class TrayAppContext : ApplicationContext
     private IReadOnlyDictionary<Provider, CostState> costStates = new Dictionary<Provider, CostState>();
     private bool refreshingCosts;
 
+    /// A settings change asked for a fetch while one was running; run once more after it.
+    private bool refreshCostsAgain;
+
     /// Each provider's last reading with numbers, for telling when a low window has
     /// refilled. Kept current while notifications are off, so turning them back on
     /// does not compare against a reading from hours ago.
@@ -176,15 +179,21 @@ internal sealed class TrayAppContext : ApplicationContext
         await RefreshCostsIfDueAsync();
     }
 
-    /// Rides the refresh timer, so a pause holds it too; CostFetchPolicy keeps each
-    /// provider to its own slower schedule. Nothing draws the result yet:
-    /// diagnostics is the only reader.
+    /// Rides the refresh timer, and runs at once when the API cost settings or a key
+    /// change; CostFetchPolicy keeps each provider to its own slower schedule, and
+    /// a pause holds it like the usage poll.
     private async Task RefreshCostsIfDueAsync()
     {
+        if (PauseController.IsPaused(settings.PollPausedUntil))
+        {
+            return;
+        }
+
         // The usage refresh lets go of its own guard before this runs, so a manual
         // refresh could start a second pass while the first is still fetching.
         if (refreshingCosts)
         {
+            refreshCostsAgain = true;
             return;
         }
 
@@ -200,10 +209,19 @@ internal sealed class TrayAppContext : ApplicationContext
             // month boundaries have to follow the PC to a new zone.
             TimeZoneInfo.ClearCachedData();
             costStates = await costService.RefreshIfDueAsync(enabled, DateTimeOffset.Now, TimeZoneInfo.Local);
+            SetIcon(snapshot);
+            UpdateTooltip();
+            notifyIcon.ContextMenuStrip = BuildMenu();
         }
         finally
         {
             refreshingCosts = false;
+        }
+
+        if (refreshCostsAgain)
+        {
+            refreshCostsAgain = false;
+            await RefreshCostsIfDueAsync();
         }
     }
 
@@ -262,7 +280,12 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void SetIcon(UsageSnapshot? usage)
     {
-        var nextIcon = TrayIconRenderer.Render(usage, settings.DisplayMode);
+        var costs = TrayCosts();
+        var nextIcon = TrayIconRenderer.Render(
+            usage,
+            settings.DisplayMode,
+            CostMenuBar.TrayShowsDollar(SubscriptionShown(), costs),
+            costs);
         notifyIcon.Icon = nextIcon;
         currentIcon?.Dispose();
         currentIcon = nextIcon;
@@ -291,8 +314,8 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             // Read the credential store once per rebuild, not once per provider row.
             var claudeCredentialSource = ClaudeCredentialSource.Detect(AppPaths.ClaudeCredentialsPath());
-            AddProvider(menu, snapshot.Claude, claudeCredentialSource);
-            AddProvider(menu, snapshot.Codex, claudeCredentialSource);
+            AddProvider(menu, snapshot.Claude, claudeCredentialSource, AdminCost(Provider.Claude));
+            AddProvider(menu, snapshot.Codex, claudeCredentialSource, AdminCost(Provider.Codex));
             menu.Items.Add(new ToolStripSeparator());
             AddDisabled(menu.Items, $"{Localizer.Text(L10nKey.Updated)} {Relative(snapshot.UpdatedAt)} {Localizer.Text(L10nKey.Ago)}");
             AddDisabled(
@@ -340,9 +363,16 @@ internal sealed class TrayAppContext : ApplicationContext
         return menu;
     }
 
-    private void AddProvider(ContextMenuStrip menu, ProviderUsage usage, ClaudeCredentialSource claudeCredentialSource)
+    private void AddProvider(
+        ContextMenuStrip menu,
+        ProviderUsage usage,
+        ClaudeCredentialSource claudeCredentialSource,
+        AdminCostView? cost)
     {
-        var header = ProviderHeaderText(usage);
+        var issue = UsageIssueFormatter.Issue(usage, Localizer);
+        // Subscription limits off and API cost on: the submenu is the cost alone.
+        var costOnly = issue.Kind == UsageIssueKind.Disabled && cost is not null;
+        var header = costOnly ? CostHeaderText(usage, cost!) : ProviderHeaderText(usage);
         var provider = new ToolStripMenuItem(CompactMenuText(header), ProviderHeaderImage(usage))
         {
             ToolTipText = header
@@ -353,7 +383,13 @@ internal sealed class TrayAppContext : ApplicationContext
             provider.ImageScaling = ToolStripItemImageScaling.None;
         }
 
-        var issue = UsageIssueFormatter.Issue(usage, Localizer);
+        if (costOnly)
+        {
+            AddCostLines(provider.DropDownItems, cost!, costOnly: true);
+            menu.Items.Add(provider);
+            return;
+        }
+
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Status)}: {issue.Title}");
         AddDisabled(provider.DropDownItems, $"  {issue.Detail}");
         if (!string.IsNullOrWhiteSpace(issue.Recovery))
@@ -396,9 +432,14 @@ internal sealed class TrayAppContext : ApplicationContext
         var sevenDayReset = DisplayFormatter.FormatWindowReset(usage.RemainingPercent7d, usage.ResetAt7d, Localizer, usage.IsAvailable);
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.FiveHourReset)}: {fiveHourReset}");
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.SevenDayReset)}: {sevenDayReset}");
-        if (SubscriptionCostText.Line(usage, Localizer) is { } cost)
+        if (SubscriptionCostText.Line(usage, Localizer) is { } subscriptionCost)
         {
-            AddDisabled(provider.DropDownItems, $"{cost.Label}: {cost.Value}");
+            AddDisabled(provider.DropDownItems, $"{subscriptionCost.Label}: {subscriptionCost.Value}");
+        }
+
+        if (cost is not null)
+        {
+            AddCostLines(provider.DropDownItems, cost, costOnly: false);
         }
 
         AddDisabled(provider.DropDownItems, $"{Localizer.Text(L10nKey.Source)}: {usage.Source}");
@@ -415,6 +456,63 @@ internal sealed class TrayAppContext : ApplicationContext
 
         menu.Items.Add(provider);
     }
+
+    /// The organization's month of API cost. On a submenu of its own the status
+    /// leads; under the limits it follows the amount, and only when not fine.
+    private void AddCostLines(ToolStripItemCollection items, AdminCostView cost, bool costOnly)
+    {
+        var status = $"{Localizer.Text(L10nKey.Status)}: {cost.StatusTitle}";
+        if (costOnly)
+        {
+            AddDisabled(items, status);
+        }
+
+        AddDisabled(items, $"{cost.MonthLabel}: {cost.MonthValue}");
+        foreach (var line in new[] { cost.BudgetText, cost.Detail, cost.AsOf })
+        {
+            if (line is not null)
+            {
+                AddDisabled(items, $"  {line}");
+            }
+        }
+
+        if (!costOnly && cost.Status != AdminCostStatus.Ok)
+        {
+            AddDisabled(items, $"  {status}");
+        }
+
+        if (cost.FailureMessage is not null)
+        {
+            AddDisabled(items, $"  {Localizer.Text(L10nKey.TechnicalError)}: {cost.FailureMessage}");
+        }
+    }
+
+    private string CostHeaderText(ProviderUsage usage, AdminCostView cost)
+    {
+        var amount = $"{cost.MonthValue} ({cost.MonthLabel})";
+        return settings.ProviderLabelStyle == ProviderLabelStyle.Icon ? amount : $"{usage.DisplayName}: {amount}";
+    }
+
+    /// The submenu's API cost per provider; absent where API cost is off or keyless.
+    private AdminCostView? AdminCost(Provider provider)
+    {
+        var state = costStates.TryGetValue(provider, out var found) ? found : new CostState();
+        var budget = provider == Provider.Claude ? settings.ClaudeMonthlyBudget : settings.CodexMonthlyBudget;
+        return AdminCostText.View(state, budget, DateTimeOffset.Now, TimeZoneInfo.Local, Localizer);
+    }
+
+    private IReadOnlyDictionary<Provider, MenuBarCost> TrayCosts() =>
+        CostMenuBar.Entries(SubscriptionShown(), costStates, new Dictionary<Provider, int>
+        {
+            [Provider.Claude] = settings.ClaudeMonthlyBudget,
+            [Provider.Codex] = settings.CodexMonthlyBudget
+        });
+
+    private IReadOnlyDictionary<Provider, bool> SubscriptionShown() => new Dictionary<Provider, bool>
+    {
+        [Provider.Claude] = settings.ClaudeEnabled,
+        [Provider.Codex] = settings.CodexEnabled
+    };
 
     private string ProviderHeaderText(ProviderUsage usage)
     {
@@ -536,6 +634,14 @@ internal sealed class TrayAppContext : ApplicationContext
                 {
                     SaveSettings();
                     notifyIcon.ContextMenuStrip = BuildMenu();
+                },
+                async () =>
+                {
+                    SaveSettings();
+                    SetIcon(snapshot);
+                    UpdateTooltip();
+                    notifyIcon.ContextMenuStrip = BuildMenu();
+                    await RefreshCostsIfDueAsync();
                 });
             settingsForm.FormClosed += (_, _) => settingsForm = null;
         }
@@ -771,7 +877,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void UpdateTooltip() =>
         notifyIcon.Text = TrimTooltip(
-            DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle, settings.ShowResetCountdown, Localizer));
+            DisplayFormatter.Tooltip(snapshot, settings.ProviderLabelStyle, settings.ShowResetCountdown, Localizer, TrayCosts()));
 
     /// The countdown ticks only while it is on screen, so the timer follows the
     /// setting rather than repainting a tooltip nobody asked for.

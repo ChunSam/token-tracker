@@ -234,11 +234,12 @@ Core (`Sources/TokenTrackerCore/`)
 - `ClaudeCLIRefresh.swift` — 만료된 Claude 토큰을 CLI 실행으로 갱신(재시도 간격·실행 인자·PTY 실행기)
 - `Cost.swift` — 금액 표시 Core: 로컬 시간대 기간 경계, Anthropic·OpenAI 비용 파서, 구독 추가 사용량·크레딧,
   표시 조건, 금액 형식, 예산, 조회 주기. 구독 추가 사용량·크레딧(1단계)만 사용량 파서가 `ProviderUsage`에
-  실어 카드·트레이 줄(`SubscriptionCostText`)로 나가고, Admin API 비용은 아직 화면 연결 전이다. 히스토리에는
+  실어 카드·트레이 줄(`SubscriptionCostText`)로 나가고, Admin API 비용은 `AdminCost`·`CostDisplay`가 맡는다. 히스토리에는
   금액을 남기지 않는다. 설계는 `docs/cost-display-design.md`
 - `AdminCost.swift` / `AdminKeyStore.swift` — 금액 표시 2단계 수집: Admin API 요청·페이지 순회·401/429 분류,
-  제공자별 조회 주기와 캐시(`cost-cache.json`), 키체인 보관, 진단 줄. 설정 토글이 꺼져 있으면 키를 읽지 않고,
-  아직 화면 연결 전이라 진단 정보만 결과를 읽는다
+  제공자별 조회 주기와 캐시(`cost-cache.json`), 키체인 보관, 진단 줄. 설정 토글이 꺼져 있으면 키를 읽지 않는다
+- `CostDisplay.swift` — Admin API 비용의 화면 문구(카드·트레이 줄·상태), 모델 이름 줄이기, 메뉴바 금액과
+  `$` 트레이 아이콘 규칙. 설정 창의 API 비용 토글·월 예산·Admin 키 시트, 카드의 금액 영역, 메뉴바 금액이 이것을 쓴다
 - `PauseController.swift` / `InstanceArbiter.swift` — 일시중지, 중복 실행 판정
 - `Settings.swift` / `Localization.swift` / `Paths.swift` — UserDefaults, 한/영 문자열, 파일 경로
 
@@ -328,7 +329,7 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
 
 ## 다음 개선 후보
 
-- 금액 표시 2단계 화면(설정 토글·Admin 키 시트·예산, 카드·메뉴바·트레이)과 예산 알림 — 설계는
+- 금액 예산 알림(80%·100%)과 1단계 알림(`spend.severity`, `overage_limit_reached`) — 설계는
   `docs/cost-display-design.md`
 - 로그인 항목 승인 상태를 System Settings로 바로 여는 버튼 추가
 - signed/notarized 배포 빌드 구성

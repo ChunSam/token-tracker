@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let costService = AdminCostService()
     private var costStates: [Provider: CostState] = [:]
     private var costTask: Task<Void, Never>?
+    /// A settings change asked for a fetch while one was running; run once more after it.
+    private var costRefreshAgain = false
     private var localizer: Localizer {
         Localizer(language: settings.language)
     }
@@ -155,17 +157,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Rides the refresh timer, so a pause holds it too; `CostFetchPolicy` keeps
-    /// each provider to its own slower schedule. Nothing draws the result yet:
-    /// diagnostics is the only reader.
+    /// Rides the refresh timer, and runs at once when the API cost settings or a
+    /// key change; `CostFetchPolicy` keeps each provider to its own slower
+    /// schedule, and a pause holds it like the usage poll.
     private func refreshCostsIfDue() {
-        guard costTask == nil else { return }
+        guard !PauseController.isPaused(until: settings.pollPausedUntil) else { return }
+        guard costTask == nil else {
+            costRefreshAgain = true
+            return
+        }
         let enabled: [Provider: Bool] = [.claude: settings.claudeCostEnabled, .codex: settings.codexCostEnabled]
         costTask = Task { @MainActor [weak self] in
             guard let self else { return }
             costStates = await costService.refreshIfDue(enabled: enabled)
             costTask = nil
+            updateStatusTitle()
+            configurePanel()
+            if costRefreshAgain {
+                costRefreshAgain = false
+                refreshCostsIfDue()
+            }
         }
+    }
+
+    /// The card's API cost section per provider, `nil` where it is off or keyless.
+    private func adminCostViews() -> [Provider: AdminCostView] {
+        var views: [Provider: AdminCostView] = [:]
+        for provider in Provider.allCases {
+            views[provider] = AdminCostText.view(
+                state: costStates[provider] ?? CostState(),
+                budget: monthlyBudget(provider),
+                now: Date(),
+                timeZone: .autoupdatingCurrent,
+                localizer: localizer
+            )
+        }
+        return views
+    }
+
+    private func menuBarCosts() -> [Provider: MenuBarCost] {
+        CostMenuBar.entries(
+            subscriptionShown: [.claude: settings.claudeEnabled, .codex: settings.codexEnabled],
+            states: costStates,
+            budgets: [.claude: settings.claudeMonthlyBudget, .codex: settings.codexMonthlyBudget]
+        )
+    }
+
+    private func monthlyBudget(_ provider: Provider) -> Int {
+        provider == .claude ? settings.claudeMonthlyBudget : settings.codexMonthlyBudget
     }
 
     /// Rides the refresh timer; `UpdateCheck.isDue` keeps it to once a day, or once
@@ -200,7 +239,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             mode: settings.displayMode,
             labelStyle: settings.providerLabelStyle,
             showResetCountdown: settings.showResetCountdown,
-            localizer: localizer
+            localizer: localizer,
+            costs: menuBarCosts()
         )
     }
 
@@ -269,7 +309,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launchAtLoginEnabled: loginItemManager.isEnabled,
             launchAtLoginStatus: loginItemManager.statusLabel(localizer: localizer),
             runningInstanceCount: reporter.runningInstanceCount,
-            availableUpdateVersion: availableUpdateVersion
+            availableUpdateVersion: availableUpdateVersion,
+            adminCosts: adminCostViews()
         )
     }
 
@@ -383,6 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Task { @MainActor in
                         self?.notificationCoordinator.requestAuthorization()
                         self?.configurePanel()
+                    }
+                },
+                onCostChange: { [weak self] in
+                    Task { @MainActor in
+                        self?.updateStatusTitle()
+                        self?.configurePanel()
+                        self?.refreshCostsIfDue()
                     }
                 }
             )

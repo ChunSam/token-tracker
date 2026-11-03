@@ -11,11 +11,22 @@ internal static class TrayIconRenderer
     private static readonly Color NormalBackground = Color.FromArgb(26, 126, 188);
     private static readonly Color WarningBackground = Color.FromArgb(255, 138, 143);
 
-    public static Icon Render(UsageSnapshot? snapshot, DisplayMode mode)
+    /// With <paramref name="showsDollar"/> the icon draws <c>$</c>: every subscription
+    /// limit is off and only money is left to show, which does not fit 16×16.
+    public static Icon Render(
+        UsageSnapshot? snapshot,
+        DisplayMode mode,
+        bool showsDollar = false,
+        IReadOnlyDictionary<Provider, MenuBarCost>? costs = null)
     {
         var value = DisplayFormatter.TrayIconPercent(snapshot, mode);
         var warning = DisplayFormatter.TrayIconShowsWarning(snapshot, mode);
         var text = value is null ? "--" : value.Value.ToString();
+        if (showsDollar)
+        {
+            text = "$";
+            warning = costs?.Values.Any(cost => cost.IsWarning) == true;
+        }
 
         using var bitmap = new Bitmap(32, 32);
         using var graphics = Graphics.FromImage(bitmap);

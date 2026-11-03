@@ -1287,6 +1287,7 @@ Directory.Delete(Path.GetDirectoryName(renewalSettingsPath)!, recursive: true);
 
 RunCostTests();
 RunAdminCostTests();
+RunCostDisplayTests();
 
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
@@ -1639,7 +1640,8 @@ static void RunAdminCostTests()
         ExpectEqual(codexCost.MonthToDate?.Value, Dollars("2.5"), "OpenAI's days add up to the month");
         ExpectEqual(codexCost.Today?.Value, Dollars("0.5"), "And a day cut at local midnight is today");
         Expect(codexCost.DataRefreshedAt is null, "OpenAI has no watermark to report");
-        ExpectEqual(string.Join(",", codexCost.TopItems.Select(item => item.Name)), "gpt-6, input,gpt-6, output", "Line items merge across days");
+        ExpectEqual(string.Join(",", codexCost.TopItems.Select(item => item.Name)), "gpt-6", "A model's line items add up under the model");
+        ExpectEqual(codexCost.TopItems[0].Amount.Value, Dollars("2.5"), "Across every day");
         ExpectEqual(
             openAI.FetchAsync("sk-admin-abcdefgh5678", now, seoul).GetAwaiter().GetResult(),
             CostFetchResult.Failed(CostFetchFailureKind.KeyRejected, "HTTP 401 from OpenAI Admin API"),
@@ -1739,6 +1741,135 @@ static void RunAdminCostTests()
     {
         Directory.Delete(directory, recursive: true);
     }
+}
+
+// What the API cost puts on screen: the submenu's lines, the tray's money, and the
+// rule that keeps a provider showing limits on its percentage. Mirrors
+// runCostDisplayTests in Sources/TokenTrackerSmokeTests/AdminCostTests.swift.
+static void RunCostDisplayTests()
+{
+    var seoul = TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul");
+    static DateTimeOffset At(string text) => DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+    static decimal Dollars(string text) => decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+    static CostAmount Usd(string text) => new(Dollars(text));
+    var english = new Localizer(AppLanguage.English);
+    var korean = new Localizer(AppLanguage.Korean);
+    var now = At("2026-11-03T05:00:00Z");
+    var cost = new ProviderCost(
+        Provider.Claude,
+        Usd("2513.345"),
+        Usd("13.345"),
+        new[]
+        {
+            new CostLineItem("claude-opus-5-5", Usd("2000")),
+            new CostLineItem("claude-sonnet-5-5", Usd("513.345")),
+            new CostLineItem("claude-haiku-5-5", Usd("0.5"))
+        },
+        At("2026-11-03T04:00:00Z"),
+        now);
+    static CostState State(bool enabled = true, string? key = "…1234", ProviderCost? cost = null, CostFetchFailure? failure = null) =>
+        new() { Enabled = enabled, KeySuffix = key, Cost = cost, Failure = failure };
+
+    Expect(AdminCostText.View(State(enabled: false, cost: cost), 0, now, seoul, korean) is null, "Switched off, there is no cost to show");
+    Expect(AdminCostText.View(State(key: null), 0, now, seoul, korean) is null, "And without a key, neither");
+
+    var loading = AdminCostText.View(State(), 100, now, seoul, korean)!;
+    ExpectEqual(loading.Status, AdminCostStatus.Loading, "Switched on with a key and no answer yet is loading");
+    ExpectEqual(loading.StatusTitle, "불러오는 중", "In the user's language");
+    Expect(loading.MonthValue == "--" && loading.Detail is null && loading.BudgetText is null && loading.AsOf is null, "With nothing to show yet");
+
+    var ok = AdminCostText.View(State(cost: cost), 5000, now, seoul, korean)!;
+    ExpectEqual(ok.Status, AdminCostStatus.Ok, "A fresh reading is fine");
+    ExpectEqual(ok.StatusTitle, "정상", "And says so");
+    ExpectEqual(ok.MonthLabel, "이번 달 사용", "The month is this month's use");
+    ExpectEqual(ok.MonthValue, "$2.5K", "In the cost format");
+    ExpectEqual(ok.BudgetPercent, 50, "Against the budget, rounded down");
+    ExpectEqual(ok.BudgetText, "예산 $5.0K 중 50%", "The budget line names the budget");
+    Expect(!ok.IsBudgetWarning, "Half a budget is no warning");
+    ExpectEqual(ok.Detail, "오늘 $13.35 · Opus 5.5 79% · Sonnet 5.5 20%", "Today, then the two largest models' shares");
+    ExpectEqual(ok.AsOf, "13:00 기준", "And how far the data reaches, in Seoul's time");
+
+    var english83 = AdminCostText.View(State(cost: cost), 3000, now, seoul, english)!;
+    ExpectEqual(english83.BudgetText, "83% of $3.0K budget", "The budget line in English");
+    Expect(english83.IsBudgetWarning, "80% of a budget is a warning");
+    var yesterday = new ProviderCost(Provider.Claude, cost.MonthToDate, null, Array.Empty<CostLineItem>(), At("2026-11-02T13:10:00Z"), now);
+    var lagging = AdminCostText.View(State(cost: yesterday), 0, now, seoul, english)!;
+    ExpectEqual(lagging.AsOf, "as of Nov 2 22:10", "Data from another day names the day");
+    ExpectEqual(lagging.Detail, "Today not tallied yet", "And today is not tallied, not zero");
+    ExpectEqual(AdminCostText.View(State(cost: yesterday), 0, now, seoul, korean)?.AsOf, "11월 2일 22:10 기준", "In Korean too");
+    var untallied = new ProviderCost(Provider.Claude, null, null, Array.Empty<CostLineItem>(), null, now);
+    var empty = AdminCostText.View(State(cost: untallied), 100, now, seoul, korean)!;
+    Expect(empty.MonthValue == "집계 전" && empty.Detail is null && empty.BudgetPercent is null, "An untallied month shows no amount and no bar");
+
+    var failedFetch = new CostFetchFailure(CostFetchFailureKind.Failed, "HTTP 500 from Anthropic Admin API");
+    var cached = AdminCostText.View(State(cost: cost, failure: failedFetch), 0, now, seoul, korean)!;
+    Expect(cached.Status == AdminCostStatus.Cached && cached.StatusTitle == "캐시 데이터 사용 중", "A failed fetch over a reading is the cache");
+    ExpectEqual(cached.FailureMessage, "HTTP 500 from Anthropic Admin API", "And keeps why for a tooltip");
+    var rejected = new CostFetchFailure(CostFetchFailureKind.KeyRejected, "HTTP 401 from Anthropic Admin API");
+    ExpectEqual(AdminCostText.View(State(cost: cost, failure: rejected), 0, now, seoul, korean)?.Status, AdminCostStatus.KeyRejected, "A rejected key outranks the cache");
+    ExpectEqual(AdminCostText.View(State(failure: rejected), 0, now, seoul, korean)?.StatusTitle, "Admin 키 거부됨", "And is named");
+    ExpectEqual(
+        AdminCostText.View(State(failure: new CostFetchFailure(CostFetchFailureKind.RateLimited, "HTTP 429")), 0, now, seoul, korean)?.Status,
+        AdminCostStatus.RateLimited,
+        "A rate limit with no reading");
+    ExpectEqual(AdminCostText.View(State(failure: failedFetch), 0, now, seoul, korean)?.StatusTitle, "비용을 가져오지 못함", "Any other failure with no reading");
+
+    ExpectEqual(CostItemName.Display("claude-opus-5-5"), "Opus 5.5", "A model reads as family and version");
+    ExpectEqual(CostItemName.Display("claude-sonnet-4-5-20250929"), "Sonnet 4.5", "Without its date stamp");
+    ExpectEqual(CostItemName.Display("claude-3-5-haiku-20241022"), "Haiku 3.5", "Whichever order the version comes in");
+    ExpectEqual(CostItemName.Display("gpt-6"), "gpt-6", "Other names stay as they are");
+    ExpectEqual(CostItemName.LineItemGroup("gpt-6, input"), "gpt-6", "An OpenAI line item belongs to its model");
+    ExpectEqual(CostItemName.LineItemGroup("web search"), "web search", "One with no model stays whole");
+
+    ExpectEqual(CostFormatter.Compact(Usd("42.18")), "$42", "The tray drops cents from $10");
+    ExpectEqual(CostFormatter.Compact(Usd("42.5")), "$43", "Rounding half away from zero");
+    ExpectEqual(CostFormatter.Compact(Usd("3.07")), "$3.07", "But keeps them below, so a small spend is not $0");
+    ExpectEqual(CostFormatter.Compact(Usd("1234")), "$1.2K", "And shortens thousands");
+
+    Expect(AdminKeyText.LooksLikeAdminKey("sk-ant-admin01-abcdefgh", Provider.Claude), "An Anthropic Admin key");
+    Expect(!AdminKeyText.LooksLikeAdminKey("sk-ant-api03-abcdefgh", Provider.Claude), "An ordinary Anthropic API key cannot read cost");
+    Expect(AdminKeyText.LooksLikeAdminKey(" sk-admin-abcdefgh\n", Provider.Codex), "An OpenAI Admin key, pasted with whitespace");
+    Expect(!AdminKeyText.LooksLikeAdminKey("sk-proj-abcdefgh", Provider.Codex), "An OpenAI project key cannot read cost");
+
+    // The tray: only a provider tracked by API cost alone shows money.
+    var small = new ProviderCost(Provider.Claude, Usd("42.18"), null, Array.Empty<CostLineItem>(), null, now);
+    var states = new Dictionary<Provider, CostState> { [Provider.Claude] = State(cost: small), [Provider.Codex] = State(cost: small) };
+    var claudeOffCodexOn = new Dictionary<Provider, bool> { [Provider.Claude] = false, [Provider.Codex] = true };
+    var bothOff = new Dictionary<Provider, bool> { [Provider.Claude] = false, [Provider.Codex] = false };
+    var entries = CostMenuBar.Entries(claudeOffCodexOn, states, new Dictionary<Provider, int> { [Provider.Claude] = 50 });
+    Expect(
+        entries.Count == 1 && entries[Provider.Claude] == new MenuBarCost("$42", true),
+        "Claude shows its spend, past 80% of its budget; Codex keeps its percentage");
+    var placeholder = CostMenuBar.Entries(bothOff, new Dictionary<Provider, CostState> { [Provider.Claude] = State() }, new Dictionary<Provider, int>());
+    Expect(placeholder.Count == 1 && placeholder[Provider.Claude] == new MenuBarCost("--", false), "Before the first reading the spend is a placeholder");
+    Expect(
+        CostMenuBar.Entries(bothOff, new Dictionary<Provider, CostState> { [Provider.Claude] = State(key: null) }, new Dictionary<Provider, int>()).Count == 0,
+        "No key, no money in the tray");
+    Expect(!CostMenuBar.TrayShowsDollar(claudeOffCodexOn, entries), "The tray keeps a percentage while any limit is shown");
+    Expect(CostMenuBar.TrayShowsDollar(bothOff, entries), "And draws $ when only money is left");
+    Expect(!CostMenuBar.TrayShowsDollar(bothOff, new Dictionary<Provider, MenuBarCost>()), "But not with nothing to show");
+
+    var snapshot = new UsageSnapshot(
+        ProviderUsage.Unavailable(Provider.Claude, "Disabled"),
+        new ProviderUsage(Provider.Codex, null, 91, null, null, UsageSource.Api, null, "plus", null, now),
+        now);
+    var claudeSpend = new Dictionary<Provider, MenuBarCost> { [Provider.Claude] = new MenuBarCost("$42", false) };
+    ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.Both, costs: claudeSpend), "Cdx 91% · Cl $42", "Both: Codex's percentage beside Claude's spend");
+    ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.ClaudeOnly, costs: claudeSpend), "Cl $42", "Claude alone");
+    ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.ClaudeOnly, ProviderLabelStyle.Icon, claudeSpend), "Claude $42", "With the logo label");
+    ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.LowestRemaining, costs: claudeSpend), "AI 91%", "The lowest-remaining mode keeps its percentage");
+    var noLimits = new UsageSnapshot(ProviderUsage.Unavailable(Provider.Claude, "Disabled"), ProviderUsage.Unavailable(Provider.Codex, "Disabled"), now);
+    var bothSpend = new Dictionary<Provider, MenuBarCost>
+    {
+        [Provider.Claude] = new MenuBarCost("$42", false),
+        [Provider.Codex] = new MenuBarCost("$8.00", false)
+    };
+    ExpectEqual(DisplayFormatter.StatusTitle(noLimits, DisplayMode.LowestRemaining, costs: bothSpend), "Cl $42 · Cdx $8.00", "And lists the spend when no provider has a percentage");
+    ExpectEqual(DisplayFormatter.StatusTitle(snapshot, DisplayMode.Both), "Cdx 91% · Cl --", "Without costs the title is as it was");
+    ExpectEqual(
+        DisplayFormatter.Tooltip(snapshot, ProviderLabelStyle.Icon, false, korean, claudeSpend),
+        "Codex 91%, Claude $42 (이번 달 사용)",
+        "The tooltip names the spend as this month's");
 }
 
 static string StatusLinePayload(

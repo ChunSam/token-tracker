@@ -10,23 +10,27 @@ internal sealed class SettingsForm : Form
     private readonly Func<Task> onProviderChange;
     private readonly Action onGeneralChange;
     private readonly Action onNotificationsEnabled;
+    private readonly Func<Task> onCostChange;
+    private readonly IAdminKeyStore adminKeys = new DpapiAdminKeyStore();
     private Localizer localizer;
 
     public SettingsForm(
         AppSettings settings,
         Func<Task> onProviderChange,
         Action onGeneralChange,
-        Action onNotificationsEnabled)
+        Action onNotificationsEnabled,
+        Func<Task> onCostChange)
     {
         this.settings = settings;
         this.onProviderChange = onProviderChange;
         this.onGeneralChange = onGeneralChange;
         this.onNotificationsEnabled = onNotificationsEnabled;
+        this.onCostChange = onCostChange;
         localizer = new Localizer(settings.Language);
 
         Text = "Token Tracker";
         Width = 470;
-        Height = 520;
+        Height = 600;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -74,14 +78,32 @@ internal sealed class SettingsForm : Form
         scroller.Controls.Add(layout);
         Controls.Add(scroller);
 
-        AddHeader(layout, localizer.Text(L10nKey.Providers));
-        AddProviderCheckbox(layout, "Claude", settings.ClaudeEnabled, value => settings.ClaudeEnabled = value);
+        AddHeader(layout, "Claude");
+        AddProviderCheckbox(layout, localizer.Text(L10nKey.SubscriptionLimits), settings.ClaudeEnabled, value => settings.ClaudeEnabled = value);
         AddCheckbox(layout, localizer.Text(L10nKey.RenewClaudeTokenWithCli), settings.RenewClaudeTokenWithCli, value =>
         {
             settings.RenewClaudeTokenWithCli = value;
             onGeneralChange();
         });
-        AddProviderCheckbox(layout, "Codex", settings.CodexEnabled, value => settings.CodexEnabled = value);
+        AddApiCostRows(
+            layout,
+            Provider.Claude,
+            settings.ClaudeCostEnabled,
+            value => settings.ClaudeCostEnabled = value,
+            settings.ClaudeMonthlyBudget,
+            value => settings.ClaudeMonthlyBudget = value);
+
+        AddHeader(layout, "Codex");
+        AddProviderCheckbox(layout, localizer.Text(L10nKey.SubscriptionLimits), settings.CodexEnabled, value => settings.CodexEnabled = value);
+        AddApiCostRows(
+            layout,
+            Provider.Codex,
+            settings.CodexCostEnabled,
+            value => settings.CodexCostEnabled = value,
+            settings.CodexMonthlyBudget,
+            value => settings.CodexMonthlyBudget = value);
+
+        AddHeader(layout, localizer.Text(L10nKey.General));
 
         AddCombo(
             layout,
@@ -211,6 +233,44 @@ internal sealed class SettingsForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(label, 0, layout.RowCount);
         layout.SetColumnSpan(label, 2);
+        layout.RowCount++;
+    }
+
+    /// The organization's API cost: on or off, its monthly budget, its Admin key.
+    private void AddApiCostRows(
+        TableLayoutPanel layout,
+        Provider provider,
+        bool enabled,
+        Action<bool> setEnabled,
+        int budget,
+        Action<int> setBudget)
+    {
+        AddCheckbox(layout, localizer.Text(L10nKey.ApiCost), enabled, async value =>
+        {
+            setEnabled(value);
+            await onCostChange();
+        });
+        AddNumber(layout, localizer.Text(L10nKey.MonthlyBudget), budget, 0, 1_000_000, "USD", value =>
+        {
+            setBudget(value);
+            onGeneralChange();
+        });
+
+        var button = new Button
+        {
+            Text = localizer.Text(L10nKey.AdminKeyButton),
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 4)
+        };
+        button.Click += async (_, _) =>
+        {
+            if (AdminKeyDialog.Run(this, provider, adminKeys, localizer))
+            {
+                await onCostChange();
+            }
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(button, 1, layout.RowCount);
         layout.RowCount++;
     }
 

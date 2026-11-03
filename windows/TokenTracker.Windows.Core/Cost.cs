@@ -469,6 +469,21 @@ public static class CostFormatter
         return amount.Currency == "USD" ? sign + "$" + number : sign + number + " " + amount.Currency;
     }
 
+    /// The tray's short form: whole dollars from $10 (<c>$42</c>), cents below that so
+    /// a small spend does not read as <c>$0</c> (<c>$3.07</c>), and <c>$1.2K</c> from a thousand.
+    public static string Compact(CostAmount amount)
+    {
+        var magnitude = Math.Abs(amount.Value);
+        if (magnitude < 10m || magnitude >= 1000m)
+        {
+            return Text(amount);
+        }
+
+        var sign = amount.Value < 0 ? "-" : "";
+        var number = decimal.Round(magnitude, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
+        return amount.Currency == "USD" ? sign + "$" + number : sign + number + " " + amount.Currency;
+    }
+
     /// A credit balance, which is not money: <c>18.40</c>.
     public static string Credits(decimal value) => Fixed(value, 2);
 

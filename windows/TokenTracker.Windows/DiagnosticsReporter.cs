@@ -140,6 +140,8 @@ internal sealed class DiagnosticsReporter
     private static IEnumerable<string> DiagnosticsLines(ProviderUsage usage)
     {
         var issue = UsageIssueFormatter.Issue(usage, new Localizer(AppLanguage.English));
+        var cost = SubscriptionCostText.Line(usage, new Localizer(AppLanguage.English));
+        var costText = cost is null ? "off" : cost.Label + " " + cost.Value;
         return new[]
         {
             $"{usage.DisplayName} source: {usage.Source}",
@@ -149,6 +151,7 @@ internal sealed class DiagnosticsReporter
             $"{usage.DisplayName} 5h reset: {IsoStringOrDash(usage.ResetAt5h)}",
             $"{usage.DisplayName} 7d reset: {IsoStringOrDash(usage.ResetAt7d)}",
             $"{usage.DisplayName} plan: {usage.Plan ?? "--"}",
+            $"{usage.DisplayName} money past plan: {costText}",
             $"{usage.DisplayName} technical error: {issue.TechnicalDetail ?? "--"}"
         };
     }

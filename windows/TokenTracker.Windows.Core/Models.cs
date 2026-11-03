@@ -42,6 +42,8 @@ public enum AppLanguage
     Korean
 }
 
+/// <param name="ExtraUsage">Claude extra usage, when the account has it on. Null keeps money off screen.</param>
+/// <param name="CreditBalance">Codex credit balance, when the account holds credits. In credits, not dollars.</param>
 public sealed record ProviderUsage(
     Provider Provider,
     int? RemainingPercent5h,
@@ -52,7 +54,9 @@ public sealed record ProviderUsage(
     string? Error,
     string? Plan,
     string? Model,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    ClaudeExtraUsage? ExtraUsage = null,
+    decimal? CreditBalance = null)
 {
     public bool IsAvailable => RemainingPercent5h is not null || RemainingPercent7d is not null;
 

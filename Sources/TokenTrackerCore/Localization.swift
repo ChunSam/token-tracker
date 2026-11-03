@@ -152,7 +152,9 @@ public struct Localizer {
         .both: "Claude + Codex",
         .codexOnly: "Codex only",
         .claudeOnly: "Claude only",
-        .officialLogos: "Official logos"
+        .officialLogos: "Official logos",
+        .costExtraUsage: "Extra usage",
+        .costCreditBalance: "Credit balance"
     ]
 
     private let korean: [L10nKey: String] = [
@@ -272,7 +274,9 @@ public struct Localizer {
         .both: "Claude + Codex",
         .codexOnly: "Codex만",
         .claudeOnly: "Claude만",
-        .officialLogos: "공식 로고"
+        .officialLogos: "공식 로고",
+        .costExtraUsage: "추가 사용량",
+        .costCreditBalance: "크레딧 잔액"
     ]
 }
 
@@ -394,4 +398,6 @@ public enum L10nKey: String {
     case codexOnly
     case claudeOnly
     case officialLogos
+    case costExtraUsage
+    case costCreditBalance
 }

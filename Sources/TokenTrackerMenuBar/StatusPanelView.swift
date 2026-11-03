@@ -128,6 +128,9 @@ private struct ProviderCard: View {
                         alertThreshold: context.settings.sevenDayAlertThreshold
                     )
                 }
+                if let cost = SubscriptionCostText.line(for: usage, localizer: localizer) {
+                    CostRow(line: cost)
+                }
                 notes(issue)
             }
         }
@@ -302,6 +305,37 @@ private struct WindowRow: View {
     private var percentColor: Color {
         guard percent != nil else { return .secondary }
         return level == .normal ? .primary : level.tint
+    }
+}
+
+/// Money past the plan: extra usage against its limit, or a credit balance. Laid out
+/// like a window row so the amount lines up under the percentages.
+private struct CostRow: View {
+    let line: SubscriptionCostLine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(line.label)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer(minLength: 8)
+                Text(line.value)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(tint == .accentColor ? .primary : tint)
+            }
+            if let percent = line.percent {
+                UsageBar(fraction: Double(percent) / 100, tint: tint)
+            }
+        }
+    }
+
+    /// Orange from 80% of the limit and red at it, the budget alert thresholds.
+    private var tint: Color {
+        guard let percent = line.percent else { return .accentColor }
+        if percent >= 100 { return .red }
+        if percent >= 80 { return .orange }
+        return .accentColor
     }
 }
 

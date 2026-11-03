@@ -101,10 +101,14 @@ public static class UsageHistoryPolicy
             Codex = MeasurementOnly(snapshot.Codex)
         };
 
-    private static ProviderUsage MeasurementOnly(ProviderUsage usage) =>
-        usage.Source == UsageSource.Api
-            ? usage
-            : usage with { RemainingPercent5h = null, RemainingPercent7d = null };
+    // Money is not part of the record: every poll would copy the same balance.
+    private static ProviderUsage MeasurementOnly(ProviderUsage usage)
+    {
+        var withoutMoney = usage with { ExtraUsage = null, CreditBalance = null };
+        return usage.Source == UsageSource.Api
+            ? withoutMoney
+            : withoutMoney with { RemainingPercent5h = null, RemainingPercent7d = null };
+    }
 }
 
 public static class UsageHistoryFormatter

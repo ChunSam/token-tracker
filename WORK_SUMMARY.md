@@ -232,8 +232,10 @@ Core (`Sources/TokenTrackerCore/`)
 - `UsagePace.swift` — 균등 사용선 대비 페이스와 메뉴 줄
 - `UpdateCheck.swift` — 최신 릴리스 조회·버전 비교·확인 주기
 - `ClaudeCLIRefresh.swift` — 만료된 Claude 토큰을 CLI 실행으로 갱신(재시도 간격·실행 인자·PTY 실행기)
-- `Cost.swift` — 금액 표시 Core(아직 화면 연결 전): 로컬 시간대 기간 경계, Anthropic·OpenAI 비용 파서, 구독
-  추가 사용량·크레딧, 표시 조건, 금액 형식, 예산, 조회 주기. 설계는 `docs/cost-display-design.md`
+- `Cost.swift` — 금액 표시 Core: 로컬 시간대 기간 경계, Anthropic·OpenAI 비용 파서, 구독 추가 사용량·크레딧,
+  표시 조건, 금액 형식, 예산, 조회 주기. 구독 추가 사용량·크레딧(1단계)만 사용량 파서가 `ProviderUsage`에
+  실어 카드·트레이 줄(`SubscriptionCostText`)로 나가고, Admin API 비용은 아직 화면 연결 전이다. 히스토리에는
+  금액을 남기지 않는다. 설계는 `docs/cost-display-design.md`
 - `PauseController.swift` / `InstanceArbiter.swift` — 일시중지, 중복 실행 판정
 - `Settings.swift` / `Localization.swift` / `Paths.swift` — UserDefaults, 한/영 문자열, 파일 경로
 
@@ -323,7 +325,7 @@ osascript -e 'tell application "System Events" to exists process "TokenTrackerMe
 
 ## 다음 개선 후보
 
-- 금액 표시: 구독 추가 사용량·Codex 크레딧, Admin API 청구 비용(Claude·OpenAI) — 설계는
+- 금액 표시 2단계 이후: Admin API 청구 비용(Claude·OpenAI) 수집·화면, 예산 알림 — 설계는
   `docs/cost-display-design.md`
 - 로그인 항목 승인 상태를 System Settings로 바로 여는 버튼 추가
 - signed/notarized 배포 빌드 구성

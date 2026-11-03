@@ -140,7 +140,8 @@ Token tracker/
   않은 토큰으로 읽히면 갱신으로 본 뒤 프로세스 트리를 종료한다. UTM의 Windows 11 Arm VM(CLI 2.1.317)
   에서 `expiresAt`을 과거로 돌려 확인했다: 앱이 +0.6초에 `claude.exe`를 띄우고 +1.3초에 파일이 8시간
   토큰으로 바뀌었으며, 콘솔 창도 남은 프로세스도 없었다. macOS와 달리 `~/.claude.json`을 한 번 쓴다.
-  x64 PC와 릴리스 zip으로는 아직 확인하지 않았다 — `docs/windows-vm-testing.md`.
+  win-x64 빌드도 VM의 x64 에뮬레이션에서 같은 결과였다(+1.6초). 실제 x64 PC와 릴리스 zip으로는 아직
+  확인하지 않았다 — `docs/windows-vm-testing.md`.
 - 재시도 간격은 성공 후 5분, 실패·CLI 없음 후 30분(`ClaudeCLIRefresh.nextAttempt`, 양쪽 1:1).
 
 ### Claude 상태줄 브리지

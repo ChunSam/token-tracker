@@ -25,7 +25,9 @@ script="$dir\\tt-$id.ps1"
 wrapper="$dir\\tt-$id-run.ps1"
 out="$dir\\tt-$id.out"
 
-utmctl file push $vm "$script" < /dev/stdin || exit 1
+# Windows PowerShell 5.1 reads a script without a byte-order mark in the system
+# code page, which garbles anything outside ASCII.
+{ printf '\xef\xbb\xbf'; cat; } | utmctl file push $vm "$script" || exit 1
 # `utmctl exec` returns once the process has started, not when it ends, so the
 # wrapper leaves a marker with content when the script is done.
 printf '%s\r\n' "\$ErrorActionPreference = 'Continue'" \
@@ -46,7 +48,8 @@ if [[ $mode == user ]]; then
     echo "no signed-in Windows user found" >&2
     exit 1
   fi
-  utmctl exec $vm --cmd schtasks.exe /create /f /tn "tt-$id" /sc once /st 00:00 /it /ru "$user" /tr "$run" >/dev/null
+  # A start time in the past makes schtasks warn; the task only ever runs by /run.
+  utmctl exec $vm --cmd schtasks.exe /create /f /tn "tt-$id" /sc once /st 00:00 /it /ru "$user" /tr "$run" >/dev/null 2>&1
   sleep 2
   utmctl exec $vm --cmd schtasks.exe /run /tn "tt-$id" >/dev/null
 else

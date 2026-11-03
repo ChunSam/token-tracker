@@ -49,7 +49,9 @@ What the script works around, each of which cost a debugging round:
   land in the wrong profile and may pick the x64 build. `--user` goes through a
   one-shot `schtasks /it` task in the user's session instead.
 - Windows PowerShell 5.1 writes UTF-16LE with a byte-order mark; `cmd` output is
-  in the system code page (CP949 on a Korean install).
+  in the system code page (CP949 on a Korean install). It also reads a script
+  without a byte-order mark in that code page, garbling anything outside ASCII,
+  so the script is pushed with a UTF-8 BOM.
 - Windows PowerShell's `ConvertFrom-Json` fails on `~/.claude.json` and prints
   the entire file in its error. Search that file with `Select-String`.
 
@@ -92,6 +94,10 @@ Measured on 2026-11-03 with Claude Code 2.1.317, sampling every 0.5 s:
 | Credentials file rewritten, `expiresAt` 8 h ahead | +1.3 s |
 | App's `claude.exe` last seen | +1.8 s |
 | Claude usage | read from the API again |
+
+A second run against main at `1dc3e4d` repeated it for both published builds:
+win-arm64 renewed at +1.3 s, and win-x64, running under the guest's x64
+emulation, at +1.6 s. Neither left a `claude.exe` behind.
 
 No console window appeared, no other `claude.exe` was left behind, and the
 refresh folder got no project entry or session. Unlike the macOS

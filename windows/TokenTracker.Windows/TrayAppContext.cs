@@ -54,6 +54,18 @@ internal sealed class TrayAppContext : ApplicationContext
         notifyIcon.Visible = true;
         notifyIcon.Text = "Token Tracker";
         notifyIcon.ContextMenuStrip = BuildMenu();
+        // Built when a poll lands but opened any time up to a whole refresh interval
+        // later, the menu read "updated 0s ago" and its reset countdowns as of the
+        // poll. The right-button press arrives just before the release that opens
+        // it, so build it again there. Not on Opening: the menu has been placed by
+        // then, for the size of the items it would throw away.
+        notifyIcon.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                notifyIcon.ContextMenuStrip = BuildMenu();
+            }
+        };
         SetIcon(null);
 
         timer.Interval = Math.Max(60, settings.RefreshIntervalSeconds) * 1000;

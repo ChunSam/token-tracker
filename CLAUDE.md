@@ -100,7 +100,7 @@ dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tes
 ## 작업 방식
 
 `main`은 보호 브랜치다. 브랜치 → PR → CI 두 잡 초록 → rebase 머지로 선형 히스토리를 유지한다.
-**PR을 열면 바로 그 PR에 자동 머지(rebase)를 건다** — 사용자가 상시 승인했다(2026-11-04). CI 두 잡이
+**PR을 열면 바로 그 PR에 자동 머지(rebase)를 건다**(권고) — 사용자가 상시 승인했다(2026-11-04). CI 두 잡이
 필수 체크라 초록일 때만 머지되고, 머지된 브랜치는 GitHub가 지운다(`delete_branch_on_merge`). 필수 체크가
 strict라 다른 PR이 먼저 머지되면 브랜치를 main에 맞춰야 머지된다. 커밋 메시지는 영어, PR 본문과 대화는
 한국어다.

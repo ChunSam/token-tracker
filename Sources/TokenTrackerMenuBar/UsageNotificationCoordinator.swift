@@ -58,6 +58,12 @@ final class UsageNotificationCoordinator {
         }
     }
 
+    /// Alerts that keep their own once-a-month record (`CostAlertEvaluator`), sent
+    /// as they are.
+    func deliver(_ alerts: [UsageAlertCandidate]) {
+        alerts.forEach(sendNotification)
+    }
+
     private func alertSettings() -> UsageAlertSettings {
         UsageAlertSettings(
             notificationsEnabled: settings.notificationsEnabled,

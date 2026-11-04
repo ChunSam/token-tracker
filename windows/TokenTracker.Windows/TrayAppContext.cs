@@ -162,6 +162,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
             historyStore.Append(UsageHistoryPolicy.MeasurementsOnly(snapshot), settings.HistoryRetentionDays);
             HandleNotifications(snapshot);
+            NotifyCostAlerts();
             SetIcon(snapshot);
             UpdateTooltip();
         }
@@ -209,6 +210,7 @@ internal sealed class TrayAppContext : ApplicationContext
             // month boundaries have to follow the PC to a new zone.
             TimeZoneInfo.ClearCachedData();
             costStates = await costService.RefreshIfDueAsync(enabled, DateTimeOffset.Now, TimeZoneInfo.Local);
+            NotifyCostAlerts();
             SetIcon(snapshot);
             UpdateTooltip();
             notifyIcon.ContextMenuStrip = BuildMenu();
@@ -712,6 +714,37 @@ internal sealed class TrayAppContext : ApplicationContext
         foreach (var candidate in candidates.Where(candidate => deliveredAlertIds.Add(candidate.Id)))
         {
             notifyIcon.ShowBalloonTip(5000, candidate.Title, candidate.Body, ToolTipIcon.Warning);
+        }
+    }
+
+    /// Budget and stage-1 money alerts, each once per local month. Runs after both
+    /// the usage poll (extra usage, credits) and the cost fetch (budgets); the
+    /// record of what went out lives in settings, so a relaunch does not repeat it.
+    private void NotifyCostAlerts()
+    {
+        var result = CostAlertEvaluator.Evaluate(
+            snapshot,
+            costStates,
+            new Dictionary<Provider, int>
+            {
+                [Provider.Claude] = settings.ClaudeMonthlyBudget,
+                [Provider.Codex] = settings.CodexMonthlyBudget
+            },
+            settings.DeliveredCostAlerts,
+            settings.NotificationsEnabled,
+            DateTimeOffset.Now,
+            TimeZoneInfo.Local,
+            Localizer);
+        var delivered = result.Delivered.OrderBy(id => id, StringComparer.Ordinal).ToList();
+        if (!delivered.SequenceEqual(settings.DeliveredCostAlerts))
+        {
+            settings.DeliveredCostAlerts = delivered;
+            SaveSettings();
+        }
+
+        foreach (var alert in result.Alerts)
+        {
+            notifyIcon.ShowBalloonTip(5000, alert.Title, alert.Body, ToolTipIcon.Warning);
         }
     }
 

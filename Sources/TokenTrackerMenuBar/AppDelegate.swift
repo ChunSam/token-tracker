@@ -171,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 extraCandidates: forecastAlertCandidates(for: result),
                 localizer: localizer
             )
+            notifyCostAlerts()
             updateStatusTitle()
             configurePanel()
             checkForUpdatesIfDue()
@@ -192,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             costStates = await costService.refreshIfDue(enabled: enabled)
             costTask = nil
+            notifyCostAlerts()
             updateStatusTitle()
             configurePanel()
             if costRefreshAgain {
@@ -199,6 +201,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 refreshCostsIfDue()
             }
         }
+    }
+
+    /// Budget and stage-1 money alerts, each once per local month. Runs after both
+    /// the usage poll (extra usage, credits) and the cost fetch (budgets); the
+    /// record of what went out lives in settings, so a relaunch does not repeat it.
+    private func notifyCostAlerts() {
+        let result = CostAlertEvaluator.evaluate(
+            snapshot: snapshot,
+            costs: costStates,
+            budgets: [.claude: settings.claudeMonthlyBudget, .codex: settings.codexMonthlyBudget],
+            delivered: Set(settings.deliveredCostAlerts),
+            notificationsEnabled: settings.notificationsEnabled,
+            now: Date(),
+            timeZone: .autoupdatingCurrent,
+            localizer: localizer
+        )
+        let delivered = result.delivered.sorted()
+        if delivered != settings.deliveredCostAlerts {
+            settings.deliveredCostAlerts = delivered
+        }
+        notificationCoordinator.deliver(result.alerts)
     }
 
     /// The card's API cost section per provider, `nil` where it is off or keyless.

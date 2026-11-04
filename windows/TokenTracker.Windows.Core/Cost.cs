@@ -368,6 +368,32 @@ public static class SubscriptionCostParser
         }
     }
 
+    /// From the same response: true once an account that holds credits has hit its
+    /// overage limit. An account without credits reads as null whatever the flag
+    /// says, so a subscription-only user is never told about credits.
+    public static bool? CodexCreditLimitReached(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("credits", out var credits) ||
+                credits.ValueKind != JsonValueKind.Object ||
+                !CostJson.IsTrue(credits, "has_credits") ||
+                !CostJson.IsTrue(credits, "overage_limit_reached"))
+            {
+                return null;
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <c>{ "amount_minor": 186, "currency": "USD", "exponent": 2 }</c> is $1.86.
     private static CostAmount? MinorUnits(JsonElement parent, string name)
     {

@@ -292,6 +292,18 @@ public enum SubscriptionCostParser {
         return decimal(credits["balance"])
     }
 
+    /// From the same response: `true` once an account that holds credits has hit
+    /// its overage limit. An account without credits reads as `nil` whatever the
+    /// flag says, so a subscription-only user is never told about credits.
+    public static func codexCreditLimitReached(_ json: [String: Any]) -> Bool? {
+        guard
+            let credits = json["credits"] as? [String: Any],
+            (credits["has_credits"] as? Bool) == true,
+            (credits["overage_limit_reached"] as? Bool) == true
+        else { return nil }
+        return true
+    }
+
     /// `{ "amount_minor": 186, "currency": "USD", "exponent": 2 }` is $1.86.
     private static func minorUnits(_ value: Any?) -> CostAmount? {
         guard

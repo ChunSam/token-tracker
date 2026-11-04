@@ -176,7 +176,13 @@ public struct Localizer {
         .adminKeyCancel: "Cancel",
         .adminKeyInvalid: "This isn't an Admin key. Admin keys look like {prefix}…",
         .adminKeySaveFailed: "The key couldn't be saved.",
-        .costSectionTitle: "{organization} API cost"
+        .costSectionTitle: "{organization} API cost",
+        .costBudgetAlertTitle: "API cost budget",
+        .costBudgetAlertBody: "{organization} API: {amount} this month, {percent}% of the {budget} budget",
+        .extraUsageAlertTitle: "Claude extra usage",
+        .extraUsageAlertBody: "Extra usage is at {value}.",
+        .creditLimitAlertTitle: "Codex credits",
+        .creditLimitAlertBody: "Codex has reached its credit overage limit."
     ]
 
     private let korean: [L10nKey: String] = [
@@ -320,7 +326,13 @@ public struct Localizer {
         .adminKeyCancel: "취소",
         .adminKeyInvalid: "Admin 키가 아닙니다. Admin 키는 {prefix}… 형식입니다.",
         .adminKeySaveFailed: "키를 저장하지 못했습니다.",
-        .costSectionTitle: "{organization} API 비용"
+        .costSectionTitle: "{organization} API 비용",
+        .costBudgetAlertTitle: "API 비용 예산",
+        .costBudgetAlertBody: "{organization} API: 이번 달 {amount}, 예산 {budget}의 {percent}%",
+        .extraUsageAlertTitle: "Claude 추가 사용량",
+        .extraUsageAlertBody: "추가 사용량이 {value}입니다.",
+        .creditLimitAlertTitle: "Codex 크레딧",
+        .creditLimitAlertBody: "Codex 크레딧 초과 사용 한도에 도달했습니다."
     ]
 }
 
@@ -466,4 +478,10 @@ public enum L10nKey: String {
     case adminKeyInvalid
     case adminKeySaveFailed
     case costSectionTitle
+    case costBudgetAlertTitle
+    case costBudgetAlertBody
+    case extraUsageAlertTitle
+    case extraUsageAlertBody
+    case creditLimitAlertTitle
+    case creditLimitAlertBody
 }

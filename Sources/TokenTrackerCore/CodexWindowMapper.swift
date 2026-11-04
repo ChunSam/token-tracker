@@ -74,7 +74,8 @@ public enum CodexUsageParser {
             plan: object["plan_type"] as? String,
             model: nil,
             updatedAt: updatedAt,
-            creditBalance: SubscriptionCostParser.codexCredits(object)
+            creditBalance: SubscriptionCostParser.codexCredits(object),
+            creditLimitReached: SubscriptionCostParser.codexCreditLimitReached(object)
         )
     }
 

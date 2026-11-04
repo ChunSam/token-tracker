@@ -58,6 +58,11 @@ public sealed class AppSettings
     /// The same for the OpenAI organization behind Codex.
     public int CodexMonthlyBudget { get; set; }
 
+    /// The money alerts sent this local month (CostAlertEvaluator), kept across
+    /// relaunches: each says something once a month, and the cost cache would
+    /// otherwise bring the same reading back at every launch.
+    public List<string> DeliveredCostAlerts { get; set; } = new();
+
     /// When updates are paused, the instant polling resumes (persisted, so a
     /// restart during a pause stays paused). <c>null</c> means not paused.
     public DateTimeOffset? PollPausedUntil { get; set; }

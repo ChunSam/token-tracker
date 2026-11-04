@@ -44,6 +44,8 @@ public enum AppLanguage
 
 /// <param name="ExtraUsage">Claude extra usage, when the account has it on. Null keeps money off screen.</param>
 /// <param name="CreditBalance">Codex credit balance, when the account holds credits. In credits, not dollars.</param>
+/// <param name="CreditLimitReached">True once an account holding Codex credits has reached its overage
+/// limit; null otherwise, and for an account without credits.</param>
 public sealed record ProviderUsage(
     Provider Provider,
     int? RemainingPercent5h,
@@ -56,7 +58,8 @@ public sealed record ProviderUsage(
     string? Model,
     DateTimeOffset UpdatedAt,
     ClaudeExtraUsage? ExtraUsage = null,
-    decimal? CreditBalance = null)
+    decimal? CreditBalance = null,
+    bool? CreditLimitReached = null)
 {
     public bool IsAvailable => RemainingPercent5h is not null || RemainingPercent7d is not null;
 

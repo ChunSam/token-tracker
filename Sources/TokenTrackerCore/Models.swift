@@ -50,8 +50,11 @@ public struct ProviderUsage: Codable, Equatable, Sendable {
     public var extraUsage: ClaudeExtraUsage?
     /// Codex credit balance, when the account holds credits. In credits, not dollars.
     public var creditBalance: Decimal?
+    /// `true` once an account holding Codex credits has reached its overage limit;
+    /// `nil` otherwise, and for an account without credits.
+    public var creditLimitReached: Bool?
 
-    public init(provider: Provider, remainingPercent5h: Int?, remainingPercent7d: Int?, resetAt5h: Date?, resetAt7d: Date?, source: UsageSource, error: String?, plan: String?, model: String?, updatedAt: Date, extraUsage: ClaudeExtraUsage? = nil, creditBalance: Decimal? = nil) {
+    public init(provider: Provider, remainingPercent5h: Int?, remainingPercent7d: Int?, resetAt5h: Date?, resetAt7d: Date?, source: UsageSource, error: String?, plan: String?, model: String?, updatedAt: Date, extraUsage: ClaudeExtraUsage? = nil, creditBalance: Decimal? = nil, creditLimitReached: Bool? = nil) {
         self.provider = provider
         self.remainingPercent5h = remainingPercent5h
         self.remainingPercent7d = remainingPercent7d
@@ -64,6 +67,7 @@ public struct ProviderUsage: Codable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.extraUsage = extraUsage
         self.creditBalance = creditBalance
+        self.creditLimitReached = creditLimitReached
     }
 
     public var isAvailable: Bool {

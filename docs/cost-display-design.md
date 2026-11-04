@@ -366,6 +366,19 @@ Codex   [plus]                                  ● 정상
      성공해 카드에 `이번 달 사용 $0.00`, `오늘 $0.00`, `22:49 기준`이 나왔다(그 조직의 이번 달 API 사용이 0).
      금액이 0이 아닌 경우, 예산 막대, 구독 한도를 끈 카드·메뉴바, OpenAI는 아직 보지 못했다.
 5. 예산 알림, 문서(README·WORK_SUMMARY), 릴리스.
+   구현하면서 정한 것(2026-11-04, `CostAlerts.swift`/`CostAlerts.cs`):
+   - 금액 알림은 `CostAlertEvaluator` 하나가 정한다. 알림 id는 로컬 달(`yyyy-MM`)로 끝나고, 보낸 id는 설정
+     (`deliveredCostAlerts` / `DeliveredCostAlerts`)에 남긴다. 기존 사용량 알림처럼 메모리에만 두면, 앱을 켤 때마다
+     비용 캐시가 같은 값을 되살려 예산 알림을 매일 다시 보낸다. 달이 바뀐 id는 읽을 때 버린다.
+   - 예산: 닿은 기준 가운데 가장 높은 것 하나만 보낸다. 한 번에 80%와 100%를 넘기면 100%만 보내고 80%는 보낸 것으로
+     친다.
+   - Claude 추가 사용량: `spend.severity`가 `normal`이 아니면, 그 단어를 id에 넣어 단계마다 달에 한 번. 추가 사용량이
+     꺼진 계정(`extraUsage`가 없음)에는 severity 값과 상관없이 보내지 않는다.
+   - Codex: `credits.has_credits`와 `overage_limit_reached`가 둘 다 true일 때만 한도 도달로 읽는다
+     (`ProviderUsage.creditLimitReached`). 크레딧이 없는 계정의 플래그는 구독 한도 소진일 수도 있어 금액 알림으로
+     쓰지 않는다. 히스토리에는 남기지 않는다.
+   - `알림 받기`가 꺼져 있으면 보내지도, 보낸 것으로 기록하지도 않는다. 그래서 같은 달에 다시 켜면 그때 맞는 알림이 간다.
+   - 켜진 계정의 severity 값이나 overage 플래그가 실제로 어떻게 오는지는 아직 보지 못했다(`normal` 외의 단어를 모른다).
 
 ## 대안: 로컬 로그 추정 (3단계, 보류)
 

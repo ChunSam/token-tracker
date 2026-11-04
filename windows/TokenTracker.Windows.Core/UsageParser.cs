@@ -26,7 +26,8 @@ public static class UsageParser
             TryGetString(root, "plan_type"),
             null,
             updatedAt ?? DateTimeOffset.Now,
-            CreditBalance: SubscriptionCostParser.CodexCredits(json));
+            CreditBalance: SubscriptionCostParser.CodexCredits(json),
+            CreditLimitReached: SubscriptionCostParser.CodexCreditLimitReached(json));
     }
 
     private static CodexRateWindow? ToCodexWindow(JsonElement element)

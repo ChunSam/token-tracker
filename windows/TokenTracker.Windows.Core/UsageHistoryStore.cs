@@ -104,7 +104,7 @@ public static class UsageHistoryPolicy
     // Money is not part of the record: every poll would copy the same balance.
     private static ProviderUsage MeasurementOnly(ProviderUsage usage)
     {
-        var withoutMoney = usage with { ExtraUsage = null, CreditBalance = null };
+        var withoutMoney = usage with { ExtraUsage = null, CreditBalance = null, CreditLimitReached = null };
         return usage.Source == UsageSource.Api
             ? withoutMoney
             : withoutMoney with { RemainingPercent5h = null, RemainingPercent7d = null };

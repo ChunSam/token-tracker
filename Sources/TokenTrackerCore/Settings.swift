@@ -24,6 +24,7 @@ public final class Settings {
         static let codexCostEnabled = "codexCostEnabled"
         static let claudeMonthlyBudget = "claudeMonthlyBudget"
         static let codexMonthlyBudget = "codexMonthlyBudget"
+        static let deliveredCostAlerts = "deliveredCostAlerts"
     }
 
     private let defaults: UserDefaults
@@ -164,6 +165,14 @@ public final class Settings {
     public var codexMonthlyBudget: Int {
         get { defaults.integer(forKey: Key.codexMonthlyBudget) }
         set { defaults.set(max(0, newValue), forKey: Key.codexMonthlyBudget) }
+    }
+
+    /// The money alerts sent this local month (`CostAlertEvaluator`), kept across
+    /// relaunches: each says something once a month, and the cost cache would
+    /// otherwise bring the same reading back at every launch.
+    public var deliveredCostAlerts: [String] {
+        get { defaults.stringArray(forKey: Key.deliveredCostAlerts) ?? [] }
+        set { defaults.set(newValue, forKey: Key.deliveredCostAlerts) }
     }
 
     /// When updates are paused, the instant polling resumes (persisted, so a

@@ -1288,6 +1288,7 @@ Directory.Delete(Path.GetDirectoryName(renewalSettingsPath)!, recursive: true);
 RunCostTests();
 RunAdminCostTests();
 RunCostDisplayTests();
+RunCostAlertTests();
 
 Console.WriteLine("TokenTracker.Windows.Tests passed");
 
@@ -1870,6 +1871,108 @@ static void RunCostDisplayTests()
         DisplayFormatter.Tooltip(snapshot, ProviderLabelStyle.Icon, false, korean, claudeSpend),
         "Codex 91%, Claude $42 (이번 달 사용)",
         "The tooltip names the spend as this month's");
+}
+
+// Money alerts: a budget threshold once per local month, Claude extra usage leaving
+// `normal`, Codex reaching its credit overage limit, and nothing at all for an
+// account that does not pay this way. Mirrors
+// Sources/TokenTrackerSmokeTests/CostAlertTests.swift.
+static void RunCostAlertTests()
+{
+    var seoul = TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul");
+    static DateTimeOffset At(string text) => DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+    static CostAmount Usd(string text) => new(decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture));
+    static string Ids(CostAlertResult result) => string.Join(",", result.Alerts.Select(alert => alert.Id));
+    static string Sorted(IEnumerable<string> ids) => string.Join(",", ids.OrderBy(id => id, StringComparer.Ordinal));
+    var korean = new Localizer(AppLanguage.Korean);
+    var english = new Localizer(AppLanguage.English);
+    // 14:00 on November 3rd in Seoul.
+    var now = At("2026-11-03T05:00:00Z");
+    CostState Spent(string? month, string? key = "…1234") => new()
+    {
+        Enabled = true,
+        KeySuffix = key,
+        Cost = new ProviderCost(Provider.Claude, month is null ? null : Usd(month), null, Array.Empty<CostLineItem>(), null, now)
+    };
+    CostAlertResult Evaluate(
+        IReadOnlyDictionary<Provider, CostState> costs,
+        int budget = 100,
+        UsageSnapshot? snapshot = null,
+        IEnumerable<string>? delivered = null,
+        bool notifications = true,
+        DateTimeOffset? time = null,
+        Localizer? localizer = null) =>
+        CostAlertEvaluator.Evaluate(
+            snapshot,
+            costs,
+            new Dictionary<Provider, int> { [Provider.Claude] = budget },
+            delivered ?? Array.Empty<string>(),
+            notifications,
+            time ?? now,
+            seoul,
+            localizer ?? korean);
+    Dictionary<Provider, CostState> Claude(CostState state) => new() { [Provider.Claude] = state };
+    var none = new Dictionary<Provider, CostState>();
+
+    var at84 = Evaluate(Claude(Spent("84.2")));
+    ExpectEqual(Ids(at84), "claude-cost-80-2026-11", "84% of a budget is its 80% alert");
+    ExpectEqual(at84.Alerts[0].Title, "API 비용 예산", "Titled in the user's language");
+    ExpectEqual(at84.Alerts[0].Body, "Anthropic API: 이번 달 $84.20, 예산 $100의 84%", "Naming the organization, the month's spend and the budget");
+    ExpectEqual(Sorted(at84.Delivered), "claude-cost-80-2026-11", "And remembered");
+    Expect(Evaluate(Claude(Spent("90")), delivered: at84.Delivered).Alerts.Count == 0, "The same threshold is not said twice in a month");
+    ExpectEqual(Ids(Evaluate(Claude(Spent("105")), delivered: at84.Delivered)), "claude-cost-100-2026-11", "Reaching the budget is news after 80%");
+    var jump = Evaluate(Claude(Spent("105")));
+    ExpectEqual(Ids(jump), "claude-cost-100-2026-11", "A jump past both thresholds says only 100%");
+    ExpectEqual(Sorted(jump.Delivered), "claude-cost-100-2026-11,claude-cost-80-2026-11", "And counts 80% as said");
+    ExpectEqual(
+        Evaluate(Claude(Spent("84.2")), localizer: english).Alerts[0].Body,
+        "Anthropic API: $84.20 this month, 84% of the $100 budget",
+        "The body in English");
+    Expect(Evaluate(Claude(Spent("79.99"))).Alerts.Count == 0, "Under 80% is no alert");
+    Expect(Evaluate(Claude(Spent("500")), budget: 0).Alerts.Count == 0, "A zero budget is off");
+    Expect(Evaluate(Claude(Spent("500", key: null))).Alerts.Count == 0, "No key, no money, no alert");
+    Expect(Evaluate(Claude(Spent(null))).Alerts.Count == 0, "An untallied month has nothing to say");
+    var off = Evaluate(Claude(Spent("105")), delivered: new[] { "claude-cost-80-2026-11" }, notifications: false);
+    Expect(off.Alerts.Count == 0, "Notifications off sends nothing");
+    ExpectEqual(Sorted(off.Delivered), "claude-cost-80-2026-11", "And records nothing new, so turning them on still says 100%");
+    var december = Evaluate(none, delivered: new[] { "claude-cost-100-2026-11" }, time: At("2026-11-30T15:30:00Z"));
+    Expect(december.Delivered.Count == 0, "A new local month forgets the last one's alerts");
+
+    // Stage 1: the money the subscription responses carry.
+    ProviderUsage ClaudeUsage(string spend) =>
+        UsageParser.ParseClaudeUsage("{\"five_hour\":{\"utilization\":20},\"spend\":" + spend + "}", now);
+    var codexPlus = UsageParser.ParseCodexUsage("""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":false,"unlimited":false,"overage_limit_reached":false,"balance":"0"}}
+        """, now);
+    UsageSnapshot Snapshot(ProviderUsage claude, ProviderUsage? codex = null) => new(claude, codex ?? codexPlus, now);
+    var warning = ClaudeUsage("""{"enabled":true,"used":{"amount_minor":410,"currency":"USD","exponent":2},"limit":{"amount_minor":500,"currency":"USD","exponent":2},"severity":"Warning"}""");
+    var extra = Evaluate(none, snapshot: Snapshot(warning));
+    ExpectEqual(Ids(extra), "claude-extra-warning-2026-11", "Extra usage leaving normal is an alert");
+    ExpectEqual(extra.Alerts[0].Title, "Claude 추가 사용량", "About Claude's extra usage");
+    ExpectEqual(extra.Alerts[0].Body, "추가 사용량이 $4.10 / $5.00입니다.", "With spend against the limit");
+    Expect(Evaluate(none, snapshot: Snapshot(warning), delivered: extra.Delivered).Alerts.Count == 0, "Said once a month");
+    var normal = ClaudeUsage("""{"enabled":true,"used":{"amount_minor":100,"currency":"USD","exponent":2},"severity":"normal"}""");
+    Expect(Evaluate(none, snapshot: Snapshot(normal)).Alerts.Count == 0, "Normal is no news");
+    var pro = ClaudeUsage("""{"used":{"amount_minor":0,"currency":"USD","exponent":2},"limit":null,"percent":0,"severity":"warning","enabled":false}""");
+    Expect(Evaluate(none, snapshot: Snapshot(pro)).Alerts.Count == 0, "With extra usage off there is no alert, whatever the severity");
+
+    Expect(codexPlus.CreditLimitReached is null, "The measured Plus response has no credit limit to reach");
+    var limited = UsageParser.ParseCodexUsage("""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":true,"overage_limit_reached":true,"balance":"0"}}
+        """, now);
+    ExpectEqual(limited.CreditLimitReached, true, "An account holding credits can reach their overage limit");
+    var credits = Evaluate(none, snapshot: Snapshot(pro, limited));
+    ExpectEqual(Ids(credits), "codex-credits-limit-2026-11", "Which is an alert");
+    ExpectEqual(credits.Alerts[0].Body, "Codex 크레딧 초과 사용 한도에 도달했습니다.", "Saying so");
+    var noCredits = UsageParser.ParseCodexUsage("""
+        {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000,"reset_at":1793700000}},
+         "credits":{"has_credits":false,"overage_limit_reached":true,"balance":"0"}}
+        """, now);
+    Expect(noCredits.CreditLimitReached is null, "An account without credits is never told about a credit limit");
+    var recorded = UsageHistoryPolicy.MeasurementsOnly(Snapshot(pro, limited));
+    Expect(recorded.Codex.CreditLimitReached is null, "History keeps no money flags");
 }
 
 static string StatusLinePayload(

@@ -93,6 +93,7 @@ public enum UsageHistoryPolicy {
         var copy = usage
         copy.extraUsage = nil
         copy.creditBalance = nil
+        copy.creditLimitReached = nil
         guard usage.source != .api else { return copy }
         copy.remainingPercent5h = nil
         copy.remainingPercent7d = nil

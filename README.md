@@ -356,6 +356,7 @@ hdiutil create \
 
 ```text
 .
+├── LICENSE
 ├── Package.swift
 ├── Sources
 │   ├── TokenTrackerCore
@@ -371,3 +372,11 @@ hdiutil create \
 │   └── TokenTracker.Windows.Tests
 └── README.md
 ```
+
+## 라이선스
+
+[MIT 라이선스](LICENSE)로 배포합니다.
+
+Claude와 Codex의 이름, 그리고 로고 이미지(`claudeTemplate@2x.png`, `codexTemplate@2x.png`)는 각각
+Anthropic과 OpenAI의 상표이며 이 라이선스에 포함되지 않습니다. Token Tracker는 Anthropic이나
+OpenAI와 관계없는 비공식 도구입니다.

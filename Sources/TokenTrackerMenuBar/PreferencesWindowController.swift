@@ -18,18 +18,31 @@ final class PreferencesWindowController: NSWindowController {
             onNotificationsEnabled: onNotificationsEnabled,
             onCostChange: onCostChange
         )
-        // Tall enough to show every section at once, but never taller than the screen:
-        // a small display scrolls the form instead of pushing the window off-screen.
-        let visibleHeight = NSScreen.main?.visibleFrame.height ?? 800
-        let height = min(PreferencesView.fullHeight, visibleHeight - 80)
-        let window = NSWindow(
-            contentViewController: NSHostingController(rootView: PreferencesView(model: model, height: height))
-        )
-        window.styleMask = [.titled, .closable]
+        let hosting = NSHostingController(rootView: PreferencesView(model: model))
+        // Only the view's min and max bound the window. Its intrinsic size is the whole
+        // form, and letting that in pins the window to it so it can't be resized.
+        hosting.sizingOptions = [.minSize, .maxSize]
+        let window = NSWindow(contentViewController: hosting)
+        window.styleMask = [.titled, .closable, .resizable]
+        // The green button zooms to the screen's height instead of going full screen.
+        window.collectionBehavior = [.fullScreenNone]
         window.title = "Tokki"
         window.isReleasedWhenClosed = false
+        // The form scrolls, so the window opens at a moderate height rather than the
+        // whole form's, and keeps whatever size and place the user gives it.
+        if !window.setFrameUsingName(Self.frameName) {
+            let visibleHeight = NSScreen.main?.visibleFrame.height ?? 800
+            window.setContentSize(NSSize(
+                width: PreferencesView.minWidth,
+                height: min(PreferencesView.defaultHeight, visibleHeight - 80)
+            ))
+            window.center()
+        }
+        window.setFrameAutosaveName(Self.frameName)
         super.init(window: window)
     }
+
+    private static let frameName = "Preferences"
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
@@ -38,7 +51,6 @@ final class PreferencesWindowController: NSWindowController {
 
     func show() {
         showWindow(nil)
-        window?.center()
         NSApp.activate(ignoringOtherApps: true)
     }
 }
@@ -253,10 +265,12 @@ private enum AdminKeyPrompt {
 }
 
 private struct PreferencesView: View {
-    static let fullHeight: CGFloat = 1180
+    static let minWidth: CGFloat = 460
+    static let maxWidth: CGFloat = 720
+    static let minHeight: CGFloat = 320
+    static let defaultHeight: CGFloat = 640
 
     @ObservedObject var model: PreferencesModel
-    let height: CGFloat
 
     var body: some View {
         let localizer = model.localizer
@@ -347,7 +361,12 @@ private struct PreferencesView: View {
         }
         .formStyle(.grouped)
         .toggleStyle(.switch)
-        .frame(width: 460, height: height)
+        .frame(
+            minWidth: Self.minWidth,
+            maxWidth: Self.maxWidth,
+            minHeight: Self.minHeight,
+            maxHeight: .infinity
+        )
     }
 
     /// The organization's API cost: on or off, its Admin key, its monthly budget.

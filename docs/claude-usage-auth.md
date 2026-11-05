@@ -6,7 +6,7 @@ refreshed, or submitted to a live usage endpoint during this investigation.
 
 ## Current implementation
 
-Token Tracker reads Claude Code's stored access token, checks `expiresAt`, and
+Tokki reads Claude Code's stored access token, checks `expiresAt`, and
 requests `https://api.anthropic.com/api/oauth/usage`. It does not own a login flow
 and never spends a refresh token. macOS tries Keychain before the credentials
 file; Windows uses the credentials file. An expired token is renewed by the
@@ -25,7 +25,7 @@ are failures, not successful measurements.
 | --- | --- | --- |
 | Claude Code-managed login | Existing native login and renewal | A login that expires and cannot be refreshed still needs `/login`; there is no permanent-login guarantee. |
 | `claude setup-token` | A one-year token for unattended model requests | Official documentation limits this token to model requests. It is not a replacement credential for subscription usage polling. |
-| Claude Code status-line data | 5-hour and 7-day usage percentages and reset times without Token Tracker reading credentials | Requires a supporting CLI session and data availability; it is not an independent background account poller. |
+| Claude Code status-line data | 5-hour and 7-day usage percentages and reset times without Tokki reading credentials | Requires a supporting CLI session and data availability; it is not an independent background account poller. |
 | Usage and Cost Admin API | Organization API consumption and billing data | This reports a different product's usage, not personal Pro/Max subscription window percentages. |
 | Application-owned refresh-token flow | Could renew short-lived access credentials in an OAuth system | No supported third-party subscription-usage login/refresh integration was established by this research. |
 

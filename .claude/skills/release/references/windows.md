@@ -22,9 +22,9 @@ $ver = '1.2.1'
 $root = "$env:USERPROFILE\release-$ver-verify"
 if (Test-Path $root) { throw "$root exists" }
 New-Item -ItemType Directory "$root\downloads" | Out-Null
-$base = "https://github.com/ChunSam/token-tracker/releases/download/v$ver"
+$base = "https://github.com/ChunSam/tokki/releases/download/v$ver"
 foreach ($rid in 'win-arm64','win-x64') {
-  $zip = "TokenTracker.Windows-v$ver-$rid.zip"
+  $zip = "Tokki-Windows-v$ver-$rid.zip"
   Invoke-WebRequest -UseBasicParsing "$base/$zip" -OutFile "$root\downloads\$zip"
   Invoke-WebRequest -UseBasicParsing "$base/$zip.sha256" -OutFile "$root\downloads\$zip.sha256"
   $bytes = [IO.File]::ReadAllBytes("$root\downloads\$zip.sha256"); $parts = ([Text.Encoding]::ASCII.GetString($bytes)).Trim() -split '\s+'

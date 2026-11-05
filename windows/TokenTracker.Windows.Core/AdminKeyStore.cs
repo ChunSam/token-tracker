@@ -49,7 +49,8 @@ public static class AdminKeyText
 public sealed class DpapiAdminKeyStore : IAdminKeyStore
 {
     // Ties the blob to this app: another program running as the same user has to
-    // know this too.
+    // know this too. It keeps the pre-Tokki name: changing it would make keys
+    // saved by Token Tracker undecryptable.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("Token Tracker admin keys");
 
     public string Path { get; }

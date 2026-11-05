@@ -36,7 +36,7 @@ internal sealed class DiagnosticsReporter
     {
         var lines = new List<string>
         {
-            "Token Tracker Diagnostics",
+            "Tokki Diagnostics",
             $"Generated: {IsoString(DateTimeOffset.Now)}",
             $"App version: {AppVersion}",
             $"OS: {RuntimeInformation.OSDescription}",

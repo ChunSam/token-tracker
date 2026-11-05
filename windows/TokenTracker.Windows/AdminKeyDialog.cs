@@ -116,5 +116,5 @@ internal static class AdminKeyDialog
     }
 
     private static void Fail(IWin32Window owner, string message) =>
-        MessageBox.Show(owner, message, "Token Tracker", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        MessageBox.Show(owner, message, "Tokki", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 }

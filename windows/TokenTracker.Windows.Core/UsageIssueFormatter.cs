@@ -100,7 +100,7 @@ public static class UsageIssueFormatter
         }
 
         // 401/403 from either usage endpoint is, in practice, always a lapsed
-        // access token: Token Tracker reads whatever the provider CLI last stored
+        // access token: Tokki reads whatever the provider CLI last stored
         // and never refreshes it. Reporting it as a generic HTTP error left the
         // user with "refresh again later", which never fixes it.
         if (lower.Contains("credentials expired", StringComparison.Ordinal) ||

@@ -1,4 +1,6 @@
-# Token Tracker 작업 요약
+# Tokki 작업 요약
+
+앱 이름은 Token Tracker였다가 Tokki로 바뀌었다. 내부 식별자와 저장 경로는 옛 이름을 유지한다(`CLAUDE.md`).
 
 ## 목적
 
@@ -117,7 +119,7 @@ Token tracker/
 설정의 `마지막 값 유지 기간`(기본 12시간). 캐시 값은 히스토리·추세·예측에 들어가지 않고 남은 시간도
 붙지 않는다.
 
-토큰 갱신은 각 CLI(`claude`, `codex`)만 한다. Token Tracker는 리프레시 토큰을 쓰지 않는다 —
+토큰 갱신은 각 CLI(`claude`, `codex`)만 한다. Tokki는 리프레시 토큰을 쓰지 않는다 —
 일회용이라 앱이 쓰면 CLI가 로그아웃되고(CodexBar #1161), 약관이 서드파티의 Claude 자격 증명 보유를
 금한다. 대신 Claude는 위 2번에서 후보가 전부 만료면 `ClaudeCLIRefresher`가 설치된 `claude`를 잠깐
 실행한다(설정 `renewClaudeTokenWithCLI`, 기본 켬). 데스크톱 앱은 이 저장소를 갱신하지 않으므로, 이게
@@ -276,7 +278,7 @@ swift run TokenTrackerSmokeTests
 
 ```bash
 scripts/build_app.sh
-swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"
+swift scripts/verify_app_bundle.swift ".build/Tokki.app"
 ```
 
 Intel/Apple Silicon 겸용은 `APP_ARCHS="arm64 x86_64" scripts/build_app.sh`.
@@ -284,7 +286,7 @@ Intel/Apple Silicon 겸용은 `APP_ARCHS="arm64 x86_64" scripts/build_app.sh`.
 앱 실행:
 
 ```bash
-open ".build/Token Tracker.app"
+open ".build/Tokki.app"
 ```
 
 Windows 쪽 명령(`dotnet run`, `dotnet publish`)은 README "개발" 절에 있다. **이 개발 머신에는 dotnet이
@@ -308,7 +310,7 @@ CI로는 보이지 않았다.
 설치 확인:
 
 ```bash
-open "/Applications/Token Tracker.app"
+open "/Applications/Tokki.app"
 osascript -e 'tell application "System Events" to exists process "TokenTrackerMenuBar"'
 ```
 

@@ -14,7 +14,7 @@ import AppKit
 // So assert what only a packaged app can answer: the bundle is inside
 // Contents/Resources, and its icons decode from there — no build directory in reach.
 
-let appPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".build/Token Tracker.app"
+let appPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".build/Tokki.app"
 let appURL = URL(fileURLWithPath: appPath)
 var failures: [String] = []
 

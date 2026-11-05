@@ -1,10 +1,10 @@
-# Token Tracker status-line bridge (Windows).
+# Tokki status-line bridge (Windows).
 #
 # The Windows port of scripts/claude-statusline-bridge.sh — same file format,
 # same rules. Claude Code hands its status-line command the account's 5-hour and
-# 7-day usage percentages on stdin. Token Tracker cannot ask for those itself
+# 7-day usage percentages on stdin. Tokki cannot ask for those itself
 # once the access token Claude Code stored has lapsed, because only the CLI
-# refreshes it. This script records just those numbers where Token Tracker reads
+# refreshes it. This script records just those numbers where Tokki reads
 # them, then runs whatever status-line command you already had, with the same
 # stdin, so your status line keeps printing exactly what it printed before.
 #
@@ -41,6 +41,7 @@ $payload = [Console]::In.ReadToEnd()
 
 $outPath = $env:TOKEN_TRACKER_STATUSLINE_FILE
 if ([string]::IsNullOrWhiteSpace($outPath)) {
+    # The folder keeps the app's pre-Tokki name; see AppPaths.AppDataDirectory.
     $outPath = Join-Path (Join-Path $env:APPDATA 'Token Tracker') 'claude-statusline.json'
 }
 

@@ -7,7 +7,7 @@ namespace TokenTracker.Windows.Core;
 /// A Claude usage reading that came from Claude Code's own status line, relayed
 /// through a local file by <c>scripts/claude-statusline-bridge.ps1</c>.
 ///
-/// Token Tracker only <em>reads</em> the access token Claude Code stores; nothing
+/// Tokki only <em>reads</em> the access token Claude Code stores; nothing
 /// here refreshes it. Once that token lapses — which it does whenever the CLI has
 /// not been run for a few hours — the API path has nothing usable to send and
 /// Claude collection stops entirely until the user runs <c>/login</c> again. The

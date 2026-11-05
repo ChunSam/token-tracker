@@ -8,6 +8,8 @@ enum AppPaths {
     static var cacheDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? home.appendingPathComponent("Library/Application Support")
+        // The app was called Token Tracker before it became Tokki. The folder keeps
+        // that name so existing caches, history and the status-line file stay put.
         return base.appendingPathComponent("Token Tracker", isDirectory: true)
     }
 

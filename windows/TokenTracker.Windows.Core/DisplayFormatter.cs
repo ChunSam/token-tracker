@@ -246,7 +246,7 @@ public static class DisplayFormatter
     {
         if (snapshot is null)
         {
-            return "Token Tracker: loading";
+            return "Tokki: loading";
         }
 
         var text = localizer ?? new Localizer(AppLanguage.English);

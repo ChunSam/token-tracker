@@ -45,16 +45,16 @@ jobs:
         run: bash scripts/build_app.sh
 
       - name: Verify app bundle
-        run: swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"
+        run: swift scripts/verify_app_bundle.swift ".build/Tokki.app"
 
       - name: Package DMG
         shell: bash
         run: |
           mkdir -p dist
-          DMG="TokenTracker-${{ steps.version.outputs.version }}-macOS.dmg"
+          DMG="Tokki-${{ steps.version.outputs.version }}-macOS.dmg"
           hdiutil create \
-            -volname "Token Tracker" \
-            -srcfolder ".build/Token Tracker.app" \
+            -volname "Tokki" \
+            -srcfolder ".build/Tokki.app" \
             -ov \
             -fs HFS+ \
             -format UDZO \
@@ -68,7 +68,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TokenTracker-${{ steps.version.outputs.version }}-macOS
+          name: Tokki-${{ steps.version.outputs.version }}-macOS
           path: dist/
           if-no-files-found: error
 
@@ -121,17 +121,17 @@ jobs:
           /p:Version=${{ steps.version.outputs.app_version }}
           /p:AssemblyVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
           /p:FileVersion=${{ steps.version.outputs.app_version }}.${{ github.run_number }}
-          -o artifacts/TokenTracker.Windows-${{ matrix.rid }}
+          -o artifacts/Tokki-Windows-${{ matrix.rid }}
 
       - name: Package Windows zip
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive `
-            -Path artifacts/TokenTracker.Windows-${{ matrix.rid }}/* `
-            -DestinationPath "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" `
+            -Path artifacts/Tokki-Windows-${{ matrix.rid }}/* `
+            -DestinationPath "dist/Tokki-Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" `
             -Force
-          $zip = "dist/TokenTracker.Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip"
+          $zip = "dist/Tokki-Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip"
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           $name = Split-Path $zip -Leaf
           # LF, not the CRLF Out-File writes: shasum/sha256sum read the filename
@@ -149,7 +149,7 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TokenTracker.Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}
+          name: Tokki-Windows-${{ steps.version.outputs.version }}-${{ matrix.rid }}
           path: dist/
           if-no-files-found: error
 
@@ -181,7 +181,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          name: Token Tracker ${{ steps.version.outputs.version }}
+          name: Tokki ${{ steps.version.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release-assets/*

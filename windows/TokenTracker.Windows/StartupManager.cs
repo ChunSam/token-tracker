@@ -6,6 +6,8 @@ namespace TokenTracker.Windows;
 internal static class StartupManager
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    // Keeps the pre-Tokki name so the Run entry users already enabled is the one
+    // this toggle reads and removes, instead of leaving a second entry behind.
     private const string ValueName = "Token Tracker";
 
     public static bool IsEnabled()

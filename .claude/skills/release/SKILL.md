@@ -1,6 +1,6 @@
 ---
 name: release
-description: Token Tracker 새 버전을 릴리스하고 배포 산출물을 받아 설치·실행까지 확인한다. "릴리스해", "vX.Y.Z 내줘"에 발동한다.
+description: Tokki 새 버전을 릴리스하고 배포 산출물을 받아 설치·실행까지 확인한다. "릴리스해", "vX.Y.Z 내줘"에 발동한다.
 ---
 
 # release
@@ -17,6 +17,6 @@ description: Token Tracker 새 버전을 릴리스하고 배포 산출물을 받
 
 ## Gotchas
 - 상태 항목은 `/Applications`에서 실행할 때만 보인다.
-- 종료 먼저. bundle id가 같아 나중에 뜬 쪽이 물러난다.
+- 종료 먼저. bundle id가 같아 나중에 뜬 쪽이 물러난다. 옛 `Token Tracker.app`도 휴지통으로.
 - `rm -rf`하지 않는다.
 - Admin 키가 있으면 설치 뒤 키체인 암호 창이 뜬다. 사용자만 답할 수 있고, 그 전엔 비용이 안 나온다.

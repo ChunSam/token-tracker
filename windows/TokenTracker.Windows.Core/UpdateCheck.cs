@@ -9,8 +9,8 @@ namespace TokenTracker.Windows.Core;
 /// <c>Sources/TokenTrackerCore/UpdateCheck.swift</c>.
 public static class UpdateCheck
 {
-    public static readonly Uri LatestReleaseApi = new("https://api.github.com/repos/ChunSam/token-tracker/releases/latest");
-    public static readonly Uri ReleasesPage = new("https://github.com/ChunSam/token-tracker/releases/latest");
+    public static readonly Uri LatestReleaseApi = new("https://api.github.com/repos/ChunSam/tokki/releases/latest");
+    public static readonly Uri ReleasesPage = new("https://github.com/ChunSam/tokki/releases/latest");
 
     /// Once a day is plenty for releases cut by hand, and far inside GitHub's 60
     /// unauthenticated requests an hour.
@@ -107,7 +107,7 @@ public static class UpdateCheck
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
-            request.Headers.UserAgent.ParseAdd("TokenTracker");
+            request.Headers.UserAgent.ParseAdd("Tokki");
             using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {

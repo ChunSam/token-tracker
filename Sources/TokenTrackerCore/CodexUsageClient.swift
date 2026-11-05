@@ -17,7 +17,7 @@ struct CodexUsageClient: Sendable {
             return .unavailable(.codex, error: error.localizedDescription)
         }
 
-        // `codex login` refreshes this token; Token Tracker only reads it. Once it
+        // `codex login` refreshes this token; Tokki only reads it. Once it
         // lapses the endpoint answers a bare `HTTP 401`, which tells the user
         // nothing about needing to sign in again — so name the cause here instead.
         let expiresAt = CredentialExpiry.jwtExpiry(auth.accessToken)

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Token Tracker status-line bridge (macOS / Linux).
+# Tokki status-line bridge (macOS / Linux).
 #
 # Claude Code's status line is handed, on stdin, the 5-hour and 7-day usage
-# percentages for the account. Token Tracker cannot ask for those itself once the
+# percentages for the account. Tokki cannot ask for those itself once the
 # access token Claude Code stored has lapsed, because only the CLI refreshes it.
-# This script records just those numbers to a local file that Token Tracker
+# This script records just those numbers to a local file that Tokki
 # reads, and then runs whatever status-line command you already had, with the
 # same stdin, so your status line keeps printing exactly what it printed before.
 #
@@ -42,6 +42,7 @@ fi
 
 PAYLOAD=$(cat)
 
+# The folder keeps the app's pre-Tokki name; see AppPaths.cacheDirectory.
 OUT=${TOKEN_TRACKER_STATUSLINE_FILE:-"$HOME/Library/Application Support/Token Tracker/claude-statusline.json"}
 
 PYTHON=$(command -v python3 || command -v python || true)

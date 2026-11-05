@@ -59,6 +59,7 @@ public enum AdminKeyText {
 public struct KeychainAdminKeyStore: AdminKeyStoring {
     private let service: String
 
+    // Keeps the pre-Tokki name: keys saved by Token Tracker are found under it.
     public init(service: String = "Token Tracker") {
         self.service = service
     }

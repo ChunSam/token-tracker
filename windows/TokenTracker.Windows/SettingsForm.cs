@@ -28,7 +28,7 @@ internal sealed class SettingsForm : Form
         this.onCostChange = onCostChange;
         localizer = new Localizer(settings.Language);
 
-        Text = "Token Tracker";
+        Text = "Tokki";
         Width = 470;
         Height = 600;
         FormBorderStyle = FormBorderStyle.FixedDialog;

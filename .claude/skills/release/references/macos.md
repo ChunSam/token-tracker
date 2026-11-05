@@ -8,7 +8,7 @@
   찾는다. `strings`는 UTF-8 한국어를 잡지 못해 "없다"로 오판한다.
 - 팝업·설정창은 `screencapture -x -o -l <windowID>`로 창 번호를 지정해 찍는다. `-R`(영역)은
   그 자리에 겹친 다른 창을 찍는다. 창 번호는 `CGWindowListCopyWindowInfo`에서 소유자
-  `Token Tracker`로 찾는다(팝오버는 layer 25). 키체인 프롬프트의 소유자는 `SecurityAgent`다.
+  `Tokki`로 찾는다(팝오버는 layer 25). 키체인 프롬프트의 소유자는 `SecurityAgent`다.
 - 팝업은 computer-use로 보이지 않는다. System Events로 연다:
   `tell application "System Events" to tell process "TokenTrackerMenuBar" to click (first menu bar item of (last menu bar))`
   (1.2.0부터 숨은 편집 메뉴 때문에 메뉴 막대가 두 개이고, 상태 항목은 마지막 것에 있다.)

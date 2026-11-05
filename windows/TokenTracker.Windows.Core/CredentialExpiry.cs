@@ -4,7 +4,7 @@ namespace TokenTracker.Windows.Core;
 
 /// <summary>
 /// Both providers store a short-lived OAuth access token that only their own CLI
-/// refreshes; Token Tracker just reads it. Sending an already-expired token to the
+/// refreshes; Tokki just reads it. Sending an already-expired token to the
 /// usage endpoint returns something opaque and, for Anthropic, actively harmful:
 /// <c>/api/oauth/usage</c> answers 429 for repeated expired-token requests, which
 /// the rate-limit backoff then treats as a real quota cooldown and keeps blocking

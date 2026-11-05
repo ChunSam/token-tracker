@@ -1,8 +1,8 @@
 # Claude Status-Line Bridge
 
-The bridge gives Token Tracker a Claude usage reading that does not depend on the
+The bridge gives Tokki a Claude usage reading that does not depend on the
 stored access token. It exists because of a failure mode this app cannot fix on
-its own: Token Tracker only *reads* the token Claude Code saves, and only the CLI
+its own: Tokki only *reads* the token Claude Code saves, and only the CLI
 refreshes it, so once that token lapses Claude collection stops until the CLI is
 next run. Starting `claude` is normally enough — the refresh token outlives the
 access token by weeks — and `/login` is the fix only once that refresh token has
@@ -114,7 +114,7 @@ handling.
 The whole design turns on one distinction. A status-line command re-runs on the
 CLI's own schedule, so **being written again is not evidence that the account was
 measured again**. A replayed payload that looked fresh would do exactly what
-[PR #38](https://github.com/ChunSam/token-tracker/pull/38) had just fixed:
+[PR #38](https://github.com/ChunSam/tokki/pull/38) had just fixed:
 present a stale number as the current state of the account indefinitely.
 
 So the bridge keeps them apart:

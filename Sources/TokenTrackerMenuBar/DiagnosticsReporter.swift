@@ -13,7 +13,7 @@ struct DiagnosticsReporter {
 
     func diagnosticsText() -> String {
         var lines: [String] = []
-        lines.append("Token Tracker Diagnostics")
+        lines.append("Tokki Diagnostics")
         lines.append("Generated: \(isoString(Date()))")
         lines.append("App version: \(appVersion) (\(appBuild))")
         lines.append("Bundle id: \(Bundle.main.bundleIdentifier ?? "unknown")")

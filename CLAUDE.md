@@ -8,9 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 저장소의 형태
 
 Claude Code / Codex 사용량을 상시 표시하는 **macOS 메뉴바 앱(Swift)과 Windows 트레이 앱(C#)**,
-두 개의 포트다. 로직은 `Sources/TokenTrackerCore/`와 `windows/TokenTracker.Windows.Core/`에
-**파일 단위로 1:1 대응**하고, UI만 플랫폼별로 다르다(`TokenTrackerMenuBar/` ↔
-`TokenTracker.Windows/`). Core 변경은 양쪽에 같이 넣고 양쪽 테스트에 같은 진리표를 추가한다.
+두 개의 포트다. 앱 이름은 **Tokki**(이전 Token Tracker)다. 로직은 `Sources/TokenTrackerCore/`와
+`windows/TokenTracker.Windows.Core/`에 **파일 단위로 1:1 대응**하고, UI만 플랫폼별로 다르다
+(`TokenTrackerMenuBar/` ↔ `TokenTracker.Windows/`). Core 변경은 양쪽에 같이 넣고 양쪽 테스트에 같은
+진리표를 추가한다.
+
+보이는 이름만 Tokki다. 모듈·네임스페이스·exe·번들 ID는 옛 이름 그대로이고, **설정 폴더·키체인
+서비스·DPAPI 엔트로피·Run 키 값의 `Token Tracker`는 바꾸지 않는다** — 바꾸면 기존 사용자의 설정·
+히스토리·Admin 키가 사라진다.
 
 Core는 순수 함수/타입이고 `now`를 주입받는다. HTTP·UI 하네스가 없어서, 그렇게 쓰지 않으면
 테스트할 방법이 없다.
@@ -21,7 +26,7 @@ Core는 순수 함수/타입이고 `now`를 주입받는다. HTTP·UI 하네스�
 swift build                                            # macOS 전체 빌드
 swift run TokenTrackerSmokeTests                       # macOS 테스트 (통과 시 "TokenTrackerSmokeTests passed")
 scripts/build_app.sh                                   # .app 조립 (APP_ARCHS="arm64 x86_64" 로 universal)
-swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"   # 조립된 .app 자체 검사
+swift scripts/verify_app_bundle.swift ".build/Tokki.app"   # 조립된 .app 자체 검사
 dotnet run --project windows/TokenTracker.Windows.Tests/TokenTracker.Windows.Tests.csproj
 ```
 

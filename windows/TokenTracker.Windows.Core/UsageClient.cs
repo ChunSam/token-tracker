@@ -65,7 +65,7 @@ public sealed class UsageClient
             return ProviderUsage.Unavailable(Provider.Codex, ex.Message);
         }
 
-        // `codex login` refreshes this token; Token Tracker only reads it. Once
+        // `codex login` refreshes this token; Tokki only reads it. Once
         // it lapses the endpoint answers a bare HTTP 401, which tells the user
         // nothing about needing to sign in again — so name the cause here.
         if (CredentialExpiry.IsExpired(auth.ExpiresAt))

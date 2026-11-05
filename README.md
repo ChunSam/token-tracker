@@ -1,6 +1,6 @@
-# Token Tracker
+# Tokki
 
-macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용량 잔량을 확인하는 작은 앱입니다.
+macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용량 잔량을 확인하는 작은 앱입니다. 이전 이름은 Token Tracker입니다.
 
 ## 주요 기능
 
@@ -40,16 +40,26 @@ macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용�
 
 GitHub Releases에서 최신 DMG를 다운로드합니다.
 
-[Releases](https://github.com/ChunSam/token-tracker/releases)
+[Releases](https://github.com/ChunSam/tokki/releases)
 
-DMG를 열고 `Token Tracker.app`을 `/Applications`로 복사한 뒤 실행합니다.
+DMG를 열고 `Tokki.app`을 `/Applications`로 복사한 뒤 실행합니다.
 
 현재 배포 파일은 Apple 공증을 거친 빌드가 아니므로 다른 Mac에서는 Gatekeeper 경고가 뜰 수 있습니다. 임시로 실행해야 한다면 `/Applications`에 복사한 뒤 아래 명령을 실행합니다.
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Token Tracker.app"
-open "/Applications/Token Tracker.app"
+xattr -dr com.apple.quarantine "/Applications/Tokki.app"
+open "/Applications/Tokki.app"
 ```
+
+### Token Tracker에서 넘어올 때
+
+설정, 히스토리, Admin 키는 이름이 바뀌어도 그대로 이어집니다.
+
+- **macOS**: 실행 중인 Token Tracker를 종료하고 `/Applications/Token Tracker.app`을 휴지통으로 옮긴 뒤
+  Tokki를 설치합니다. 두 앱은 같은 앱으로 취급돼서, 둘 다 있으면 나중에 실행한 쪽이 스스로 종료됩니다.
+  로그인 시 자동 실행은 다시 켜야 할 수 있습니다.
+- **Windows**: 새 zip을 풀어 실행합니다. 자동 실행을 켜 두었다면 설정에서 한 번 껐다가 다시 켜야
+  새 위치로 바뀝니다. 그 뒤에는 예전 폴더를 지워도 됩니다.
 
 ### 메뉴바 팝업
 
@@ -153,12 +163,12 @@ Admin 키로 이번 달 사용 금액을 볼 수 있습니다. 구독 한도와 
 
 ## 사용량을 못 불러올 때
 
-Token Tracker는 각 CLI가 저장해 둔 액세스 토큰을 읽기만 하고, 직접 갱신하지 않습니다.
+Tokki는 각 CLI가 저장해 둔 액세스 토큰을 읽기만 하고, 직접 갱신하지 않습니다.
 따라서 CLI를 한동안 쓰지 않아 토큰이 만료되면 잔량을 새로 가져올 수 없습니다.
 
 ### Claude 토큰 자동 갱신
 
-Claude 토큰이 만료돼 있으면 Token Tracker가 설치된 Claude Code(`claude`)를 잠깐 실행합니다.
+Claude 토큰이 만료돼 있으면 Tokki가 설치된 Claude Code(`claude`)를 잠깐 실행합니다.
 Claude Code는 시작하자마자 저장된 토큰을 스스로 갱신하므로, 그 뒤 다시 읽으면 잔량을 가져올 수
 있습니다. 터미널에서 `claude`를 한 번 실행하는 것과 같은 일이고, 데스크톱 앱만 쓰는 경우에도
 토큰이 유지됩니다. 설정의 `Claude Code로 토큰 자동 갱신`으로 끌 수 있습니다(기본 켬).
@@ -287,7 +297,7 @@ Apple Silicon Mac에서는 UTM의 Windows 11 Arm 가상 머신으로 테스트·
 dotnet run --project windows/TokenTracker.Windows
 ```
 
-Windows에서는 앱이 알림 영역 아이콘을 강제로 상시 표시하도록 설정할 수 없습니다. 우클릭 메뉴의 `Always Show Icon Settings...`를 눌러 Windows 작업표시줄 설정을 열고, 알림 영역/시스템 트레이 아이콘 목록에서 `Token Tracker`를 켜야 합니다.
+Windows에서는 앱이 알림 영역 아이콘을 강제로 상시 표시하도록 설정할 수 없습니다. 우클릭 메뉴의 `Always Show Icon Settings...`를 눌러 Windows 작업표시줄 설정을 열고, 알림 영역/시스템 트레이 아이콘 목록에서 `Tokki`를 켜야 합니다.
 
 ### Windows 릴리즈 빌드
 
@@ -325,13 +335,13 @@ APP_ARCHS="arm64 x86_64" scripts/build_app.sh
 생성 결과:
 
 ```text
-.build/Token Tracker.app
+.build/Tokki.app
 ```
 
 ### macOS 앱 실행
 
 ```bash
-open ".build/Token Tracker.app"
+open ".build/Tokki.app"
 ```
 
 ## 배포 메모
@@ -342,12 +352,12 @@ open ".build/Token Tracker.app"
 
 ```bash
 hdiutil create \
-  -volname "Token Tracker" \
-  -srcfolder ".build/Token Tracker.app" \
+  -volname "Tokki" \
+  -srcfolder ".build/Tokki.app" \
   -ov \
   -fs HFS+ \
   -format UDZO \
-  "dist/TokenTracker-vX.Y.Z-macOS.dmg"
+  "dist/Tokki-vX.Y.Z-macOS.dmg"
 ```
 
 다른 Mac에서 일반적인 더블클릭 실행까지 안정적으로 지원하려면 Developer ID 코드 서명과 Apple notarization이 필요합니다.
@@ -378,5 +388,5 @@ hdiutil create \
 [MIT 라이선스](LICENSE)로 배포합니다.
 
 Claude와 Codex의 이름, 그리고 로고 이미지(`claudeTemplate@2x.png`, `codexTemplate@2x.png`)는 각각
-Anthropic과 OpenAI의 상표이며 이 라이선스에 포함되지 않습니다. Token Tracker는 Anthropic이나
+Anthropic과 OpenAI의 상표이며 이 라이선스에 포함되지 않습니다. Tokki는 Anthropic이나
 OpenAI와 관계없는 비공식 도구입니다.

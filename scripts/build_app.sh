@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Token Tracker"
+APP_NAME="Tokki"
 APP_VERSION="${APP_VERSION:-1.2.1}"
 APP_BUILD="${APP_BUILD:-22}"
 APP_ARCHS="${APP_ARCHS:-$(uname -m)}"
@@ -89,9 +89,9 @@ cat > "${BUNDLE_DIR}/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>local.token-tracker.menubar</string>
   <key>CFBundleName</key>
-  <string>Token Tracker</string>
+  <string>Tokki</string>
   <key>CFBundleDisplayName</key>
-  <string>Token Tracker</string>
+  <string>Tokki</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

@@ -102,7 +102,7 @@ public enum UsageIssueFormatter {
             return .missingCredentials
         }
         // 401/403 from either usage endpoint is, in practice, always a lapsed
-        // access token: Token Tracker reads whatever the provider CLI last stored
+        // access token: Tokki reads whatever the provider CLI last stored
         // and never refreshes it. Reporting it as a generic HTTP error left the
         // user with "refresh again later", which never fixes it.
         if lower.contains("credentials expired") || lower.contains("http 401") || lower.contains("http 403") {

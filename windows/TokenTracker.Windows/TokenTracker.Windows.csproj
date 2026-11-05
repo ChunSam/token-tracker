@@ -8,6 +8,10 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- The name Task Manager and the file's properties show. The exe and assembly
+         keep their TokenTracker names. -->
+    <Product>Tokki</Product>
+    <AssemblyTitle>Tokki</AssemblyTitle>
     <!-- Local default, kept in step with scripts/build_app.sh's APP_VERSION; release
          publishes override it from the tag and stamp the run number into the revision. -->
     <Version>1.2.1</Version>

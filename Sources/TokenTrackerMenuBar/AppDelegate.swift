@@ -497,7 +497,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func exportHistoryCSV() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "token-tracker-history.csv"
+        panel.nameFieldStringValue = "tokki-history.csv"
         panel.allowedContentTypes = [.commaSeparatedText]
         guard panel.runModal() == .OK, let url = panel.url else {
             return

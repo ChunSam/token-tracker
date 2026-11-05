@@ -1,6 +1,6 @@
 ---
 name: status
-description: Token Tracker의 저장소·PR·릴리스·설치본·보류 항목을 훑어 남은 일을 보고한다. "상태 확인", "남은 작업 있는지 확인"에 발동한다. 인수인계 파일을 쓰거나 이어받는 것은 handoff다.
+description: Tokki(이전 Token Tracker)의 저장소·PR·릴리스·설치본·보류 항목을 훑어 남은 일을 보고한다. "상태 확인", "남은 작업 있는지 확인"에 발동한다. 인수인계 파일을 쓰거나 이어받는 것은 handoff다.
 ---
 
 # status

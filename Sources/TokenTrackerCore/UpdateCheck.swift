@@ -4,8 +4,8 @@ import Foundation
 /// installed by hand from GitHub Releases, so the most it can do is say a new
 /// version exists and link to the page that has it.
 public enum UpdateCheck {
-    public static let latestReleaseAPI = URL(string: "https://api.github.com/repos/ChunSam/token-tracker/releases/latest")!
-    public static let releasesPage = URL(string: "https://github.com/ChunSam/token-tracker/releases/latest")!
+    public static let latestReleaseAPI = URL(string: "https://api.github.com/repos/ChunSam/tokki/releases/latest")!
+    public static let releasesPage = URL(string: "https://github.com/ChunSam/tokki/releases/latest")!
 
     /// Once a day is plenty for releases cut by hand, and far inside GitHub's 60
     /// unauthenticated requests an hour.
@@ -60,7 +60,7 @@ public enum UpdateCheck {
         do {
             let json = try await HTTPClient().getJSON(
                 url: latestReleaseAPI,
-                headers: ["Accept": "application/vnd.github+json", "User-Agent": "TokenTracker"],
+                headers: ["Accept": "application/vnd.github+json", "User-Agent": "Tokki"],
                 timeout: 10,
                 serviceName: "GitHub"
             )

@@ -5,6 +5,8 @@ public static class AppPaths
     public static string HomeDirectory =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
+    // The app was called Token Tracker before it became Tokki. The folder keeps
+    // that name so existing settings, history and the status-line file stay put.
     public static string AppDataDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Token Tracker");
 

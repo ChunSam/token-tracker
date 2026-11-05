@@ -26,7 +26,7 @@ final class PreferencesWindowController: NSWindowController {
             contentViewController: NSHostingController(rootView: PreferencesView(model: model, height: height))
         )
         window.styleMask = [.titled, .closable]
-        window.title = "Token Tracker"
+        window.title = "Tokki"
         window.isReleasedWhenClosed = false
         super.init(window: window)
     }

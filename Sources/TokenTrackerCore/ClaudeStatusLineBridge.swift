@@ -3,7 +3,7 @@ import Foundation
 /// A Claude usage reading that came from Claude Code's own status line, relayed
 /// through a local file by `scripts/claude-statusline-bridge.sh`.
 ///
-/// Token Tracker only *reads* the access token Claude Code stores; nothing here
+/// Tokki only *reads* the access token Claude Code stores; nothing here
 /// refreshes it. Once that token lapses — which it does whenever the CLI has not
 /// been run for a few hours — the API path has nothing usable to send and Claude
 /// collection stops entirely until the user runs `/login` again. The status line

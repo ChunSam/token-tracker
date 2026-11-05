@@ -73,7 +73,7 @@ jobs:
         run: bash scripts/build_app.sh
 
       - name: Verify app bundle
-        run: swift scripts/verify_app_bundle.swift ".build/Token Tracker.app"
+        run: swift scripts/verify_app_bundle.swift ".build/Tokki.app"
 
   windows:
     name: Windows build + tests

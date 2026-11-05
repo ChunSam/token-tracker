@@ -52,7 +52,7 @@ internal sealed class TrayAppContext : ApplicationContext
         settings.LaunchAtLogin = StartupManager.IsEnabled();
 
         notifyIcon.Visible = true;
-        notifyIcon.Text = "Token Tracker";
+        notifyIcon.Text = "Tokki";
         notifyIcon.ContextMenuStrip = BuildMenu();
         // Built when a poll lands but opened any time up to a whole refresh interval
         // later, the menu read "updated 0s ago" and its reset countdowns as of the
@@ -140,7 +140,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
 
         refreshing = true;
-        notifyIcon.Text = TrimTooltip("Token Tracker: refreshing...");
+        notifyIcon.Text = TrimTooltip("Tokki: refreshing...");
 
         try
         {
@@ -180,7 +180,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            notifyIcon.Text = TrimTooltip($"Token Tracker: {ex.Message}");
+            notifyIcon.Text = TrimTooltip($"Tokki: {ex.Message}");
         }
         finally
         {
@@ -592,7 +592,7 @@ internal sealed class TrayAppContext : ApplicationContext
         root.DropDownItems.Add(Localizer.Text(L10nKey.CopyDiagnostics), null, (_, _) =>
         {
             Clipboard.SetText(Diagnostics().DiagnosticsText());
-            notifyIcon.ShowBalloonTip(3000, "Token Tracker", Localizer.Text(L10nKey.DiagnosticsCopied), ToolTipIcon.Info);
+            notifyIcon.ShowBalloonTip(3000, "Tokki", Localizer.Text(L10nKey.DiagnosticsCopied), ToolTipIcon.Info);
         });
         root.DropDownItems.Add(new ToolStripSeparator());
         root.DropDownItems.Add(Localizer.Text(L10nKey.OpenClaudeCredentials), null, (_, _) => RevealInExplorer(DiagnosticsReporter.ClaudeCredentialsPath));
@@ -679,7 +679,7 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         using var dialog = new SaveFileDialog
         {
-            FileName = "token-tracker-history.csv",
+            FileName = "tokki-history.csv",
             Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
             DefaultExt = "csv",
             AddExtension = true
@@ -696,7 +696,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Token Tracker", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(ex.Message, "Tokki", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
@@ -852,7 +852,7 @@ internal sealed class TrayAppContext : ApplicationContext
 
             notifyIcon.ShowBalloonTip(
                 5000,
-                "Token Tracker",
+                "Tokki",
                 Localizer.Text(L10nKey.TaskbarSettingsTip),
                 ToolTipIcon.Info);
         }
@@ -860,7 +860,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             MessageBox.Show(
                 $"{Localizer.Text(L10nKey.TaskbarSettingsFallback)}\n\n{ex.Message}",
-                "Token Tracker",
+                "Tokki",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -877,7 +877,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Token Tracker", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(ex.Message, "Tokki", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

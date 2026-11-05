@@ -34,6 +34,10 @@ public static class AppPaths
     public static string CostCachePath =>
         Path.Combine(AppDataDirectory, "cost-cache.json");
 
+    /// The size the user last gave the settings window.
+    public static string SettingsWindowPath =>
+        Path.Combine(AppDataDirectory, "settings-window.json");
+
     /// Both Admin keys, encrypted with DPAPI for the signed-in user.
     public static string AdminKeysPath =>
         Path.Combine(AppDataDirectory, "admin-keys.dat");

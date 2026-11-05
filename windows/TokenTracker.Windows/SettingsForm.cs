@@ -29,12 +29,26 @@ internal sealed class SettingsForm : Form
         localizer = new Localizer(settings.Language);
 
         Text = "Tokki";
-        Width = 470;
-        Height = 600;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        // The content scrolls, so the window can be any height the user likes,
+        // and opens at the size it was last given.
+        FormBorderStyle = FormBorderStyle.Sizable;
+        // A sizable window shows its icon, and this form has only WinForms' default.
+        ShowIcon = false;
         MaximizeBox = false;
         MinimizeBox = false;
+        MinimumSize = new Size(470, 340);
+        Size = SettingsWindowSize.Load(
+            new Size(470, 600),
+            MinimumSize,
+            Screen.FromPoint(Cursor.Position).WorkingArea.Size);
         StartPosition = FormStartPosition.CenterScreen;
+        FormClosed += (_, _) =>
+        {
+            if (WindowState == FormWindowState.Normal)
+            {
+                SettingsWindowSize.Save(Size);
+            }
+        };
 
         BuildContent();
     }

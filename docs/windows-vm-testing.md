@@ -78,6 +78,34 @@ Signing in to Claude Code is the one step that stays manual: run `claude` in a
 terminal inside the VM and finish the browser sign-in there. That sign-in is the
 VM's own and does not touch the Mac's credentials.
 
+## Driving the app's windows
+
+Checking the resizable settings window (2026-11-05, PR #83) took six rounds;
+these are what cost them.
+
+- Publish with the release's flags (`--self-contained true
+  /p:PublishSingleFile=true`). A framework-dependent build only shows "You must
+  install .NET Desktop Runtime": the per-user SDK is not a registered runtime.
+- Click menu items with `mouse_event` on the UIA element's bounding rectangle,
+  not with `InvokePattern`. Invoking the tray menu's `설정...` opened the form
+  with its controls never painted, and a later `SetWindowPos` on it never
+  returned.
+- Call `SetProcessDPIAware()` first so UIA rectangles, `GetWindowRect` and the
+  cursor are all in physical pixels.
+- Resize another process's window with `SWP_ASYNCWINDOWPOS` (`0x4000`); a
+  synchronous `SetWindowPos` waits on that window's thread. A user's drag is a
+  left-down 3 px above `GetWindowRect`'s bottom (inside Windows 11's invisible
+  resize border), absolute `mouse_event` moves, and a left-up.
+- PowerShell passes `-150` in a command argument as a string, and `$dy * $i`
+  then repeats it. Type the parameters (`[int]$dy`).
+- `Stop-Process -Force` leaves the tray icon behind until the pointer passes
+  over it, and right-clicking that ghost opens nothing. Sweep the pointer across
+  the tray before looking for the new icon.
+- A script that dies between left-down and left-up leaves the button held; start
+  the next one with a left-up.
+- The script's output reaches the Mac only when it ends, so a hung step shows
+  nothing at all.
+
 ## Renewal test
 
 [Claude token renewal](../README.md#claude-토큰-자동-갱신) can be tested without

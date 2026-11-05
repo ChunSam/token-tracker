@@ -61,4 +61,6 @@ Get-WinEvent -FilterHashtable @{LogName='Application'; Level=1,2; StartTime=$sta
   스크립트의 `IsPromoted=1`이 필요하다. 그래야 UIA로 `Shell_TrayWnd` 아래 Button으로 잡힌다.
 - 바뀐 메뉴를 확인할 때는 `mouse_event`로 아이콘을 우클릭하고, 열린 메뉴를 최상위 `Menu`
   요소로 읽는다. UIA Button의 Name은 "첫 툴팁 + 현재 툴팁"이 붙은 값이라 화면의 툴팁이 아니다.
+- 메뉴 항목도 `mouse_event`로 클릭한다. UIA `InvokePattern`으로 연 설정창은 컨트롤이 그려지지
+  않았다. 창을 다루는 다른 함정은 `docs/windows-vm-testing.md`의 "Driving the app's windows"에 있다.
 - 끝나면 확인 폴더는 남겨 두고, 지울지 사용자에게 묻는다.

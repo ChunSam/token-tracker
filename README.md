@@ -1,55 +1,122 @@
 # Tokki
 
-macOS 메뉴바와 Windows 시스템 트레이에서 Claude와 Codex의 사용량 잔량을 확인하는 작은 앱입니다. 이전 이름은 Token Tracker입니다.
+<img src="docs/images/menubar.png" alt="메뉴바의 Tokki — Codex 100% 4h56m · Claude 100%" width="200">
+
+macOS 메뉴바와 Windows 시스템 트레이에서 **Claude Code와 Codex의 사용량 잔량**(5시간·7일)과 리셋까지
+남은 시간을 보여 주는 작은 앱입니다. 이전 이름은 Token Tracker입니다.
+
+<img src="docs/images/popup.png" alt="Tokki 팝업 — Claude와 Codex 카드에 5시간·7일 잔량 막대, 리셋까지 남은 시간, 페이스, API 비용" width="346">
+
+- 각 CLI가 저장해 둔 토큰을 **읽기만** 합니다. 로그인하거나 토큰을 직접 갱신하지 않습니다.
+- 사용 통계를 보내지 않습니다. 접속하는 곳은 [아래](#무엇을-읽고-어디에-접속하나)에 전부 적었습니다.
+- Anthropic·OpenAI와 관계없는 비공식 오픈소스(MIT)입니다.
+
+**[최신 버전 받기](https://github.com/ChunSam/tokki/releases/latest)** · [설치](#설치) · [English](#english)
+
+## English
+
+Tokki shows how much of your **Claude Code** and **Codex** usage limits is left — the 5-hour and
+weekly windows — and when each one resets, right in the macOS menu bar or the Windows system tray.
+When the weekly window drops to 10% or below, it takes over the display.
+
+- Reads the access tokens the CLIs already stored. It never logs in and never spends a refresh
+  token; when Claude's token expires, it briefly launches the unmodified `claude` CLI so the CLI
+  renews it (can be turned off).
+- No telemetry. It talks only to the usage endpoints, the optional Admin cost APIs, and GitHub
+  Releases for a daily update check ([full list](#무엇을-읽고-어디에-접속하나)).
+- Alerts for low usage, upcoming resets and stalled data; pace and burn-down forecast; 7-day
+  local history with CSV export; optional organization API spend through an Admin key.
+- English and Korean UI. It follows the system language; change it in Settings.
+
+**Install** from [Releases](https://github.com/ChunSam/tokki/releases/latest). You need to be
+signed in to Claude Code and/or the Codex CLI on the same machine.
+
+- **macOS 13+**: open the DMG and copy `Tokki.app` to `/Applications`. The app is not notarized,
+  so clear the quarantine flag once before the first launch:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Tokki.app"
+  open "/Applications/Tokki.app"
+  ```
+
+- **Windows 10+**: unzip `win-x64` (most PCs) or `win-arm64` (Arm PCs) into any folder and run
+  `TokenTracker.Windows.exe`. No installer, no .NET runtime needed. SmartScreen may warn about an
+  unknown publisher: **More info → Run anyway**.
+
+Unofficial; not affiliated with Anthropic or OpenAI. The rest of this README is in Korean.
 
 ## 주요 기능
 
-- Claude / Codex 사용량 잔량을 메뉴바에 표시
-- 5시간 / 7일 리셋 잔량과 리셋까지 남은 시간 확인
-- 표시 방식 선택
-  - 가장 낮은 잔량 (`Lowest remaining`)
-  - `Claude + Codex`
-  - Codex만 (`Codex only`)
-  - Claude만 (`Claude only`)
-- 제공자 표기 선택
-  - `Cdx / Cl`
-  - 공식 로고 (앱 아이콘 기반 표기)
-- 7일 잔량이 10% 이하일 때 7일 잔량을 우선 표시
-- 표시 중인 창의 리셋까지 남은 시간을 메뉴바에 함께 표기 (설정에서 끄기 가능)
-- 7일 잔량 기준으로 표시 중인 퍼센트는 파스텔 레드로 강조
-- 로그인 시 자동 실행 토글
-- 전용 앱 아이콘 포함
-- 라이트/다크 모드 메뉴 색상 대응
-- Codex / Claude 연결 실패 시 잔량을 `--`로 표시
-- 저장된 액세스 토큰 만료를 미리 감지해 다시 로그인하라고 안내
-- Claude 토큰이 만료되면 Claude Code를 잠깐 실행해 갱신 (설정에서 끄기 가능)
-- 오류 원인별 상태/복구 안내와 진단 정보 복사
-- 낮은 잔량, 리셋 임박, 수집 중단, 다시 사용 가능 macOS/Windows 알림
-- API 비용 월 예산 80%·100%, Claude 추가 사용량 경고, Codex 크레딧 한도 도달 알림 (돈을 쓰는 계정만, 달마다 한 번)
-- 창마다 균등 사용선 대비 페이스(빠름·적정·여유) 표시
+**한눈에 보기**
+
+- 메뉴바(Windows는 트레이 아이콘과 툴팁)에 Claude·Codex 잔량과 리셋까지 남은 시간
+- 7일 잔량이 10% 이하면 7일 값을 대신 보여주고 파스텔 레드로 강조
+- 표시 방식: 가장 낮은 잔량 / `Claude + Codex` / Claude만 / Codex만
+- 제공자 표기: `Cdx / Cl` 또는 공식 로고
+- 창마다 균등 사용선 대비 페이스(빠름·적정·여유)와 소진 예측
+- 최근 7일 로컬 히스토리, 24시간 추세, CSV 내보내기
+
+**알림** (macOS·Windows)
+
+- 낮은 잔량, 리셋 임박, 다시 사용 가능, 사용량 갱신 멈춤
+- 돈을 쓰는 계정만, 달마다 한 번: API 월 예산 80%·100%, Claude 추가 사용량 경고, Codex 크레딧 한도
+
+**금액**
+
 - Claude 추가 사용량이나 Codex 크레딧을 쓰는 계정은 카드에 금액 표시 (구독만 쓰면 표시 없음)
-- API를 쓴 만큼 내는 조직은 Admin 키로 이번 달 사용 금액·오늘·상위 모델·월 예산 대비 표시 (켜야 동작)
-- 하루 한 번 새 버전 확인 (설정에서 끄기 가능)
+- API를 쓴 만큼 내는 조직은 Admin 키로 이번 달·오늘 사용 금액, 상위 모델, 월 예산 대비 표시 (켜야 동작)
+
+**끊기지 않게**
+
+- 저장된 토큰의 만료를 요청 전에 감지. Claude는 Claude Code를 잠깐 실행해 갱신 (끄기 가능)
+- 연결에 실패하면 마지막 값을 유지(기본 12시간)하고, 그 뒤에는 `--`
+- 오류 원인별 상태와 복구 안내, 진단 정보 복사
 - 잠자기에서 깨어나면 바로 새로고침
-- 최근 7일 로컬 히스토리 저장, 24시간 추세 표시, CSV 내보내기
-- 설정 창에서 표시/제공자/새로고침/언어/알림/히스토리 옵션 관리
 
-## 사용 방법
+**그 밖에**
 
-### 설치
+- 한국어·영어, 라이트·다크 모드, 로그인 시 자동 실행
+- 하루 한 번 새 버전 확인 (끄기 가능, 자동 설치는 하지 않음)
+- 표시·제공자·새로고침 간격·언어·알림·히스토리는 설정 창에서 관리
 
-GitHub Releases에서 최신 DMG를 다운로드합니다.
+## 설치
 
-[Releases](https://github.com/ChunSam/tokki/releases)
+[Releases](https://github.com/ChunSam/tokki/releases/latest)에서 최신 파일을 받습니다. 같은 기기에서
+Claude Code나 Codex CLI 중 하나 이상에 로그인돼 있어야 합니다 — Tokki는 그 CLI가 저장한 토큰을 읽습니다.
 
-DMG를 열고 `Tokki.app`을 `/Applications`로 복사한 뒤 실행합니다.
+### macOS (13 이상)
 
-현재 배포 파일은 Apple 공증을 거친 빌드가 아니므로 다른 Mac에서는 Gatekeeper 경고가 뜰 수 있습니다. 임시로 실행해야 한다면 `/Applications`에 복사한 뒤 아래 명령을 실행합니다.
+`Tokki-vX.Y.Z-macOS.dmg`를 열고 `Tokki.app`을 `/Applications`로 복사한 뒤 실행합니다.
+
+배포 파일은 Apple 공증을 거치지 않았으므로 다른 Mac에서는 Gatekeeper 경고가 뜹니다. 공증에는 유료
+Apple 개발자 계정이 필요해 아직 하지 않았습니다. 대신 소스와 빌드 과정은 이 저장소와 GitHub
+Actions(`release.yml`)에 모두 공개돼 있습니다. `/Applications`에 복사한 뒤 아래 명령을 한 번 실행합니다.
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Tokki.app"
 open "/Applications/Tokki.app"
 ```
+
+### Windows (10 이상)
+
+1. 대부분의 PC는 `Tokki-Windows-vX.Y.Z-win-x64.zip`, Arm 기반 PC(Snapdragon 등)는 `win-arm64`를 받습니다.
+2. 원하는 폴더에 압축을 풀고 `TokenTracker.Windows.exe`를 실행합니다. 설치 과정이 없고 .NET도 따로
+   설치할 필요가 없습니다.
+3. 코드 서명이 없어 SmartScreen이 `Windows의 PC 보호` 창을 띄울 수 있습니다. `추가 정보` → `실행`을 누릅니다.
+
+Windows에서는 앱이 알림 영역 아이콘을 강제로 상시 표시하도록 설정할 수 없습니다. 트레이 아이콘이
+숨겨져 있으면 우클릭 메뉴의 `아이콘 상시 표시 설정 열기...`로 Windows 작업표시줄 설정을 열고,
+알림 영역 아이콘 목록에서 `Tokki`를 켭니다.
+
+### 체크섬 확인 (선택)
+
+각 파일 옆의 `.sha256`을 같은 폴더에 받은 뒤 확인합니다.
+
+```bash
+shasum -a 256 -c Tokki-vX.Y.Z-macOS.dmg.sha256
+```
+
+Windows PowerShell에서는 `Get-FileHash <zip 파일>`의 값을 `.sha256` 파일 안의 값과 비교합니다.
 
 ### Token Tracker에서 넘어올 때
 
@@ -61,7 +128,33 @@ open "/Applications/Tokki.app"
 - **Windows**: 새 zip을 풀어 실행합니다. 자동 실행을 켜 두었다면 설정에서 한 번 껐다가 다시 켜야
   새 위치로 바뀝니다. 그 뒤에는 예전 폴더를 지워도 됩니다.
 
-### 메뉴바 팝업
+## 무엇을 읽고 어디에 접속하나
+
+**읽는 것**
+
+- Claude 토큰: macOS 키체인(`Claude Code-credentials`) 또는 `~/.claude/.credentials.json`
+  (Windows는 `%USERPROFILE%\.claude\.credentials.json`)
+- Codex 토큰: `~/.codex/auth.json`
+
+액세스 토큰만 읽고 리프레시 토큰은 쓰지 않습니다. Claude 토큰이 만료되면 설치된 Claude Code를 잠깐
+실행해 CLI가 직접 갱신하게 합니다([자세히](#claude-토큰-자동-갱신)).
+
+**접속하는 곳** — 이것이 전부입니다. 사용 통계나 텔레메트리는 보내지 않습니다.
+
+| 대상 | 언제 |
+|---|---|
+| `api.anthropic.com/api/oauth/usage` | Claude 잔량 조회 |
+| `chatgpt.com/backend-api/wham/usage` | Codex 잔량 조회 |
+| `api.anthropic.com/v1/organizations/analytics/cost` | Claude API 비용을 켜고 Admin 키를 넣었을 때만 |
+| `api.openai.com/v1/organization/costs` | Codex API 비용을 켜고 Admin 키를 넣었을 때만 |
+| `api.github.com/repos/ChunSam/tokki/releases/latest` | 하루 한 번 새 버전 확인 (설정의 `업데이트 확인`으로 끄기 가능) |
+
+새 버전 확인은 실패하면 한 시간 뒤에 다시 묻고, 자동 설치 없이 릴리스 페이지만 엽니다.
+
+잔량 조회에 쓰는 두 주소는 공개 문서화된 API가 아니라 각 CLI와 웹이 쓰는 주소입니다. 제공자가 형식을
+바꾸면 고칠 때까지 잔량이 `--`나 캐시 값으로 보일 수 있습니다.
+
+## 메뉴바 팝업
 
 macOS에서 메뉴바 항목을 클릭하면 팝업이 열립니다.
 
@@ -85,8 +178,6 @@ macOS에서 메뉴바 항목을 클릭하면 팝업이 열립니다.
 
 Windows에서는 트레이 아이콘의 메뉴에 같은 정보(잔량, 리셋, 추가 사용량·크레딧, API 비용, 데이터 출처, 플랜, 오류)와
 작업표시줄 아이콘 상시 표시 설정이 들어 있습니다.
-
-표시 방식, 제공자 표기, 제공자 활성화/비활성화, 새로고침 간격, 언어, 업데이트 확인, 알림 기준, 히스토리 보관 기간은 설정 창에서 관리합니다.
 
 ## 퍼센트 표시 규칙
 
@@ -131,6 +222,18 @@ Claude의 5시간 창은 **첫 사용 때 열립니다.** 창이 없는 동안 A
 
 사용량 API 연결에 실패하면 설정한 유지 기간 안의 마지막 측정값을 캐시로 표시합니다. 유효한 캐시가 없거나 기간이 지나면 Claude와 Codex 모두 `--`로 표시합니다.
 
+## 알림
+
+- **낮은 잔량**: 창의 잔량이 설정한 알림 기준 이하로 떨어지면 알립니다.
+- **다시 사용 가능**: 알림 기준 이하로 떨어졌던 창이 리셋된 뒤 다시 측정되어 기준을 넘으면 한 번
+  갑니다. 마지막 값은 앱을 껐다 켜거나 토큰이 만료된 동안에도 유지되므로, 그 사이에 지난 리셋도
+  다음 측정 때 알려줍니다. 알림 기준을 0으로 두면 이 알림도 꺼집니다.
+- **리셋 임박**: 리셋 때 그냥 사라질 양이 있을 때만 갑니다. 잔량이 그 창의 알림 기준보다 많아야
+  하고, 본문에 남은 양을 적습니다(`Claude 5h 5m 후 리셋 — 60% 남음`). 이미 기준 이하인 창은 리셋이
+  반가운 소식이라 알리지 않고, 리셋 뒤 `다시 사용 가능` 알림이 갑니다. 캐시된 값으로는 보내지 않습니다.
+- **사용량 갱신 멈춤**: [마지막 값 유지](#마지막-값-유지)를 보세요.
+- **금액**: [API 비용](#api-비용-admin-키)을 보세요.
+
 ## API 비용 (Admin 키)
 
 Claude Code나 Codex를 API 키로 쓰면 구독 한도가 없어서 카드에 `로그인 필요`와 `--`만 남습니다. 이때는 조직의
@@ -166,6 +269,19 @@ Admin 키로 이번 달 사용 금액을 볼 수 있습니다. 구독 한도와 
 Tokki는 각 CLI가 저장해 둔 액세스 토큰을 읽기만 하고, 직접 갱신하지 않습니다.
 따라서 CLI를 한동안 쓰지 않아 토큰이 만료되면 잔량을 새로 가져올 수 없습니다.
 
+### 저장된 토큰 만료
+
+Claude나 Codex의 상태가 `Saved token expired` / `저장된 토큰 만료`이면 해당 CLI의 토큰을 갱신한 뒤 새로고침합니다.
+
+```bash
+codex login
+```
+
+Claude는 자동 갱신이 켜져 있으면 대개 직접 할 일이 없습니다. 꺼 두었거나 갱신이 실패했다면
+`claude`를 한 번 실행하면 됩니다. 액세스 토큰은 약 8시간, 리프레시 토큰은 약 4주를 살기 때문에
+실행만으로 CLI가 저장된 토큰을 갱신합니다 — 대개 재로그인은 필요하지 않습니다. 그래도
+`저장된 토큰 만료`가 남으면 그 안에서 `/login`을 입력합니다.
+
 ### Claude 토큰 자동 갱신
 
 Claude 토큰이 만료돼 있으면 Tokki가 설치된 Claude Code(`claude`)를 잠깐 실행합니다.
@@ -194,37 +310,14 @@ Claude 토큰의 만료 여부는 저장된 `expiresAt`을 기준으로 판단�
 
 `진단 정보 복사`에는 `Claude credential source`(keychain/file)와 `Claude credential age`가 상태와 무관하게 항상 포함됩니다.
 
-그 사이 공백은 마지막으로 성공한 값을 표시합니다. 유지 기간은 설정 창의 `마지막 값 유지 기간`에서 조절합니다(기본 12시간). Claude와 Codex 각각의 실제 측정 시각부터 계산하며, 실패한 재조회나 앱 재실행으로 연장되지 않습니다. 이전 버전 캐시는 측정 시각을 신뢰할 수 없어 한 번 폐기하며, 다음 조회 성공 시 다시 저장합니다. 캐시된 값은 리셋까지 남은 시간을 표시하지 않고, 히스토리에는 새 측정값으로 추가하지 않습니다.
+### 마지막 값 유지
+
+토큰이 만료됐거나 연결에 실패한 동안에는 마지막으로 성공한 값을 표시합니다. 유지 기간은 설정 창의 `마지막 값 유지 기간`에서 조절합니다(기본 12시간). Claude와 Codex 각각의 실제 측정 시각부터 계산하며, 실패한 재조회나 앱 재실행으로 연장되지 않습니다. 이전 버전 캐시는 측정 시각을 신뢰할 수 없어 한 번 폐기하며, 다음 조회 성공 시 다시 저장합니다. 캐시된 값은 리셋까지 남은 시간을 표시하지 않고, 히스토리에는 새 측정값으로 추가하지 않습니다.
+
 캐시된 값이 폴링 3회(최소 30분)보다 오래되면 `사용량 갱신 멈춤` 알림이 제공자별로 한 번
 갑니다 — 그럴듯해 보이는 숫자가 조용히 낡아가는 것을 눈으로 발견해야 하지 않도록. 다시
 측정되면 알림이 재무장되고, 보여줄 값이 아예 없어 `--`인 경우는 알리지 않습니다. 그 표시는
 살아 있는 값으로 오해할 수가 없기 때문입니다.
-
-알림 기준 이하로 떨어졌던 창이 리셋된 뒤 다시 측정되어 기준을 넘으면 `다시 사용 가능` 알림이 한 번
-갑니다. 마지막 값은 앱을 껐다 켜거나 토큰이 만료된 동안에도 유지되므로, 그 사이에 지난 리셋도
-다음 측정 때 알려줍니다. 알림 기준을 0으로 두면 이 알림도 꺼집니다.
-
-`리셋 임박` 알림은 리셋 때 그냥 사라질 양이 있을 때만 갑니다. 잔량이 그 창의 알림 기준보다 많아야
-하고, 본문에 남은 양을 적습니다(`Claude 5h 5m 후 리셋 — 60% 남음`). 이미 기준 이하인 창은 리셋이
-반가운 소식이라 알리지 않고, 리셋 뒤 `다시 사용 가능` 알림이 갑니다. 캐시된 값으로는 보내지 않습니다.
-
-새 버전 확인은 하루 한 번(실패하면 한 시간 뒤) GitHub Releases API에 최신 릴리스를 묻습니다.
-사용량 제공자 말고 앱이 보내는 유일한 요청이며, 설정의 `업데이트 확인`으로 끌 수 있습니다.
-자동 설치는 하지 않고 릴리스 페이지만 엽니다.
-
-Claude나 Codex의 상태가 `Saved token expired` / `저장된 토큰 만료`이면 해당 CLI의 토큰을 갱신한 뒤 새로고침합니다.
-
-```bash
-codex login
-```
-
-Claude는 자동 갱신이 켜져 있으면 대개 직접 할 일이 없습니다. 꺼 두었거나 갱신이 실패했다면
-`claude`를 한 번 실행하면 됩니다. 액세스 토큰은 약 8시간, 리프레시 토큰은 약 4주를 살기 때문에
-실행만으로 CLI가 저장된 토큰을 갱신합니다 — 대개 재로그인은 필요하지 않습니다. 그래도
-`저장된 토큰 만료`가 남으면 그 안에서 `/login`을 입력합니다.
-
-- Claude 토큰은 macOS 키체인(`Claude Code-credentials`) 또는 `~/.claude/.credentials.json`에서 읽습니다.
-- Codex 토큰은 `~/.codex/auth.json`에서 읽습니다.
 
 ### 상태줄 브리지 — 토큰이 만료돼도 Claude 잔량 보기
 
@@ -296,8 +389,6 @@ Apple Silicon Mac에서는 UTM의 Windows 11 Arm 가상 머신으로 테스트·
 ```powershell
 dotnet run --project windows/TokenTracker.Windows
 ```
-
-Windows에서는 앱이 알림 영역 아이콘을 강제로 상시 표시하도록 설정할 수 없습니다. 우클릭 메뉴의 `Always Show Icon Settings...`를 눌러 Windows 작업표시줄 설정을 열고, 알림 영역/시스템 트레이 아이콘 목록에서 `Tokki`를 켜야 합니다.
 
 ### Windows 릴리즈 빌드
 
